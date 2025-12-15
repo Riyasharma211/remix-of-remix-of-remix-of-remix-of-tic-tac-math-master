@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Grid3X3, Zap, Brain, Target, Gamepad2, Volume2, VolumeX, Timer, Sparkles, Palette, Swords } from 'lucide-react';
+import { Grid3X3, Zap, Brain, Target, Gamepad2, Volume2, VolumeX, Timer, Sparkles, Palette, Swords, Pencil, Heart } from 'lucide-react';
 import TicTacToeOnline from '@/components/games/TicTacToeOnline';
 import MathChallenge from '@/components/games/MathChallenge';
 import MemoryMatch from '@/components/games/MemoryMatch';
@@ -8,13 +8,15 @@ import ReactionTime from '@/components/games/ReactionTime';
 import PatternMemory from '@/components/games/PatternMemory';
 import ColorMatch from '@/components/games/ColorMatch';
 import MathBattle from '@/components/games/MathBattle';
+import DrawingGame from '@/components/games/DrawingGame';
+import TruthOrDare from '@/components/games/TruthOrDare';
 import GameCard from '@/components/GameCard';
 import DifficultySelector from '@/components/DifficultySelector';
 import { Button } from '@/components/ui/button';
 import { soundManager } from '@/utils/soundManager';
 import { DifficultyProvider } from '@/contexts/DifficultyContext';
 
-type GameType = 'tictactoe' | 'math' | 'memory' | 'numberguess' | 'reaction' | 'pattern' | 'colormatch' | 'mathbattle';
+type GameType = 'tictactoe' | 'math' | 'memory' | 'numberguess' | 'reaction' | 'pattern' | 'colormatch' | 'mathbattle' | 'drawing' | 'truthordare';
 
 const games = [
   {
@@ -31,6 +33,22 @@ const games = [
     description: 'Online math race',
     icon: Swords,
     color: 'orange' as const,
+    multiplayer: true,
+  },
+  {
+    id: 'drawing' as GameType,
+    title: 'Drawing Game',
+    description: 'Draw & guess',
+    icon: Pencil,
+    color: 'pink' as const,
+    multiplayer: true,
+  },
+  {
+    id: 'truthordare' as GameType,
+    title: 'Truth or Dare',
+    description: 'Party game',
+    icon: Heart,
+    color: 'pink' as const,
     multiplayer: true,
   },
   {
@@ -102,6 +120,10 @@ const IndexContent: React.FC = () => {
         return <TicTacToeOnline />;
       case 'mathbattle':
         return <MathBattle />;
+      case 'drawing':
+        return <DrawingGame />;
+      case 'truthordare':
+        return <TruthOrDare />;
       case 'math':
         return <MathChallenge />;
       case 'pattern':
@@ -152,7 +174,7 @@ const IndexContent: React.FC = () => {
             </Button>
           </div>
           <p className="text-muted-foreground font-rajdhani text-lg max-w-md mx-auto mb-4">
-            8 games • Real-time multiplayer • Mind training
+            10 games • Real-time multiplayer • Mind training
           </p>
           <DifficultySelector />
         </header>
