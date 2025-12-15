@@ -1,17 +1,20 @@
 import React, { useState } from 'react';
-import { Grid3X3, Zap, Brain, Gamepad2 } from 'lucide-react';
-import TicTacToe from '@/components/games/TicTacToe';
+import { Grid3X3, Zap, Brain, Target, Gamepad2, Volume2, VolumeX } from 'lucide-react';
+import TicTacToeOnline from '@/components/games/TicTacToeOnline';
 import MathChallenge from '@/components/games/MathChallenge';
 import MemoryMatch from '@/components/games/MemoryMatch';
+import NumberGuess from '@/components/games/NumberGuess';
 import GameCard from '@/components/GameCard';
+import { Button } from '@/components/ui/button';
+import { soundManager } from '@/utils/soundManager';
 
-type GameType = 'tictactoe' | 'math' | 'memory';
+type GameType = 'tictactoe' | 'math' | 'memory' | 'numberguess';
 
 const games = [
   {
     id: 'tictactoe' as GameType,
     title: 'Tic Tac Toe',
-    description: '2-Player classic strategy game',
+    description: 'Local & Online multiplayer',
     icon: Grid3X3,
     color: 'cyan' as const,
   },
@@ -25,25 +28,44 @@ const games = [
   {
     id: 'memory' as GameType,
     title: 'Memory Match',
-    description: 'Test your memory skills',
+    description: 'Test your memory',
     icon: Brain,
     color: 'purple' as const,
+  },
+  {
+    id: 'numberguess' as GameType,
+    title: 'Number Guess',
+    description: 'Hot/Cold hints game',
+    icon: Target,
+    color: 'pink' as const,
   },
 ];
 
 const Index: React.FC = () => {
   const [activeGame, setActiveGame] = useState<GameType>('tictactoe');
+  const [soundEnabled, setSoundEnabled] = useState(true);
+
+  const toggleSound = () => {
+    const newState = !soundEnabled;
+    setSoundEnabled(newState);
+    soundManager.setEnabled(newState);
+    if (newState) {
+      soundManager.playLocalSound('click');
+    }
+  };
 
   const renderGame = () => {
     switch (activeGame) {
       case 'tictactoe':
-        return <TicTacToe />;
+        return <TicTacToeOnline />;
       case 'math':
         return <MathChallenge />;
       case 'memory':
         return <MemoryMatch />;
+      case 'numberguess':
+        return <NumberGuess />;
       default:
-        return <TicTacToe />;
+        return <TicTacToeOnline />;
     }
   };
 
@@ -63,9 +85,21 @@ const Index: React.FC = () => {
               <span className="text-neon-cyan text-glow-cyan">MIND</span>
               <span className="text-neon-purple text-glow-purple">GAMES</span>
             </h1>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={toggleSound}
+              className="ml-4"
+            >
+              {soundEnabled ? (
+                <Volume2 className="w-5 h-5 text-neon-green" />
+              ) : (
+                <VolumeX className="w-5 h-5 text-muted-foreground" />
+              )}
+            </Button>
           </div>
           <p className="text-muted-foreground font-rajdhani text-lg max-w-md mx-auto">
-            Challenge your mind with classic games and puzzles
+            Challenge your mind with classic games and puzzles • Real-time multiplayer
           </p>
         </header>
 
@@ -88,7 +122,10 @@ const Index: React.FC = () => {
                   icon={game.icon}
                   color={game.color}
                   isActive={activeGame === game.id}
-                  onClick={() => setActiveGame(game.id)}
+                  onClick={() => {
+                    setActiveGame(game.id);
+                    soundManager.playLocalSound('click');
+                  }}
                 />
               </div>
             ))}
@@ -104,7 +141,7 @@ const Index: React.FC = () => {
 
         {/* Footer */}
         <footer className="text-center mt-12 text-muted-foreground font-rajdhani text-sm">
-          <p>Train your brain. Challenge your friends. Have fun!</p>
+          <p>Train your brain. Challenge your friends. Have fun! 🎮</p>
         </footer>
       </div>
     </div>

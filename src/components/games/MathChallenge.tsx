@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Play, RotateCcw, Zap, Clock, Target } from 'lucide-react';
+import { soundManager } from '@/utils/soundManager';
 
 type Operator = '+' | '-' | '×' | '÷';
 
@@ -76,6 +77,7 @@ const MathChallenge: React.FC = () => {
     setTimeLeft(30);
     setDifficulty(1);
     nextProblem(1);
+    soundManager.playLocalSound('click');
   };
 
   const nextProblem = useCallback((diff: number) => {
@@ -90,6 +92,7 @@ const MathChallenge: React.FC = () => {
     
     if (answer === problem.answer) {
       setFeedback('correct');
+      soundManager.playLocalSound('correct');
       const points = 10 + streak * 2 + difficulty * 5;
       setScore((prev) => prev + points);
       setStreak((prev) => prev + 1);
@@ -101,6 +104,7 @@ const MathChallenge: React.FC = () => {
       setTimeout(() => nextProblem(difficulty), 300);
     } else {
       setFeedback('wrong');
+      soundManager.playLocalSound('wrong');
       setStreak(0);
       setTimeout(() => nextProblem(difficulty), 500);
     }
@@ -114,7 +118,11 @@ const MathChallenge: React.FC = () => {
         if (prev <= 1) {
           setGameState('ended');
           setHighScore((hs) => Math.max(hs, score));
+          soundManager.playLocalSound('lose');
           return 0;
+        }
+        if (prev <= 5) {
+          soundManager.playLocalSound('tick');
         }
         return prev - 1;
       });

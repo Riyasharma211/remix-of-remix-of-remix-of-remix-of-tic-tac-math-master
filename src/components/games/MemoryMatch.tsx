@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { RotateCcw, Brain, Trophy, Clock } from 'lucide-react';
+import { soundManager } from '@/utils/soundManager';
 
 const EMOJIS = ['🚀', '⭐', '🎮', '🎯', '💎', '🔥', '⚡', '🎪'];
 
@@ -56,6 +57,7 @@ const MemoryMatch: React.FC = () => {
     if (matches === EMOJIS.length) {
       setGameComplete(true);
       setIsPlaying(false);
+      soundManager.playLocalSound('win');
       if (bestTime === null || timer < bestTime) {
         setBestTime(timer);
       }
@@ -66,6 +68,7 @@ const MemoryMatch: React.FC = () => {
     if (isLocked || flippedCards.includes(id) || cards[id].isMatched) return;
     
     if (!isPlaying) setIsPlaying(true);
+    soundManager.playLocalSound('click');
 
     const newFlippedCards = [...flippedCards, id];
     setFlippedCards(newFlippedCards);
@@ -83,6 +86,7 @@ const MemoryMatch: React.FC = () => {
       const [first, second] = newFlippedCards;
       
       if (cards[first].emoji === cards[second].emoji) {
+        soundManager.playLocalSound('correct');
         setCards((prev) =>
           prev.map((card) =>
             card.id === first || card.id === second
@@ -94,6 +98,7 @@ const MemoryMatch: React.FC = () => {
         setFlippedCards([]);
         setIsLocked(false);
       } else {
+        soundManager.playLocalSound('wrong');
         setTimeout(() => {
           setCards((prev) =>
             prev.map((card) =>
@@ -118,6 +123,7 @@ const MemoryMatch: React.FC = () => {
     setGameComplete(false);
     setTimer(0);
     setIsPlaying(false);
+    soundManager.playLocalSound('click');
   };
 
   const formatTime = (seconds: number): string => {
