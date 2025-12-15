@@ -1,14 +1,15 @@
 import React, { useState } from 'react';
-import { Grid3X3, Zap, Brain, Target, Gamepad2, Volume2, VolumeX } from 'lucide-react';
+import { Grid3X3, Zap, Brain, Target, Gamepad2, Volume2, VolumeX, Timer } from 'lucide-react';
 import TicTacToeOnline from '@/components/games/TicTacToeOnline';
 import MathChallenge from '@/components/games/MathChallenge';
 import MemoryMatch from '@/components/games/MemoryMatch';
 import NumberGuess from '@/components/games/NumberGuess';
+import ReactionTime from '@/components/games/ReactionTime';
 import GameCard from '@/components/GameCard';
 import { Button } from '@/components/ui/button';
 import { soundManager } from '@/utils/soundManager';
 
-type GameType = 'tictactoe' | 'math' | 'memory' | 'numberguess';
+type GameType = 'tictactoe' | 'math' | 'memory' | 'numberguess' | 'reaction';
 
 const games = [
   {
@@ -39,6 +40,13 @@ const games = [
     icon: Target,
     color: 'pink' as const,
   },
+  {
+    id: 'reaction' as GameType,
+    title: 'Reaction Time',
+    description: 'Test your reflexes',
+    icon: Timer,
+    color: 'cyan' as const,
+  },
 ];
 
 const Index: React.FC = () => {
@@ -64,6 +72,8 @@ const Index: React.FC = () => {
         return <MemoryMatch />;
       case 'numberguess':
         return <NumberGuess />;
+      case 'reaction':
+        return <ReactionTime />;
       default:
         return <TicTacToeOnline />;
     }
