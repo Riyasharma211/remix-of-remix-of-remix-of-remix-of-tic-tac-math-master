@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { supabase } from '@/integrations/supabase/client';
-import { Heart, Zap, Copy, Users, ArrowLeft, RefreshCw, Check, X } from 'lucide-react';
+import { Heart, Zap, Copy, Users, ArrowLeft, RefreshCw, Check, X, PenLine, Shuffle } from 'lucide-react';
 import { toast } from 'sonner';
 
 type GameMode = 'menu' | 'create' | 'join' | 'waiting' | 'playing';
+type QuestionMode = 'random' | 'custom';
 
 interface Challenge {
   type: 'truth' | 'dare';
@@ -20,6 +22,8 @@ interface GameState {
   currentPlayerIndex: number;
   challenges: Challenge[];
   currentChallenge: Challenge | null;
+  questionMode: QuestionMode;
+  pendingQuestion?: { from: string; type: 'truth' | 'dare'; waitingFor: string };
 }
 
 const TRUTHS = [
@@ -66,15 +70,19 @@ const TruthOrDare: React.FC = () => {
   const [playerId] = useState(() => Math.random().toString(36).substring(2, 8));
   const [playerName, setPlayerName] = useState('');
   const [selectedType, setSelectedType] = useState<'truth' | 'dare' | null>(null);
+  const [customQuestion, setCustomQuestion] = useState('');
   const [gameState, setGameState] = useState<GameState>({
     players: [],
     currentPlayerIndex: 0,
     challenges: [],
-    currentChallenge: null
+    currentChallenge: null,
+    questionMode: 'random'
   });
 
   const isMyTurn = gameState.players[gameState.currentPlayerIndex]?.id === playerId;
   const currentPlayer = gameState.players[gameState.currentPlayerIndex];
+  const amIAsker = gameState.pendingQuestion?.from === playerName;
+  const isWaitingForMyQuestion = gameState.pendingQuestion?.waitingFor === playerName;
 
   const generateRoomCode = () => {
     return Math.random().toString(36).substring(2, 6).toUpperCase();
@@ -94,7 +102,8 @@ const TruthOrDare: React.FC = () => {
       players: [{ id: playerId, name: playerName }],
       currentPlayerIndex: 0,
       challenges: [],
-      currentChallenge: null
+      currentChallenge: null,
+      questionMode: 'random'
     };
 
     const { data, error } = await supabase
@@ -206,19 +215,87 @@ const TruthOrDare: React.FC = () => {
     };
   }, [roomId, mode]);
 
+  const toggleQuestionMode = async () => {
+    if (!roomId || !isMyTurn) return;
+    
+    const newMode: QuestionMode = gameState.questionMode === 'random' ? 'custom' : 'random';
+    const newState = { ...gameState, questionMode: newMode };
+    
+    await supabase
+      .from('game_rooms')
+      .update({ game_state: JSON.parse(JSON.stringify(newState)) })
+      .eq('id', roomId);
+    
+    setGameState(newState);
+  };
+
   const selectChoice = async (type: 'truth' | 'dare') => {
     if (!isMyTurn || !roomId) return;
 
+    if (gameState.questionMode === 'custom') {
+      // In custom mode, other players will type the question
+      const otherPlayers = gameState.players.filter(p => p.id !== playerId);
+      if (otherPlayers.length === 0) {
+        toast.error('Need other players for custom questions');
+        return;
+      }
+      
+      // Pick a random other player to ask the question
+      const asker = otherPlayers[Math.floor(Math.random() * otherPlayers.length)];
+      
+      const newState = {
+        ...gameState,
+        pendingQuestion: { from: asker.name, type, waitingFor: asker.name }
+      };
+
+      await supabase
+        .from('game_rooms')
+        .update({ game_state: JSON.parse(JSON.stringify(newState)) })
+        .eq('id', roomId);
+
+      setGameState(newState);
+      setSelectedType(type);
+      toast.info(`${asker.name} will type a ${type} question for you!`);
+    } else {
+      // Random mode - use preset questions
+      const challenge: Challenge = {
+        type,
+        text: type === 'truth' ? getRandomTruth() : getRandomDare(),
+        from: 'Game',
+        to: playerName
+      };
+
+      const newState = {
+        ...gameState,
+        currentChallenge: challenge
+      };
+
+      await supabase
+        .from('game_rooms')
+        .update({ game_state: JSON.parse(JSON.stringify(newState)) })
+        .eq('id', roomId);
+
+      setGameState(newState);
+      setSelectedType(type);
+    }
+  };
+
+  const submitCustomQuestion = async () => {
+    if (!roomId || !customQuestion.trim() || !gameState.pendingQuestion) return;
+
+    const currentPlayerName = gameState.players[gameState.currentPlayerIndex]?.name;
+    
     const challenge: Challenge = {
-      type,
-      text: type === 'truth' ? getRandomTruth() : getRandomDare(),
-      from: 'Game',
-      to: playerName
+      type: gameState.pendingQuestion.type,
+      text: customQuestion.trim(),
+      from: playerName,
+      to: currentPlayerName
     };
 
     const newState = {
       ...gameState,
-      currentChallenge: challenge
+      currentChallenge: challenge,
+      pendingQuestion: undefined
     };
 
     await supabase
@@ -227,7 +304,8 @@ const TruthOrDare: React.FC = () => {
       .eq('id', roomId);
 
     setGameState(newState);
-    setSelectedType(type);
+    setCustomQuestion('');
+    toast.success('Question sent!');
   };
 
   const completeChallenge = async (completed: boolean) => {
@@ -449,7 +527,39 @@ const TruthOrDare: React.FC = () => {
 
       {/* Current turn info */}
       <div className="py-4">
-        {!gameState.currentChallenge ? (
+        {/* Pending custom question - someone needs to type */}
+        {gameState.pendingQuestion && !gameState.currentChallenge ? (
+          <div className="space-y-4">
+            {isWaitingForMyQuestion ? (
+              <>
+                <p className="text-lg text-neon-cyan font-bold">
+                  Type a {gameState.pendingQuestion.type} for {currentPlayer?.name}!
+                </p>
+                <Textarea
+                  value={customQuestion}
+                  onChange={(e) => setCustomQuestion(e.target.value)}
+                  placeholder={gameState.pendingQuestion.type === 'truth' 
+                    ? "Ask a truth question..." 
+                    : "Give a dare challenge..."}
+                  className="max-w-md mx-auto bg-background/50 border-border min-h-[80px]"
+                  maxLength={200}
+                />
+                <Button
+                  onClick={submitCustomQuestion}
+                  disabled={!customQuestion.trim()}
+                  className="bg-neon-green/20 border border-neon-green text-neon-green hover:bg-neon-green/30"
+                >
+                  <PenLine className="w-4 h-4 mr-2" />
+                  Send Question
+                </Button>
+              </>
+            ) : (
+              <p className="text-muted-foreground">
+                Waiting for <span className="text-neon-pink">{gameState.pendingQuestion.waitingFor}</span> to type a {gameState.pendingQuestion.type}...
+              </p>
+            )}
+          </div>
+        ) : !gameState.currentChallenge ? (
           <>
             <p className="text-lg mb-4">
               {isMyTurn ? (
@@ -462,22 +572,46 @@ const TruthOrDare: React.FC = () => {
             </p>
 
             {isMyTurn && (
-              <div className="flex justify-center gap-4">
-                <Button
-                  onClick={() => selectChoice('truth')}
-                  className="bg-neon-pink/20 border-2 border-neon-pink text-neon-pink hover:bg-neon-pink/30 text-lg px-8 py-6"
-                >
-                  <Heart className="w-5 h-5 mr-2" />
-                  Truth
-                </Button>
-                <Button
-                  onClick={() => selectChoice('dare')}
-                  className="bg-neon-orange/20 border-2 border-neon-orange text-neon-orange hover:bg-neon-orange/30 text-lg px-8 py-6"
-                >
-                  <Zap className="w-5 h-5 mr-2" />
-                  Dare
-                </Button>
-              </div>
+              <>
+                {/* Mode toggle */}
+                <div className="flex justify-center mb-4">
+                  <Button
+                    onClick={toggleQuestionMode}
+                    variant="outline"
+                    size="sm"
+                    className={`border-border ${gameState.questionMode === 'custom' ? 'bg-neon-purple/20 text-neon-purple' : ''}`}
+                  >
+                    {gameState.questionMode === 'random' ? (
+                      <>
+                        <Shuffle className="w-4 h-4 mr-2" />
+                        Random Questions
+                      </>
+                    ) : (
+                      <>
+                        <PenLine className="w-4 h-4 mr-2" />
+                        Custom Questions
+                      </>
+                    )}
+                  </Button>
+                </div>
+                
+                <div className="flex justify-center gap-4">
+                  <Button
+                    onClick={() => selectChoice('truth')}
+                    className="bg-neon-pink/20 border-2 border-neon-pink text-neon-pink hover:bg-neon-pink/30 text-lg px-8 py-6"
+                  >
+                    <Heart className="w-5 h-5 mr-2" />
+                    Truth
+                  </Button>
+                  <Button
+                    onClick={() => selectChoice('dare')}
+                    className="bg-neon-orange/20 border-2 border-neon-orange text-neon-orange hover:bg-neon-orange/30 text-lg px-8 py-6"
+                  >
+                    <Zap className="w-5 h-5 mr-2" />
+                    Dare
+                  </Button>
+                </div>
+              </>
             )}
           </>
         ) : (
