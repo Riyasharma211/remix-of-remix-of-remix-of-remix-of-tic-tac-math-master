@@ -395,23 +395,48 @@ const TruthOrDare: React.FC = () => {
   if (mode === 'waiting') {
     return (
       <div className="text-center space-y-6 px-4 py-6 max-w-md mx-auto">
-        <h3 className="font-orbitron text-xl text-foreground">Waiting Room</h3>
-        <div className="flex items-center justify-center gap-2">
-          <span className="text-4xl font-mono tracking-[0.3em] text-neon-pink">{roomCode}</span>
-          <Button variant="ghost" size="icon" onClick={copyRoomCode} className="h-12 w-12">
-            <Copy className="w-5 h-5" />
-          </Button>
+        {/* Animated waiting indicator */}
+        <div className="relative mx-auto w-20 h-20">
+          <div className="w-20 h-20 rounded-full border-4 border-neon-pink/30 animate-pulse" />
+          <div className="absolute inset-0 w-20 h-20 rounded-full border-4 border-transparent border-t-neon-pink animate-spin" />
+          <Users className="absolute inset-0 m-auto w-8 h-8 text-neon-pink" />
         </div>
 
+        <div className="space-y-2">
+          <h3 className="font-orbitron text-xl text-foreground">Waiting for Opponent...</h3>
+          <p className="text-muted-foreground font-rajdhani text-sm animate-pulse">
+            Share the code to invite friends
+          </p>
+        </div>
+
+        {/* Room code card */}
+        <div className="relative p-6 bg-card rounded-2xl border-2 border-neon-pink/50 shadow-lg shadow-neon-pink/20 mx-auto">
+          <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 bg-background rounded-full border border-border">
+            <span className="text-xs font-rajdhani text-muted-foreground">ROOM CODE</span>
+          </div>
+          <div className="flex items-center justify-center gap-3">
+            <span className="text-4xl font-mono tracking-[0.4em] text-neon-pink">{roomCode}</span>
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              onClick={copyRoomCode} 
+              className="h-12 w-12 hover:bg-neon-pink/20"
+            >
+              <Copy className="w-5 h-5 text-neon-pink" />
+            </Button>
+          </div>
+        </div>
+
+        {/* Players list */}
         <div className="space-y-3">
-          <p className="text-muted-foreground">Players ({gameState.players.length}):</p>
+          <p className="text-muted-foreground text-sm">Players joined ({gameState.players.length}):</p>
           <div className="flex flex-wrap justify-center gap-2">
             {gameState.players.map((p) => (
               <span
                 key={p.id}
-                className={`px-4 py-2 rounded-full text-sm ${
+                className={`px-4 py-2 rounded-full text-sm transition-all ${
                   p.id === playerId
-                    ? 'bg-neon-cyan/20 text-neon-cyan border border-neon-cyan'
+                    ? 'bg-neon-cyan/20 text-neon-cyan border border-neon-cyan animate-pulse'
                     : 'bg-accent text-foreground'
                 }`}
               >
@@ -421,18 +446,35 @@ const TruthOrDare: React.FC = () => {
           </div>
         </div>
 
+        {/* Waiting dots animation */}
+        <div className="flex justify-center gap-2">
+          {[0, 1, 2].map(i => (
+            <div 
+              key={i} 
+              className="w-3 h-3 rounded-full bg-neon-pink"
+              style={{ 
+                animation: 'pulse 1.5s ease-in-out infinite',
+                animationDelay: `${i * 0.2}s`
+              }}
+            />
+          ))}
+        </div>
+
         {gameState.players[0]?.id === playerId && (
           <Button
             onClick={startGame}
             disabled={gameState.players.length < 2}
-            className="w-full bg-neon-green/20 border border-neon-green text-neon-green hover:bg-neon-green/30 py-6 text-lg"
+            className="w-full bg-neon-green/20 border border-neon-green text-neon-green hover:bg-neon-green/30 py-6 text-lg disabled:opacity-50"
           >
-            Start Game ({gameState.players.length}/2+)
+            {gameState.players.length < 2 
+              ? 'Waiting for players...' 
+              : `Start Game (${gameState.players.length} players)`
+            }
           </Button>
         )}
 
-        <Button variant="outline" onClick={leaveGame} className="w-full py-4">
-          <ArrowLeft className="w-4 h-4 mr-2" /> Leave
+        <Button variant="outline" onClick={leaveGame} className="w-full py-4 text-muted-foreground">
+          <ArrowLeft className="w-4 h-4 mr-2" /> Leave Room
         </Button>
       </div>
     );

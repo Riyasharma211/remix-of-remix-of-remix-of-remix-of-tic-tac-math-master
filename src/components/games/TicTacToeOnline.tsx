@@ -596,21 +596,65 @@ const TicTacToeOnline: React.FC = () => {
   if (mode === 'online-waiting') {
     return (
       <div className="flex flex-col items-center gap-6 animate-slide-in">
-        <WifiOff className="w-12 h-12 text-neon-purple animate-pulse" />
-        <h2 className="font-orbitron text-xl text-foreground">Waiting for Player...</h2>
-        
-        <div className="flex items-center gap-2 p-4 bg-card rounded-xl border border-border">
-          <span className="font-orbitron text-2xl tracking-widest text-neon-cyan">{roomCode}</span>
-          <Button variant="ghost" size="icon" onClick={copyRoomCode}>
-            {copied ? <Check className="w-4 h-4 text-neon-green" /> : <Copy className="w-4 h-4" />}
-          </Button>
+        {/* Animated waiting indicator */}
+        <div className="relative">
+          <div className="w-20 h-20 rounded-full border-4 border-neon-purple/30 animate-pulse" />
+          <div className="absolute inset-0 w-20 h-20 rounded-full border-4 border-transparent border-t-neon-purple animate-spin" />
+          <Users className="absolute inset-0 m-auto w-8 h-8 text-neon-purple" />
         </div>
         
-        <p className="text-muted-foreground font-rajdhani text-center">
-          Grid: {gridSize}×{gridSize} • Share code to start
-        </p>
+        <div className="text-center space-y-2">
+          <h2 className="font-orbitron text-xl text-foreground">Waiting for Opponent...</h2>
+          <p className="text-muted-foreground font-rajdhani text-sm animate-pulse">
+            Share the code below to start playing
+          </p>
+        </div>
         
-        <Button variant="ghost" onClick={leaveGame}>Cancel</Button>
+        {/* Room code card */}
+        <div className="relative p-6 bg-card rounded-2xl border-2 border-neon-cyan/50 shadow-lg shadow-neon-cyan/20">
+          <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 bg-background rounded-full border border-border">
+            <span className="text-xs font-rajdhani text-muted-foreground">ROOM CODE</span>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="font-orbitron text-3xl tracking-[0.4em] text-neon-cyan">{roomCode}</span>
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              onClick={copyRoomCode}
+              className="hover:bg-neon-cyan/20"
+            >
+              {copied ? <Check className="w-5 h-5 text-neon-green" /> : <Copy className="w-5 h-5 text-neon-cyan" />}
+            </Button>
+          </div>
+        </div>
+        
+        {/* Game info */}
+        <div className="flex items-center gap-4 text-sm text-muted-foreground">
+          <span className="flex items-center gap-1">
+            <Grid3X3 className="w-4 h-4" /> {gridSize}×{gridSize} Grid
+          </span>
+          <span className="flex items-center gap-1">
+            <Timer className="w-4 h-4" /> {TURN_TIME}s per turn
+          </span>
+        </div>
+        
+        {/* Waiting dots animation */}
+        <div className="flex gap-2">
+          {[0, 1, 2].map(i => (
+            <div 
+              key={i} 
+              className="w-3 h-3 rounded-full bg-neon-purple"
+              style={{ 
+                animation: 'pulse 1.5s ease-in-out infinite',
+                animationDelay: `${i * 0.2}s`
+              }}
+            />
+          ))}
+        </div>
+        
+        <Button variant="ghost" onClick={leaveGame} className="text-muted-foreground">
+          Cancel
+        </Button>
       </div>
     );
   }
