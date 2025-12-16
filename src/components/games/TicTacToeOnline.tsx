@@ -294,7 +294,7 @@ const TicTacToeOnline: React.FC = () => {
 
     const channel = supabase
       .channel(`ttt-${roomCode}`, {
-        config: { broadcast: { self: true } }
+        config: { broadcast: { self: false } } // Don't receive own broadcasts
       })
       .on('broadcast', { event: 'game_update' }, ({ payload }) => {
         if (payload) {
@@ -342,13 +342,17 @@ const TicTacToeOnline: React.FC = () => {
         }
       })
       .on('presence', { event: 'join' }, ({ newPresences }) => {
+        // Only start game if opponent (different player) joins, not self
         if (mode === 'online-waiting' && newPresences.length > 0) {
-          setMode('online-playing');
-          setIsConnected(true);
-          setTimeLeft(TURN_TIME);
-          setGameStarted(true); // Game starts NOW
-          haptics.success();
-          toast({ title: 'Player Joined!', description: 'Game starting!' });
+          const isOpponentJoining = newPresences.some(p => (p as any).player !== mySymbol);
+          if (isOpponentJoining) {
+            setMode('online-playing');
+            setIsConnected(true);
+            setTimeLeft(TURN_TIME);
+            setGameStarted(true);
+            haptics.success();
+            toast({ title: 'Player Joined!', description: 'Game starting!' });
+          }
         }
       })
       .subscribe(async (status) => {
