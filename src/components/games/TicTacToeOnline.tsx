@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Grid3X3, Users, Copy, Check, RotateCcw, Wifi, WifiOff } from 'lucide-react';
+import { Grid3X3, Users, Copy, Check, RotateCcw, Wifi, WifiOff, Timer, Trophy, BarChart3 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { soundManager } from '@/utils/soundManager';
 import { haptics } from '@/utils/haptics';
@@ -21,10 +21,18 @@ interface GameState {
   gridSize: GridSize;
 }
 
+interface GameStats {
+  totalGames: number;
+  wins: number;
+  losses: number;
+  draws: number;
+}
+
+const TURN_TIME = 15; // seconds per turn
+
 const getWinningCombinations = (size: GridSize): number[][] => {
   const combinations: number[][] = [];
   
-  // Rows
   for (let i = 0; i < size; i++) {
     const row = [];
     for (let j = 0; j < size; j++) {
@@ -33,7 +41,6 @@ const getWinningCombinations = (size: GridSize): number[][] => {
     combinations.push(row);
   }
   
-  // Columns
   for (let i = 0; i < size; i++) {
     const col = [];
     for (let j = 0; j < size; j++) {
@@ -42,7 +49,6 @@ const getWinningCombinations = (size: GridSize): number[][] => {
     combinations.push(col);
   }
   
-  // Diagonals
   const diag1 = [];
   const diag2 = [];
   for (let i = 0; i < size; i++) {
@@ -52,6 +58,16 @@ const getWinningCombinations = (size: GridSize): number[][] => {
   combinations.push(diag1, diag2);
   
   return combinations;
+};
+
+const loadStats = (): GameStats => {
+  const saved = localStorage.getItem('tictactoe-stats');
+  if (saved) return JSON.parse(saved);
+  return { totalGames: 0, wins: 0, losses: 0, draws: 0 };
+};
+
+const saveStats = (stats: GameStats) => {
+  localStorage.setItem('tictactoe-stats', JSON.stringify(stats));
 };
 
 const TicTacToeOnline: React.FC = () => {
@@ -64,6 +80,12 @@ const TicTacToeOnline: React.FC = () => {
   const [winningLine, setWinningLine] = useState<number[] | null>(null);
   const [scores, setScores] = useState({ X: 0, O: 0 });
   const [isDraw, setIsDraw] = useState(false);
+  const [showStats, setShowStats] = useState(false);
+  const [stats, setStats] = useState<GameStats>(loadStats);
+
+  // Timer state
+  const [timeLeft, setTimeLeft] = useState(TURN_TIME);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Online state
   const [roomCode, setRoomCode] = useState('');
@@ -71,6 +93,7 @@ const TicTacToeOnline: React.FC = () => {
   const [mySymbol, setMySymbol] = useState<'X' | 'O'>('X');
   const [copied, setCopied] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
+  const channelRef = useRef<any>(null);
 
   const generateRoomCode = () => {
     return Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -87,9 +110,75 @@ const TicTacToeOnline: React.FC = () => {
     return { winner: null, line: null };
   }, []);
 
+  const updateStats = useCallback((result: 'win' | 'loss' | 'draw') => {
+    setStats(prev => {
+      const newStats = {
+        ...prev,
+        totalGames: prev.totalGames + 1,
+        wins: result === 'win' ? prev.wins + 1 : prev.wins,
+        losses: result === 'loss' ? prev.losses + 1 : prev.losses,
+        draws: result === 'draw' ? prev.draws + 1 : prev.draws,
+      };
+      saveStats(newStats);
+      return newStats;
+    });
+  }, []);
+
+  // Timer countdown
+  useEffect(() => {
+    if ((mode === 'online-playing' || mode === 'local') && !winner && !isDraw) {
+      timerRef.current = setInterval(() => {
+        setTimeLeft(prev => {
+          if (prev <= 1) {
+            // Time's up - switch player or auto-lose
+            if (mode === 'online-playing') {
+              const isMyTurn = currentPlayer === mySymbol;
+              if (isMyTurn) {
+                // Current player loses due to timeout
+                haptics.error();
+                soundManager.playLocalSound('lose');
+                
+                const opponent: 'X' | 'O' = mySymbol === 'X' ? 'O' : 'X';
+                const newScores = { ...scores, [opponent]: scores[opponent] + 1 };
+                setScores(newScores);
+                setWinner(opponent);
+                updateStats('loss');
+                
+                // Broadcast timeout
+                if (channelRef.current) {
+                  channelRef.current.send({
+                    type: 'broadcast',
+                    event: 'game_update',
+                    payload: { timeout: true, winner: opponent, scores: newScores }
+                  });
+                }
+              }
+            } else {
+              // Local mode - just switch player
+              setCurrentPlayer(prev => prev === 'X' ? 'O' : 'X');
+            }
+            return TURN_TIME;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+
+      return () => {
+        if (timerRef.current) clearInterval(timerRef.current);
+      };
+    }
+  }, [mode, winner, isDraw, currentPlayer, mySymbol, scores, updateStats]);
+
+  // Reset timer on player change
+  useEffect(() => {
+    setTimeLeft(TURN_TIME);
+  }, [currentPlayer]);
+
   // Auto-restart after win/draw
   useEffect(() => {
     if (winner || isDraw) {
+      if (timerRef.current) clearInterval(timerRef.current);
+      
       const timer = setTimeout(() => {
         const newBoard = Array(gridSize * gridSize).fill(null);
         setBoard(newBoard);
@@ -97,10 +186,10 @@ const TicTacToeOnline: React.FC = () => {
         setWinner(null);
         setWinningLine(null);
         setIsDraw(false);
+        setTimeLeft(TURN_TIME);
 
-        if (mode === 'online-playing') {
-          const channel = supabase.channel(`ttt-${roomCode}`);
-          channel.send({
+        if (mode === 'online-playing' && channelRef.current) {
+          channelRef.current.send({
             type: 'broadcast',
             event: 'game_update',
             payload: { board: newBoard, currentPlayer: 'X', winner: null, scores, autoRestart: true }
@@ -111,7 +200,7 @@ const TicTacToeOnline: React.FC = () => {
             .eq('room_code', roomCode)
             .then();
         }
-      }, 2000);
+      }, 2500);
 
       return () => clearTimeout(timer);
     }
@@ -123,6 +212,7 @@ const TicTacToeOnline: React.FC = () => {
     setMySymbol('X');
     setGridSize(selectedSize);
     setBoard(Array(selectedSize * selectedSize).fill(null));
+    setTimeLeft(TURN_TIME);
     
     try {
       const { error } = await supabase.from('game_rooms').insert({
@@ -165,6 +255,7 @@ const TicTacToeOnline: React.FC = () => {
       setGridSize(size);
       setBoard(gameState.board || Array(size * size).fill(null));
       setScores(gameState.scores || { X: 0, O: 0 });
+      setTimeLeft(TURN_TIME);
       setMode('online-playing');
       setIsConnected(true);
       
@@ -180,7 +271,6 @@ const TicTacToeOnline: React.FC = () => {
         }
       });
 
-      // Update DB in background (non-blocking)
       supabase.from('game_rooms')
         .update({ player_count: 2, status: 'playing' })
         .eq('room_code', code)
@@ -200,7 +290,7 @@ const TicTacToeOnline: React.FC = () => {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // Subscribe to room changes - using broadcast for instant updates
+  // Subscribe to room changes
   useEffect(() => {
     if (!roomCode || (mode !== 'online-waiting' && mode !== 'online-playing')) return;
 
@@ -210,17 +300,30 @@ const TicTacToeOnline: React.FC = () => {
       })
       .on('broadcast', { event: 'game_update' }, ({ payload }) => {
         if (payload) {
-          // Someone joined - instant!
           if (payload.player_joined && mode === 'online-waiting') {
             setMode('online-playing');
             setIsConnected(true);
+            setTimeLeft(TURN_TIME);
             haptics.success();
             toast({ title: 'Player Joined!', description: 'Game starting!' });
           }
           
-          // Update game state instantly
+          if (payload.timeout && payload.winner) {
+            setWinner(payload.winner);
+            if (payload.scores) setScores(payload.scores);
+            const isWinner = payload.winner === mySymbol;
+            if (isWinner) {
+              haptics.success();
+              celebrateWin();
+              updateStats('win');
+            }
+          }
+          
           if (payload.board) setBoard(payload.board);
-          if (payload.currentPlayer) setCurrentPlayer(payload.currentPlayer);
+          if (payload.currentPlayer) {
+            setCurrentPlayer(payload.currentPlayer);
+            setTimeLeft(TURN_TIME);
+          }
           if (payload.winner !== undefined) {
             setWinner(payload.winner);
             if (payload.winner && payload.board) {
@@ -235,14 +338,15 @@ const TicTacToeOnline: React.FC = () => {
             setWinner(null);
             setWinningLine(null);
             setIsDraw(false);
+            setTimeLeft(TURN_TIME);
           }
         }
       })
-      .on('presence', { event: 'join' }, ({ key, newPresences }) => {
-        // Instant player detection
+      .on('presence', { event: 'join' }, ({ newPresences }) => {
         if (mode === 'online-waiting' && newPresences.length > 0) {
           setMode('online-playing');
           setIsConnected(true);
+          setTimeLeft(TURN_TIME);
           haptics.success();
           toast({ title: 'Player Joined!', description: 'Game starting!' });
         }
@@ -253,15 +357,16 @@ const TicTacToeOnline: React.FC = () => {
         }
       });
 
+    channelRef.current = channel;
+
     return () => {
       supabase.removeChannel(channel);
+      channelRef.current = null;
     };
-  }, [roomCode, mode, mySymbol, gridSize, checkWinner]);
+  }, [roomCode, mode, mySymbol, gridSize, checkWinner, updateStats]);
 
   const handleClick = async (index: number) => {
     if (board[index] || winner || isDraw) return;
-    
-    // In online mode, only allow moves on your turn
     if (mode === 'online-playing' && currentPlayer !== mySymbol) return;
 
     haptics.medium();
@@ -279,41 +384,35 @@ const TicTacToeOnline: React.FC = () => {
     if (result.winner) {
       setWinner(result.winner);
       setWinningLine(result.line);
-      newScores = {
-        ...scores,
-        [result.winner]: scores[result.winner] + 1
-      };
+      newScores = { ...scores, [result.winner]: scores[result.winner] + 1 };
       setScores(newScores);
       soundManager.playLocalSound('win');
       haptics.success();
       celebrateWin();
+      
+      // Update stats
+      if (mode === 'online-playing') {
+        updateStats(result.winner === mySymbol ? 'win' : 'loss');
+      }
     } else if (newBoard.every(cell => cell !== null)) {
       setIsDraw(true);
       soundManager.playLocalSound('lose');
       haptics.error();
+      if (mode === 'online-playing') updateStats('draw');
     } else {
       setCurrentPlayer(nextPlayer);
+      setTimeLeft(TURN_TIME);
     }
 
-    // Sync instantly via broadcast for online mode
-    if (mode === 'online-playing') {
-      const channel = supabase.channel(`ttt-${roomCode}`);
-      channel.send({
+    if (mode === 'online-playing' && channelRef.current) {
+      channelRef.current.send({
         type: 'broadcast',
         event: 'game_update',
-        payload: {
-          board: newBoard,
-          currentPlayer: nextPlayer,
-          winner: newWinner,
-          scores: newScores
-        }
+        payload: { board: newBoard, currentPlayer: nextPlayer, winner: newWinner, scores: newScores }
       });
 
-      // DB update in background
       supabase.from('game_rooms')
-        .update({
-          game_state: JSON.parse(JSON.stringify({ board: newBoard, currentPlayer: nextPlayer, winner: newWinner, scores: newScores, gridSize }))
-        })
+        .update({ game_state: JSON.parse(JSON.stringify({ board: newBoard, currentPlayer: nextPlayer, winner: newWinner, scores: newScores, gridSize })) })
         .eq('room_code', roomCode)
         .then();
     }
@@ -326,17 +425,15 @@ const TicTacToeOnline: React.FC = () => {
     setWinner(null);
     setWinningLine(null);
     setIsDraw(false);
+    setTimeLeft(TURN_TIME);
 
-    if (mode === 'online-playing') {
-      // Instant broadcast
-      const channel = supabase.channel(`ttt-${roomCode}`);
-      channel.send({
+    if (mode === 'online-playing' && channelRef.current) {
+      channelRef.current.send({
         type: 'broadcast',
         event: 'game_update',
         payload: { board: newBoard, currentPlayer: 'X', winner: null, scores }
       });
 
-      // DB in background
       supabase.from('game_rooms')
         .update({ game_state: JSON.parse(JSON.stringify({ board: newBoard, currentPlayer: 'X', winner: null, scores, gridSize })) })
         .eq('room_code', roomCode)
@@ -345,6 +442,7 @@ const TicTacToeOnline: React.FC = () => {
   };
 
   const leaveGame = async () => {
+    if (timerRef.current) clearInterval(timerRef.current);
     if (roomCode) {
       await supabase.from('game_rooms').delete().eq('room_code', roomCode);
     }
@@ -359,14 +457,18 @@ const TicTacToeOnline: React.FC = () => {
     setScores({ X: 0, O: 0 });
     setIsDraw(false);
     setIsConnected(false);
+    setTimeLeft(TURN_TIME);
   };
 
   const startLocalGame = (size: GridSize) => {
     setGridSize(size);
     setBoard(Array(size * size).fill(null));
     setScores({ X: 0, O: 0 });
+    setTimeLeft(TURN_TIME);
     setMode('local');
   };
+
+  const winRate = stats.totalGames > 0 ? Math.round((stats.wins / stats.totalGames) * 100) : 0;
 
   // Menu
   if (mode === 'menu') {
@@ -374,6 +476,34 @@ const TicTacToeOnline: React.FC = () => {
       <div className="flex flex-col items-center gap-6 animate-slide-in">
         <Grid3X3 className="w-16 h-16 text-neon-cyan animate-float" />
         <h2 className="font-orbitron text-2xl text-foreground">Tic Tac Toe</h2>
+        
+        {/* Stats Card */}
+        <div className="w-full max-w-xs p-4 bg-card rounded-xl border border-border">
+          <div className="flex items-center justify-between mb-3">
+            <span className="font-rajdhani text-muted-foreground flex items-center gap-2">
+              <BarChart3 className="w-4 h-4" /> Your Stats
+            </span>
+            <span className="font-orbitron text-neon-cyan">{winRate}% Win</span>
+          </div>
+          <div className="grid grid-cols-4 gap-2 text-center">
+            <div>
+              <p className="font-orbitron text-lg text-foreground">{stats.totalGames}</p>
+              <p className="text-xs text-muted-foreground">Games</p>
+            </div>
+            <div>
+              <p className="font-orbitron text-lg text-neon-green">{stats.wins}</p>
+              <p className="text-xs text-muted-foreground">Wins</p>
+            </div>
+            <div>
+              <p className="font-orbitron text-lg text-destructive">{stats.losses}</p>
+              <p className="text-xs text-muted-foreground">Losses</p>
+            </div>
+            <div>
+              <p className="font-orbitron text-lg text-neon-purple">{stats.draws}</p>
+              <p className="text-xs text-muted-foreground">Draws</p>
+            </div>
+          </div>
+        </div>
         
         <div className="flex flex-col gap-4 w-full max-w-xs">
           <Button variant="neon" size="lg" onClick={() => setMode('local')}>
@@ -483,59 +613,70 @@ const TicTacToeOnline: React.FC = () => {
     );
   }
 
-  // Game Board (Local or Online)
+  // Game Board
   const isMyTurn = mode === 'local' || currentPlayer === mySymbol;
   const cellSize = gridSize === 3 ? 'w-20 h-20 sm:w-24 sm:h-24 text-4xl' : 
                    gridSize === 4 ? 'w-16 h-16 sm:w-20 sm:h-20 text-3xl' : 
                    'w-14 h-14 sm:w-16 sm:h-16 text-2xl';
+  const timerColor = timeLeft <= 5 ? 'text-destructive' : timeLeft <= 10 ? 'text-neon-orange' : 'text-neon-green';
 
   return (
-    <div className="flex flex-col items-center gap-4 sm:gap-6">
-      {/* Connection Status */}
-      {mode === 'online-playing' && (
-        <div className="flex items-center gap-2 text-sm">
-          <Wifi className={`w-4 h-4 ${isConnected ? 'text-neon-green' : 'text-destructive'}`} />
-          <span className="font-rajdhani text-muted-foreground">
-            Room: {roomCode} | You: {mySymbol} | {gridSize}×{gridSize}
-          </span>
-        </div>
-      )}
+    <div className="flex flex-col items-center gap-3 sm:gap-4">
+      {/* Connection Status & Timer */}
+      <div className="flex items-center justify-between w-full max-w-xs sm:max-w-sm px-2">
+        {mode === 'online-playing' && (
+          <div className="flex items-center gap-2 text-xs sm:text-sm">
+            <Wifi className={`w-3 h-3 sm:w-4 sm:h-4 ${isConnected ? 'text-neon-green' : 'text-destructive'}`} />
+            <span className="font-rajdhani text-muted-foreground">
+              {roomCode} | You: {mySymbol}
+            </span>
+          </div>
+        )}
+        
+        {/* Timer */}
+        {!winner && !isDraw && (
+          <div className={`flex items-center gap-1 sm:gap-2 font-orbitron ${timerColor} ${timeLeft <= 5 ? 'animate-pulse' : ''}`}>
+            <Timer className="w-4 h-4 sm:w-5 sm:h-5" />
+            <span className="text-lg sm:text-xl font-bold">{timeLeft}s</span>
+          </div>
+        )}
+      </div>
 
       {/* Scoreboard */}
-      <div className="flex gap-6 sm:gap-8 items-center">
-        <div className={`flex flex-col items-center p-3 sm:p-4 rounded-xl border-2 transition-all duration-300 ${
+      <div className="flex gap-4 sm:gap-8 items-center">
+        <div className={`flex flex-col items-center p-2 sm:p-4 rounded-xl border-2 transition-all duration-300 ${
           currentPlayer === 'X' && !winner && !isDraw
             ? 'border-neon-cyan box-glow-cyan bg-neon-cyan/10'
             : 'border-border bg-card'
         }`}>
-          <span className="text-neon-cyan font-orbitron text-xl sm:text-2xl font-bold">X</span>
-          <span className="text-foreground font-orbitron text-2xl sm:text-3xl">{scores.X}</span>
+          <span className="text-neon-cyan font-orbitron text-lg sm:text-2xl font-bold">X</span>
+          <span className="text-foreground font-orbitron text-xl sm:text-3xl">{scores.X}</span>
         </div>
         
-        <div className="text-muted-foreground font-rajdhani text-lg sm:text-xl">VS</div>
+        <div className="text-muted-foreground font-rajdhani text-base sm:text-xl">VS</div>
         
-        <div className={`flex flex-col items-center p-3 sm:p-4 rounded-xl border-2 transition-all duration-300 ${
+        <div className={`flex flex-col items-center p-2 sm:p-4 rounded-xl border-2 transition-all duration-300 ${
           currentPlayer === 'O' && !winner && !isDraw
             ? 'border-neon-pink box-glow-pink bg-neon-pink/10'
             : 'border-border bg-card'
         }`}>
-          <span className="text-neon-pink font-orbitron text-xl sm:text-2xl font-bold">O</span>
-          <span className="text-foreground font-orbitron text-2xl sm:text-3xl">{scores.O}</span>
+          <span className="text-neon-pink font-orbitron text-lg sm:text-2xl font-bold">O</span>
+          <span className="text-foreground font-orbitron text-xl sm:text-3xl">{scores.O}</span>
         </div>
       </div>
 
       {/* Game Status */}
-      <div className="h-10 sm:h-12 flex items-center justify-center">
+      <div className="h-8 sm:h-10 flex items-center justify-center">
         {winner ? (
-          <span className={`font-orbitron text-lg sm:text-xl animate-scale-pop ${winner === 'X' ? 'text-neon-cyan' : 'text-neon-pink'}`}>
-            Player {winner} Wins! Next in 2s...
+          <span className={`font-orbitron text-base sm:text-lg animate-scale-pop ${winner === 'X' ? 'text-neon-cyan' : 'text-neon-pink'}`}>
+            {winner === mySymbol ? '🎉 You Win!' : `Player ${winner} Wins!`} Next in 2s...
           </span>
         ) : isDraw ? (
-          <span className="font-orbitron text-lg sm:text-xl text-neon-purple animate-scale-pop">Draw! Next in 2s...</span>
+          <span className="font-orbitron text-base sm:text-lg text-neon-purple animate-scale-pop">Draw! Next in 2s...</span>
         ) : (
-          <span className={`font-rajdhani text-base sm:text-lg ${!isMyTurn ? 'opacity-50' : ''} ${currentPlayer === 'X' ? 'text-neon-cyan' : 'text-neon-pink'}`}>
+          <span className={`font-rajdhani text-sm sm:text-base ${!isMyTurn ? 'opacity-50' : ''} ${currentPlayer === 'X' ? 'text-neon-cyan' : 'text-neon-pink'}`}>
             {mode === 'online-playing' 
-              ? (isMyTurn ? "Your Turn!" : "Waiting for opponent...")
+              ? (isMyTurn ? "⚡ Your Turn!" : "Waiting for opponent...")
               : `Player ${currentPlayer}'s Turn`
             }
           </span>
@@ -572,12 +713,12 @@ const TicTacToeOnline: React.FC = () => {
       </div>
 
       {/* Controls */}
-      <div className="flex gap-4">
-        <Button variant="neon" onClick={resetGame}>
+      <div className="flex gap-3 sm:gap-4">
+        <Button variant="neon" size="sm" onClick={resetGame}>
           <RotateCcw className="w-4 h-4" />
           Reset
         </Button>
-        <Button variant="ghost" onClick={leaveGame}>
+        <Button variant="ghost" size="sm" onClick={leaveGame}>
           Leave
         </Button>
       </div>
