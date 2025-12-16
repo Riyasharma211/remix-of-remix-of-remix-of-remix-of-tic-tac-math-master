@@ -3,64 +3,30 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { supabase } from '@/integrations/supabase/client';
-import { Heart, Zap, Copy, Users, ArrowLeft, RefreshCw, Check, X, PenLine, Shuffle } from 'lucide-react';
+import { Heart, Zap, Copy, Users, ArrowLeft, Send, MessageCircle } from 'lucide-react';
 import { toast } from 'sonner';
 
 type GameMode = 'menu' | 'create' | 'join' | 'waiting' | 'playing';
-type QuestionMode = 'random' | 'custom';
+type TurnPhase = 'choosing' | 'waiting_question' | 'answering' | 'viewing_answer';
 
 interface Challenge {
   type: 'truth' | 'dare';
-  text: string;
-  from: string;
-  to: string;
-  completed?: boolean;
+  question: string;
+  answer: string;
+  asker: string;
+  answerer: string;
 }
 
 interface GameState {
   players: { id: string; name: string }[];
   currentPlayerIndex: number;
   challenges: Challenge[];
-  currentChallenge: Challenge | null;
-  questionMode: QuestionMode;
-  pendingQuestion?: { from: string; type: 'truth' | 'dare'; waitingFor: string };
+  turnPhase: TurnPhase;
+  currentType?: 'truth' | 'dare';
+  currentQuestion?: string;
+  currentAnswer?: string;
+  askerName?: string;
 }
-
-const TRUTHS = [
-  "What's your biggest fear?",
-  "What's the most embarrassing thing you've done?",
-  "Who was your first crush?",
-  "What's a secret you've never told anyone?",
-  "What's the last lie you told?",
-  "What's your guilty pleasure?",
-  "Have you ever cheated on a test?",
-  "What's the worst gift you've ever received?",
-  "Who in this room would you date?",
-  "What's your biggest insecurity?",
-  "Have you ever stolen something?",
-  "What's the meanest thing you've said about someone?",
-  "What's your most embarrassing childhood memory?",
-  "Have you ever had a crush on a friend's partner?",
-  "What's the weirdest dream you've ever had?"
-];
-
-const DARES = [
-  "Do 10 pushups right now",
-  "Speak in an accent for the next 3 rounds",
-  "Let someone post anything on your social media",
-  "Do your best celebrity impression",
-  "Dance for 30 seconds with no music",
-  "Tell a joke and make everyone laugh",
-  "Sing the chorus of your favorite song",
-  "Do your best animal impression",
-  "Hold your breath for 30 seconds",
-  "Say the alphabet backwards",
-  "Do a silly walk across the room",
-  "Make a funny face and hold it for 10 seconds",
-  "Speak in third person for the next round",
-  "Give a compliment to everyone playing",
-  "Do your best robot dance"
-];
 
 const TruthOrDare: React.FC = () => {
   const [mode, setMode] = useState<GameMode>('menu');
@@ -69,27 +35,22 @@ const TruthOrDare: React.FC = () => {
   const [roomId, setRoomId] = useState<string | null>(null);
   const [playerId] = useState(() => Math.random().toString(36).substring(2, 8));
   const [playerName, setPlayerName] = useState('');
-  const [selectedType, setSelectedType] = useState<'truth' | 'dare' | null>(null);
-  const [customQuestion, setCustomQuestion] = useState('');
+  const [questionInput, setQuestionInput] = useState('');
+  const [answerInput, setAnswerInput] = useState('');
   const [gameState, setGameState] = useState<GameState>({
     players: [],
     currentPlayerIndex: 0,
     challenges: [],
-    currentChallenge: null,
-    questionMode: 'random'
+    turnPhase: 'choosing'
   });
 
-  const isMyTurn = gameState.players[gameState.currentPlayerIndex]?.id === playerId;
   const currentPlayer = gameState.players[gameState.currentPlayerIndex];
-  const amIAsker = gameState.pendingQuestion?.from === playerName;
-  const isWaitingForMyQuestion = gameState.pendingQuestion?.waitingFor === playerName;
+  const isMyTurn = currentPlayer?.id === playerId;
+  const amIAsker = gameState.askerName === playerName;
 
   const generateRoomCode = () => {
     return Math.random().toString(36).substring(2, 6).toUpperCase();
   };
-
-  const getRandomTruth = () => TRUTHS[Math.floor(Math.random() * TRUTHS.length)];
-  const getRandomDare = () => DARES[Math.floor(Math.random() * DARES.length)];
 
   const createRoom = async () => {
     if (!playerName.trim()) {
@@ -102,8 +63,7 @@ const TruthOrDare: React.FC = () => {
       players: [{ id: playerId, name: playerName }],
       currentPlayerIndex: 0,
       challenges: [],
-      currentChallenge: null,
-      questionMode: 'random'
+      turnPhase: 'choosing'
     };
 
     const { data, error } = await supabase
@@ -172,7 +132,7 @@ const TruthOrDare: React.FC = () => {
       return;
     }
 
-    const newState = { ...gameState };
+    const newState = { ...gameState, turnPhase: 'choosing' as TurnPhase };
     await supabase
       .from('game_rooms')
       .update({
@@ -215,87 +175,25 @@ const TruthOrDare: React.FC = () => {
     };
   }, [roomId, mode]);
 
-  const toggleQuestionMode = async () => {
-    if (!roomId || !isMyTurn) return;
-    
-    const newMode: QuestionMode = gameState.questionMode === 'random' ? 'custom' : 'random';
-    const newState = { ...gameState, questionMode: newMode };
-    
-    await supabase
-      .from('game_rooms')
-      .update({ game_state: JSON.parse(JSON.stringify(newState)) })
-      .eq('id', roomId);
-    
-    setGameState(newState);
-  };
-
   const selectChoice = async (type: 'truth' | 'dare') => {
     if (!isMyTurn || !roomId) return;
 
-    if (gameState.questionMode === 'custom') {
-      // In custom mode, other players will type the question
-      const otherPlayers = gameState.players.filter(p => p.id !== playerId);
-      if (otherPlayers.length === 0) {
-        toast.error('Need other players for custom questions');
-        return;
-      }
-      
-      // Pick a random other player to ask the question
-      const asker = otherPlayers[Math.floor(Math.random() * otherPlayers.length)];
-      
-      const newState = {
-        ...gameState,
-        pendingQuestion: { from: asker.name, type, waitingFor: asker.name }
-      };
-
-      await supabase
-        .from('game_rooms')
-        .update({ game_state: JSON.parse(JSON.stringify(newState)) })
-        .eq('id', roomId);
-
-      setGameState(newState);
-      setSelectedType(type);
-      toast.info(`${asker.name} will type a ${type} question for you!`);
-    } else {
-      // Random mode - use preset questions
-      const challenge: Challenge = {
-        type,
-        text: type === 'truth' ? getRandomTruth() : getRandomDare(),
-        from: 'Game',
-        to: playerName
-      };
-
-      const newState = {
-        ...gameState,
-        currentChallenge: challenge
-      };
-
-      await supabase
-        .from('game_rooms')
-        .update({ game_state: JSON.parse(JSON.stringify(newState)) })
-        .eq('id', roomId);
-
-      setGameState(newState);
-      setSelectedType(type);
+    // Pick a random other player to ask the question
+    const otherPlayers = gameState.players.filter(p => p.id !== playerId);
+    if (otherPlayers.length === 0) {
+      toast.error('Need other players');
+      return;
     }
-  };
-
-  const submitCustomQuestion = async () => {
-    if (!roomId || !customQuestion.trim() || !gameState.pendingQuestion) return;
-
-    const currentPlayerName = gameState.players[gameState.currentPlayerIndex]?.name;
     
-    const challenge: Challenge = {
-      type: gameState.pendingQuestion.type,
-      text: customQuestion.trim(),
-      from: playerName,
-      to: currentPlayerName
-    };
-
-    const newState = {
+    const asker = otherPlayers[Math.floor(Math.random() * otherPlayers.length)];
+    
+    const newState: GameState = {
       ...gameState,
-      currentChallenge: challenge,
-      pendingQuestion: undefined
+      turnPhase: 'waiting_question',
+      currentType: type,
+      askerName: asker.name,
+      currentQuestion: undefined,
+      currentAnswer: undefined
     };
 
     await supabase
@@ -304,21 +202,68 @@ const TruthOrDare: React.FC = () => {
       .eq('id', roomId);
 
     setGameState(newState);
-    setCustomQuestion('');
+    toast.info(`${asker.name} will type a ${type} for you!`);
+  };
+
+  const submitQuestion = async () => {
+    if (!roomId || !questionInput.trim()) return;
+
+    const newState: GameState = {
+      ...gameState,
+      turnPhase: 'answering',
+      currentQuestion: questionInput.trim()
+    };
+
+    await supabase
+      .from('game_rooms')
+      .update({ game_state: JSON.parse(JSON.stringify(newState)) })
+      .eq('id', roomId);
+
+    setGameState(newState);
+    setQuestionInput('');
     toast.success('Question sent!');
   };
 
-  const completeChallenge = async (completed: boolean) => {
-    if (!roomId || !gameState.currentChallenge) return;
+  const submitAnswer = async () => {
+    if (!roomId || !answerInput.trim()) return;
 
-    const newChallenge = { ...gameState.currentChallenge, completed };
+    const newState: GameState = {
+      ...gameState,
+      turnPhase: 'viewing_answer',
+      currentAnswer: answerInput.trim()
+    };
+
+    await supabase
+      .from('game_rooms')
+      .update({ game_state: JSON.parse(JSON.stringify(newState)) })
+      .eq('id', roomId);
+
+    setGameState(newState);
+    setAnswerInput('');
+  };
+
+  const nextTurn = async () => {
+    if (!roomId) return;
+
+    const challenge: Challenge = {
+      type: gameState.currentType || 'truth',
+      question: gameState.currentQuestion || '',
+      answer: gameState.currentAnswer || '',
+      asker: gameState.askerName || '',
+      answerer: currentPlayer?.name || ''
+    };
+
     const nextIndex = (gameState.currentPlayerIndex + 1) % gameState.players.length;
 
     const newState: GameState = {
       ...gameState,
-      challenges: [...gameState.challenges, newChallenge],
-      currentChallenge: null,
-      currentPlayerIndex: nextIndex
+      challenges: [...gameState.challenges, challenge],
+      currentPlayerIndex: nextIndex,
+      turnPhase: 'choosing',
+      currentType: undefined,
+      currentQuestion: undefined,
+      currentAnswer: undefined,
+      askerName: undefined
     };
 
     await supabase
@@ -327,32 +272,7 @@ const TruthOrDare: React.FC = () => {
       .eq('id', roomId);
 
     setGameState(newState);
-    setSelectedType(null);
-    
-    toast(completed ? 'Challenge completed! 🎉' : 'Challenge skipped');
-  };
-
-  const spinAgain = async () => {
-    if (!isMyTurn || !roomId || !selectedType) return;
-
-    const challenge: Challenge = {
-      type: selectedType,
-      text: selectedType === 'truth' ? getRandomTruth() : getRandomDare(),
-      from: 'Game',
-      to: playerName
-    };
-
-    const newState = {
-      ...gameState,
-      currentChallenge: challenge
-    };
-
-    await supabase
-      .from('game_rooms')
-      .update({ game_state: JSON.parse(JSON.stringify(newState)) })
-      .eq('id', roomId);
-
-    setGameState(newState);
+    toast.success('Next player\'s turn!');
   };
 
   const leaveGame = async () => {
@@ -362,7 +282,8 @@ const TruthOrDare: React.FC = () => {
     setMode('menu');
     setRoomId(null);
     setRoomCode('');
-    setSelectedType(null);
+    setQuestionInput('');
+    setAnswerInput('');
   };
 
   const copyRoomCode = () => {
@@ -373,34 +294,34 @@ const TruthOrDare: React.FC = () => {
   // Menu
   if (mode === 'menu') {
     return (
-      <div className="text-center space-y-6">
+      <div className="text-center space-y-6 px-4 py-6 max-w-md mx-auto">
         <div className="flex items-center justify-center gap-3 mb-6">
-          <Heart className="w-8 h-8 text-neon-pink" />
-          <h2 className="font-orbitron text-2xl text-foreground">Truth or Dare</h2>
-          <Zap className="w-8 h-8 text-neon-orange" />
+          <Heart className="w-8 h-8 text-neon-pink animate-pulse" />
+          <h2 className="font-orbitron text-xl sm:text-2xl text-foreground">Truth or Dare</h2>
+          <Zap className="w-8 h-8 text-neon-orange animate-pulse" />
         </div>
 
         <Input
           value={playerName}
           onChange={(e) => setPlayerName(e.target.value)}
           placeholder="Your name..."
-          className="max-w-xs mx-auto bg-background/50 border-border"
+          className="w-full bg-background/50 border-border text-base py-6"
         />
 
-        <div className="flex flex-col sm:flex-row gap-4 justify-center">
+        <div className="flex flex-col gap-4">
           <Button
             onClick={() => setMode('create')}
-            className="bg-neon-pink/20 border border-neon-pink text-neon-pink hover:bg-neon-pink/30"
+            className="w-full bg-neon-pink/20 border border-neon-pink text-neon-pink hover:bg-neon-pink/30 py-6 text-lg"
           >
-            <Heart className="w-4 h-4 mr-2" />
+            <Heart className="w-5 h-5 mr-2" />
             Create Room
           </Button>
           <Button
             onClick={() => setMode('join')}
             variant="outline"
-            className="border-border hover:bg-accent"
+            className="w-full border-border hover:bg-accent py-6 text-lg"
           >
-            <Users className="w-4 h-4 mr-2" />
+            <Users className="w-5 h-5 mr-2" />
             Join Room
           </Button>
         </div>
@@ -411,14 +332,14 @@ const TruthOrDare: React.FC = () => {
   // Create room
   if (mode === 'create') {
     return (
-      <div className="text-center space-y-6">
+      <div className="text-center space-y-6 px-4 py-6 max-w-md mx-auto">
         <Button variant="ghost" onClick={() => setMode('menu')} className="mb-4">
           <ArrowLeft className="w-4 h-4 mr-2" /> Back
         </Button>
-        <h3 className="font-orbitron text-xl text-foreground">Create Truth or Dare Room</h3>
+        <h3 className="font-orbitron text-xl text-foreground">Create Room</h3>
         <Button
           onClick={createRoom}
-          className="bg-neon-pink/20 border border-neon-pink text-neon-pink hover:bg-neon-pink/30"
+          className="w-full bg-neon-pink/20 border border-neon-pink text-neon-pink hover:bg-neon-pink/30 py-6 text-lg"
         >
           Create Game
         </Button>
@@ -429,22 +350,22 @@ const TruthOrDare: React.FC = () => {
   // Join room
   if (mode === 'join') {
     return (
-      <div className="text-center space-y-6">
+      <div className="text-center space-y-6 px-4 py-6 max-w-md mx-auto">
         <Button variant="ghost" onClick={() => setMode('menu')} className="mb-4">
           <ArrowLeft className="w-4 h-4 mr-2" /> Back
         </Button>
-        <h3 className="font-orbitron text-xl text-foreground">Join Truth or Dare Room</h3>
+        <h3 className="font-orbitron text-xl text-foreground">Join Room</h3>
         <Input
           value={inputCode}
           onChange={(e) => setInputCode(e.target.value.toUpperCase())}
-          placeholder="Enter room code..."
+          placeholder="Enter code..."
           maxLength={4}
-          className="max-w-xs mx-auto text-center text-2xl tracking-widest bg-background/50 border-border"
+          className="w-full text-center text-3xl tracking-[0.5em] bg-background/50 border-border py-6 font-mono"
         />
         <Button
           onClick={joinRoom}
           disabled={inputCode.length !== 4}
-          className="bg-neon-green/20 border border-neon-green text-neon-green hover:bg-neon-green/30"
+          className="w-full bg-neon-green/20 border border-neon-green text-neon-green hover:bg-neon-green/30 py-6 text-lg"
         >
           Join Game
         </Button>
@@ -455,24 +376,24 @@ const TruthOrDare: React.FC = () => {
   // Waiting
   if (mode === 'waiting') {
     return (
-      <div className="text-center space-y-6">
+      <div className="text-center space-y-6 px-4 py-6 max-w-md mx-auto">
         <h3 className="font-orbitron text-xl text-foreground">Waiting Room</h3>
         <div className="flex items-center justify-center gap-2">
-          <span className="text-4xl font-mono tracking-widest text-neon-pink">{roomCode}</span>
-          <Button variant="ghost" size="icon" onClick={copyRoomCode}>
-            <Copy className="w-4 h-4" />
+          <span className="text-4xl font-mono tracking-[0.3em] text-neon-pink">{roomCode}</span>
+          <Button variant="ghost" size="icon" onClick={copyRoomCode} className="h-12 w-12">
+            <Copy className="w-5 h-5" />
           </Button>
         </div>
 
-        <div className="space-y-2">
+        <div className="space-y-3">
           <p className="text-muted-foreground">Players ({gameState.players.length}):</p>
           <div className="flex flex-wrap justify-center gap-2">
-            {gameState.players.map((p, i) => (
+            {gameState.players.map((p) => (
               <span
                 key={p.id}
-                className={`px-3 py-1 rounded-full text-sm ${
+                className={`px-4 py-2 rounded-full text-sm ${
                   p.id === playerId
-                    ? 'bg-neon-cyan/20 text-neon-cyan'
+                    ? 'bg-neon-cyan/20 text-neon-cyan border border-neon-cyan'
                     : 'bg-accent text-foreground'
                 }`}
               >
@@ -486,13 +407,13 @@ const TruthOrDare: React.FC = () => {
           <Button
             onClick={startGame}
             disabled={gameState.players.length < 2}
-            className="bg-neon-green/20 border border-neon-green text-neon-green hover:bg-neon-green/30"
+            className="w-full bg-neon-green/20 border border-neon-green text-neon-green hover:bg-neon-green/30 py-6 text-lg"
           >
             Start Game ({gameState.players.length}/2+)
           </Button>
         )}
 
-        <Button variant="outline" onClick={leaveGame}>
+        <Button variant="outline" onClick={leaveGame} className="w-full py-4">
           <ArrowLeft className="w-4 h-4 mr-2" /> Leave
         </Button>
       </div>
@@ -501,22 +422,23 @@ const TruthOrDare: React.FC = () => {
 
   // Playing
   return (
-    <div className="space-y-6 text-center">
+    <div className="space-y-4 px-4 py-4 max-w-md mx-auto min-h-[70vh] flex flex-col">
+      {/* Header */}
       <div className="flex items-center justify-between">
-        <Button variant="ghost" size="sm" onClick={leaveGame}>
-          <ArrowLeft className="w-4 h-4 mr-2" /> Leave
+        <Button variant="ghost" size="sm" onClick={leaveGame} className="p-2">
+          <ArrowLeft className="w-5 h-5" />
         </Button>
-        <span className="font-mono text-sm text-neon-cyan">{roomCode}</span>
+        <span className="font-mono text-sm text-neon-cyan px-3 py-1 bg-neon-cyan/10 rounded-full">{roomCode}</span>
       </div>
 
       {/* Player indicators */}
-      <div className="flex justify-center gap-2 flex-wrap">
+      <div className="flex justify-center gap-2 flex-wrap pb-2">
         {gameState.players.map((p, i) => (
           <span
             key={p.id}
-            className={`px-3 py-1 rounded-full text-sm transition-all ${
+            className={`px-3 py-1.5 rounded-full text-sm transition-all ${
               i === gameState.currentPlayerIndex
-                ? 'bg-neon-pink/30 text-neon-pink border border-neon-pink scale-110'
+                ? 'bg-neon-pink/30 text-neon-pink border border-neon-pink scale-105'
                 : 'bg-accent/50 text-muted-foreground'
             }`}
           >
@@ -525,145 +447,188 @@ const TruthOrDare: React.FC = () => {
         ))}
       </div>
 
-      {/* Current turn info */}
-      <div className="py-4">
-        {/* Pending custom question - someone needs to type */}
-        {gameState.pendingQuestion && !gameState.currentChallenge ? (
-          <div className="space-y-4">
-            {isWaitingForMyQuestion ? (
-              <>
-                <p className="text-lg text-neon-cyan font-bold">
-                  Type a {gameState.pendingQuestion.type} for {currentPlayer?.name}!
-                </p>
-                <Textarea
-                  value={customQuestion}
-                  onChange={(e) => setCustomQuestion(e.target.value)}
-                  placeholder={gameState.pendingQuestion.type === 'truth' 
-                    ? "Ask a truth question..." 
-                    : "Give a dare challenge..."}
-                  className="max-w-md mx-auto bg-background/50 border-border min-h-[80px]"
-                  maxLength={200}
-                />
-                <Button
-                  onClick={submitCustomQuestion}
-                  disabled={!customQuestion.trim()}
-                  className="bg-neon-green/20 border border-neon-green text-neon-green hover:bg-neon-green/30"
-                >
-                  <PenLine className="w-4 h-4 mr-2" />
-                  Send Question
-                </Button>
-              </>
-            ) : (
-              <p className="text-muted-foreground">
-                Waiting for <span className="text-neon-pink">{gameState.pendingQuestion.waitingFor}</span> to type a {gameState.pendingQuestion.type}...
-              </p>
-            )}
-          </div>
-        ) : !gameState.currentChallenge ? (
-          <>
-            <p className="text-lg mb-4">
+      {/* Main game area */}
+      <div className="flex-1 flex flex-col justify-center">
+        {/* Phase: Choosing Truth or Dare */}
+        {gameState.turnPhase === 'choosing' && (
+          <div className="space-y-6 text-center">
+            <p className="text-lg">
               {isMyTurn ? (
-                <span className="text-neon-cyan font-bold">Your turn! Choose:</span>
+                <span className="text-neon-cyan font-bold text-xl">Your turn! Choose:</span>
               ) : (
                 <span className="text-muted-foreground">
-                  Waiting for <span className="text-neon-pink">{currentPlayer?.name}</span> to choose...
+                  <span className="text-neon-pink font-semibold">{currentPlayer?.name}</span> is choosing...
                 </span>
               )}
             </p>
 
             {isMyTurn && (
-              <>
-                {/* Mode toggle */}
-                <div className="flex justify-center mb-4">
-                  <Button
-                    onClick={toggleQuestionMode}
-                    variant="outline"
-                    size="sm"
-                    className={`border-border ${gameState.questionMode === 'custom' ? 'bg-neon-purple/20 text-neon-purple' : ''}`}
-                  >
-                    {gameState.questionMode === 'random' ? (
-                      <>
-                        <Shuffle className="w-4 h-4 mr-2" />
-                        Random Questions
-                      </>
-                    ) : (
-                      <>
-                        <PenLine className="w-4 h-4 mr-2" />
-                        Custom Questions
-                      </>
-                    )}
-                  </Button>
-                </div>
-                
-                <div className="flex justify-center gap-4">
-                  <Button
-                    onClick={() => selectChoice('truth')}
-                    className="bg-neon-pink/20 border-2 border-neon-pink text-neon-pink hover:bg-neon-pink/30 text-lg px-8 py-6"
-                  >
-                    <Heart className="w-5 h-5 mr-2" />
-                    Truth
-                  </Button>
-                  <Button
-                    onClick={() => selectChoice('dare')}
-                    className="bg-neon-orange/20 border-2 border-neon-orange text-neon-orange hover:bg-neon-orange/30 text-lg px-8 py-6"
-                  >
-                    <Zap className="w-5 h-5 mr-2" />
-                    Dare
-                  </Button>
-                </div>
-              </>
+              <div className="flex flex-col sm:flex-row justify-center gap-4">
+                <Button
+                  onClick={() => selectChoice('truth')}
+                  className="flex-1 bg-neon-pink/20 border-2 border-neon-pink text-neon-pink hover:bg-neon-pink/30 text-xl py-8 rounded-2xl"
+                >
+                  <Heart className="w-6 h-6 mr-3" />
+                  Truth
+                </Button>
+                <Button
+                  onClick={() => selectChoice('dare')}
+                  className="flex-1 bg-neon-orange/20 border-2 border-neon-orange text-neon-orange hover:bg-neon-orange/30 text-xl py-8 rounded-2xl"
+                >
+                  <Zap className="w-6 h-6 mr-3" />
+                  Dare
+                </Button>
+              </div>
             )}
-          </>
-        ) : (
-          <div className="space-y-4">
-            <div
-              className={`p-6 rounded-2xl border-2 ${
-                gameState.currentChallenge.type === 'truth'
-                  ? 'bg-neon-pink/10 border-neon-pink'
-                  : 'bg-neon-orange/10 border-neon-orange'
-              }`}
-            >
-              <span
-                className={`text-xs uppercase tracking-widest ${
-                  gameState.currentChallenge.type === 'truth' ? 'text-neon-pink' : 'text-neon-orange'
-                }`}
-              >
-                {gameState.currentChallenge.type}
-              </span>
-              <p className="text-xl mt-2 text-foreground font-medium">
-                {gameState.currentChallenge.text}
-              </p>
-              <p className="text-sm text-muted-foreground mt-2">
-                For: <span className="text-neon-cyan">{gameState.currentChallenge.to}</span>
+          </div>
+        )}
+
+        {/* Phase: Waiting for question */}
+        {gameState.turnPhase === 'waiting_question' && (
+          <div className="space-y-6 text-center">
+            <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-full ${
+              gameState.currentType === 'truth' ? 'bg-neon-pink/20 text-neon-pink' : 'bg-neon-orange/20 text-neon-orange'
+            }`}>
+              {gameState.currentType === 'truth' ? <Heart className="w-5 h-5" /> : <Zap className="w-5 h-5" />}
+              <span className="font-bold uppercase">{gameState.currentType}</span>
+            </div>
+
+            {amIAsker ? (
+              <div className="space-y-4">
+                <p className="text-lg text-neon-cyan font-semibold">
+                  Type a {gameState.currentType} for <span className="text-neon-pink">{currentPlayer?.name}</span>!
+                </p>
+                <Textarea
+                  value={questionInput}
+                  onChange={(e) => setQuestionInput(e.target.value)}
+                  placeholder={gameState.currentType === 'truth' 
+                    ? "Ask a truth question..." 
+                    : "Give a dare challenge..."}
+                  className="w-full bg-background/50 border-border min-h-[120px] text-base resize-none"
+                  maxLength={300}
+                />
+                <Button
+                  onClick={submitQuestion}
+                  disabled={!questionInput.trim()}
+                  className="w-full bg-neon-green/20 border border-neon-green text-neon-green hover:bg-neon-green/30 py-6 text-lg"
+                >
+                  <Send className="w-5 h-5 mr-2" />
+                  Send Question
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="animate-pulse">
+                  <MessageCircle className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+                </div>
+                <p className="text-muted-foreground text-lg">
+                  <span className="text-neon-pink font-semibold">{gameState.askerName}</span> is typing a {gameState.currentType}...
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Phase: Answering */}
+        {gameState.turnPhase === 'answering' && (
+          <div className="space-y-6">
+            <div className={`p-6 rounded-2xl border-2 ${
+              gameState.currentType === 'truth'
+                ? 'bg-neon-pink/10 border-neon-pink'
+                : 'bg-neon-orange/10 border-neon-orange'
+            }`}>
+              <div className="flex items-center gap-2 mb-3">
+                {gameState.currentType === 'truth' ? (
+                  <Heart className="w-5 h-5 text-neon-pink" />
+                ) : (
+                  <Zap className="w-5 h-5 text-neon-orange" />
+                )}
+                <span className={`text-xs uppercase tracking-widest ${
+                  gameState.currentType === 'truth' ? 'text-neon-pink' : 'text-neon-orange'
+                }`}>
+                  {gameState.currentType} from {gameState.askerName}
+                </span>
+              </div>
+              <p className="text-xl text-foreground font-medium leading-relaxed">
+                {gameState.currentQuestion}
               </p>
             </div>
 
-            {isMyTurn && (
-              <div className="flex justify-center gap-3">
+            {isMyTurn ? (
+              <div className="space-y-4">
+                <Textarea
+                  value={answerInput}
+                  onChange={(e) => setAnswerInput(e.target.value)}
+                  placeholder={gameState.currentType === 'truth' ? "Type your answer..." : "Describe what you did..."}
+                  className="w-full bg-background/50 border-border min-h-[100px] text-base resize-none"
+                  maxLength={500}
+                />
                 <Button
-                  onClick={() => completeChallenge(true)}
-                  className="bg-neon-green/20 border border-neon-green text-neon-green hover:bg-neon-green/30"
+                  onClick={submitAnswer}
+                  disabled={!answerInput.trim()}
+                  className="w-full bg-neon-cyan/20 border border-neon-cyan text-neon-cyan hover:bg-neon-cyan/30 py-6 text-lg"
                 >
-                  <Check className="w-4 h-4 mr-2" />
-                  Done!
-                </Button>
-                <Button
-                  onClick={spinAgain}
-                  variant="outline"
-                  className="border-border"
-                >
-                  <RefreshCw className="w-4 h-4 mr-2" />
-                  New One
-                </Button>
-                <Button
-                  onClick={() => completeChallenge(false)}
-                  variant="outline"
-                  className="border-destructive text-destructive hover:bg-destructive/10"
-                >
-                  <X className="w-4 h-4 mr-2" />
-                  Skip
+                  <Send className="w-5 h-5 mr-2" />
+                  Submit Answer
                 </Button>
               </div>
+            ) : (
+              <div className="text-center py-4">
+                <div className="animate-pulse">
+                  <MessageCircle className="w-10 h-10 mx-auto text-muted-foreground mb-3" />
+                </div>
+                <p className="text-muted-foreground">
+                  <span className="text-neon-pink font-semibold">{currentPlayer?.name}</span> is answering...
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Phase: Viewing Answer */}
+        {gameState.turnPhase === 'viewing_answer' && (
+          <div className="space-y-6">
+            <div className={`p-6 rounded-2xl border-2 ${
+              gameState.currentType === 'truth'
+                ? 'bg-neon-pink/10 border-neon-pink'
+                : 'bg-neon-orange/10 border-neon-orange'
+            }`}>
+              <div className="flex items-center gap-2 mb-2">
+                {gameState.currentType === 'truth' ? (
+                  <Heart className="w-4 h-4 text-neon-pink" />
+                ) : (
+                  <Zap className="w-4 h-4 text-neon-orange" />
+                )}
+                <span className={`text-xs uppercase tracking-widest ${
+                  gameState.currentType === 'truth' ? 'text-neon-pink' : 'text-neon-orange'
+                }`}>
+                  {gameState.currentType}
+                </span>
+              </div>
+              <p className="text-lg text-foreground mb-4">
+                {gameState.currentQuestion}
+              </p>
+              <div className="border-t border-border/50 pt-4">
+                <p className="text-xs text-muted-foreground mb-2">{currentPlayer?.name}'s answer:</p>
+                <p className="text-lg text-neon-cyan font-medium">
+                  {gameState.currentAnswer}
+                </p>
+              </div>
+            </div>
+
+            {isMyTurn && (
+              <Button
+                onClick={nextTurn}
+                className="w-full bg-neon-green/20 border border-neon-green text-neon-green hover:bg-neon-green/30 py-6 text-lg"
+              >
+                Next Turn →
+              </Button>
+            )}
+
+            {!isMyTurn && (
+              <p className="text-center text-muted-foreground">
+                Waiting for <span className="text-neon-pink">{currentPlayer?.name}</span> to continue...
+              </p>
             )}
           </div>
         )}
@@ -671,19 +636,16 @@ const TruthOrDare: React.FC = () => {
 
       {/* History */}
       {gameState.challenges.length > 0 && (
-        <div className="border-t border-border pt-4">
-          <p className="text-sm text-muted-foreground mb-2">History</p>
-          <div className="max-h-32 overflow-y-auto space-y-1">
-            {gameState.challenges.slice(-5).reverse().map((c, i) => (
-              <p key={i} className="text-sm">
+        <div className="border-t border-border pt-4 mt-auto">
+          <p className="text-sm text-muted-foreground mb-2 text-center">History</p>
+          <div className="max-h-24 overflow-y-auto space-y-2">
+            {gameState.challenges.slice(-3).reverse().map((c, i) => (
+              <div key={i} className="text-sm bg-accent/30 rounded-lg p-2">
                 <span className={c.type === 'truth' ? 'text-neon-pink' : 'text-neon-orange'}>
-                  {c.to}
+                  {c.answerer}
                 </span>
-                : {c.text.substring(0, 40)}...
-                <span className={c.completed ? 'text-neon-green' : 'text-destructive'}>
-                  {c.completed ? ' ✓' : ' ✗'}
-                </span>
-              </p>
+                <span className="text-muted-foreground">: {c.question.substring(0, 30)}...</span>
+              </div>
             ))}
           </div>
         </div>
