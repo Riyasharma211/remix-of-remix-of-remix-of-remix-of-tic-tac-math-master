@@ -405,7 +405,10 @@ const TruthOrDare: React.FC = () => {
           const newState = payload.gameState as GameState;
           setGameState(newState);
           setPartnerIsTyping(false);
-          setShowTypeNotification(null);
+          // Only clear notification when moving past opponent_writing phase
+          if (newState.turnPhase !== 'opponent_writing') {
+            setShowTypeNotification(null);
+          }
           const partnerPlayer = newState.players.find(p => p.id !== playerId);
           if (partnerPlayer) {
             setPartnerName(partnerPlayer.name);
