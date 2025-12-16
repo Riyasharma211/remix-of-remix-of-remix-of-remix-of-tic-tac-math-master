@@ -2,6 +2,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Play, RotateCcw, Zap, Clock, Target } from 'lucide-react';
 import { soundManager } from '@/utils/soundManager';
+import { haptics } from '@/utils/haptics';
+import { celebrateBurst } from '@/utils/confetti';
 
 type Operator = '+' | '-' | '×' | '÷';
 
@@ -117,8 +119,16 @@ const MathChallenge: React.FC = () => {
       setTimeLeft((prev) => {
         if (prev <= 1) {
           setGameState('ended');
+          const isNewHighScore = score > highScore;
           setHighScore((hs) => Math.max(hs, score));
-          soundManager.playLocalSound('lose');
+          if (isNewHighScore && score > 0) {
+            soundManager.playLocalSound('win');
+            haptics.success();
+            celebrateBurst();
+          } else {
+            soundManager.playLocalSound('lose');
+            haptics.light();
+          }
           return 0;
         }
         if (prev <= 5) {
@@ -129,7 +139,7 @@ const MathChallenge: React.FC = () => {
     }, 1000);
     
     return () => clearInterval(timer);
-  }, [gameState, score]);
+  }, [gameState, score, highScore]);
 
   return (
     <div className="flex flex-col items-center gap-6 w-full max-w-md mx-auto">

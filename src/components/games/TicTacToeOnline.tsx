@@ -5,6 +5,7 @@ import { Grid3X3, Users, Copy, Check, RotateCcw, Wifi, WifiOff } from 'lucide-re
 import { supabase } from '@/integrations/supabase/client';
 import { soundManager } from '@/utils/soundManager';
 import { haptics } from '@/utils/haptics';
+import { celebrateWin } from '@/utils/confetti';
 import { useToast } from '@/hooks/use-toast';
 
 type Player = 'X' | 'O' | null;
@@ -193,6 +194,7 @@ const TicTacToeOnline: React.FC = () => {
       setScores(newScores);
       soundManager.playLocalSound('win');
       haptics.success();
+      celebrateWin();
     } else if (newBoard.every(cell => cell !== null)) {
       setIsDraw(true);
       soundManager.playLocalSound('lose');

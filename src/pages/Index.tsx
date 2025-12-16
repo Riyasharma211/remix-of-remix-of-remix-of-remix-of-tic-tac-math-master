@@ -13,6 +13,7 @@ import TruthOrDare from '@/components/games/TruthOrDare';
 import GameCard from '@/components/GameCard';
 import GameTransition from '@/components/GameTransition';
 import DifficultySelector from '@/components/DifficultySelector';
+import ThemeToggle from '@/components/ThemeToggle';
 import { Button } from '@/components/ui/button';
 import { soundManager } from '@/utils/soundManager';
 import { haptics } from '@/utils/haptics';
@@ -166,7 +167,7 @@ const IndexContent: React.FC = () => {
               variant="ghost"
               size="icon"
               onClick={toggleSound}
-              className="ml-2 sm:ml-4 h-8 w-8 sm:h-10 sm:w-10"
+              className="h-8 w-8 sm:h-10 sm:w-10"
             >
               {soundEnabled ? (
                 <Volume2 className="w-4 h-4 sm:w-5 sm:h-5 text-neon-green" />
@@ -174,6 +175,7 @@ const IndexContent: React.FC = () => {
                 <VolumeX className="w-4 h-4 sm:w-5 sm:h-5 text-muted-foreground" />
               )}
             </Button>
+            <ThemeToggle />
           </div>
           <p className="text-muted-foreground font-rajdhani text-sm sm:text-lg max-w-md mx-auto mb-2 sm:mb-4">
             10 games • Real-time multiplayer • Mind training
