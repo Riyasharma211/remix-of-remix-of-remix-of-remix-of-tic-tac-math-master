@@ -74,6 +74,7 @@ const TruthOrDare: React.FC = () => {
         game_type: 'truthordare',
         game_state: JSON.parse(JSON.stringify(initialState)),
         player_count: 1,
+        max_players: 2,
         status: 'waiting'
       })
       .select()
@@ -110,21 +111,31 @@ const TruthOrDare: React.FC = () => {
     }
 
     const currentState = JSON.parse(JSON.stringify(data.game_state)) as GameState;
+
+    const maxPlayers = data.max_players ?? 2;
+    if (currentState.players.length >= maxPlayers || data.player_count >= maxPlayers) {
+      toast.error('Room is full');
+      return;
+    }
+
     currentState.players.push({ id: playerId, name: playerName });
+
+    const shouldAutoStart = data.status === 'waiting' && data.player_count + 1 >= 2;
 
     await supabase
       .from('game_rooms')
       .update({
         game_state: JSON.parse(JSON.stringify(currentState)),
-        player_count: data.player_count + 1
+        player_count: data.player_count + 1,
+        status: shouldAutoStart ? 'playing' : data.status
       })
       .eq('id', data.id);
 
     setRoomCode(inputCode.toUpperCase());
     setRoomId(data.id);
     setGameState(currentState);
-    setMode('waiting');
-    toast.success('Joined room!');
+    setMode(shouldAutoStart || data.status === 'playing' ? 'playing' : 'waiting');
+    toast.success(shouldAutoStart ? 'Opponent found! Game starting...' : 'Joined room!');
   };
 
   const startGame = async () => {
@@ -149,6 +160,28 @@ const TruthOrDare: React.FC = () => {
   useEffect(() => {
     if (!roomId) return;
 
+    let cancelled = false;
+
+    const syncState = async () => {
+      const { data, error } = await supabase
+        .from('game_rooms')
+        .select('game_state,status')
+        .eq('id', roomId)
+        .single();
+
+      if (cancelled) return;
+      if (error || !data) return;
+
+      const fetchedState = JSON.parse(JSON.stringify(data.game_state)) as GameState;
+      setGameState(fetchedState);
+
+      if (data.status === 'playing') {
+        setMode('playing');
+      }
+    };
+
+    void syncState();
+
     const channel = supabase
       .channel(`truthordare-${roomId}`)
       .on(
@@ -163,18 +196,21 @@ const TruthOrDare: React.FC = () => {
           const newState = JSON.parse(JSON.stringify(payload.new.game_state)) as GameState;
           setGameState(newState);
 
-          if (payload.new.status === 'playing' && mode === 'waiting') {
+          if (payload.new.status === 'playing') {
             setMode('playing');
-            toast.success('Game started!');
+            if ((payload.old as any)?.status !== 'playing') {
+              toast.success('Game started!');
+            }
           }
         }
       )
       .subscribe();
 
     return () => {
+      cancelled = true;
       supabase.removeChannel(channel);
     };
-  }, [roomId, mode]);
+  }, [roomId]);
 
   const selectChoice = async (type: 'truth' | 'dare') => {
     if (!isMyTurn || !roomId) return;
@@ -460,17 +496,11 @@ const TruthOrDare: React.FC = () => {
           ))}
         </div>
 
-        {gameState.players[0]?.id === playerId && (
-          <Button
-            onClick={startGame}
-            disabled={gameState.players.length < 2}
-            className="w-full bg-neon-green/20 border border-neon-green text-neon-green hover:bg-neon-green/30 py-6 text-lg disabled:opacity-50"
-          >
-            {gameState.players.length < 2 
-              ? 'Waiting for players...' 
-              : `Start Game (${gameState.players.length} players)`
-            }
-          </Button>
+        {/* Auto-start note (1v1) */}
+        {gameState.players.length < 2 && (
+          <div className="w-full rounded-xl border border-border bg-card/50 px-4 py-4 text-sm text-muted-foreground">
+            Game will start automatically when your opponent joins.
+          </div>
         )}
 
         <Button variant="outline" onClick={leaveGame} className="w-full py-4 text-muted-foreground">
