@@ -54,6 +54,8 @@ const TruthOrDare: React.FC = () => {
   const [floatingHearts, setFloatingHearts] = useState<{ id: number; x: number }[]>([]);
   const channelRef = useRef<RealtimeChannel | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [partnerIsTyping, setPartnerIsTyping] = useState(false);
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const currentPlayer = gameState.players[gameState.currentPlayerIndex];
   const isMyTurn = currentPlayer?.id === playerId;
@@ -193,6 +195,21 @@ const TruthOrDare: React.FC = () => {
 
     celebrateHearts();
     toast.success(`Joined ${currentState.players[0]?.name}'s room! Let's play 💕`);
+  };
+
+  // Broadcast typing status
+  const broadcastTyping = useCallback(() => {
+    channelRef.current?.send({
+      type: 'broadcast',
+      event: 'typing',
+      payload: { playerId }
+    });
+  }, [playerId]);
+
+  // Handle input change with typing indicator
+  const handleQuestionInputChange = (value: string) => {
+    setQuestionInput(value);
+    broadcastTyping();
   };
 
   // Choose Truth or Dare
@@ -352,6 +369,7 @@ const TruthOrDare: React.FC = () => {
         if (payload?.gameState) {
           const newState = payload.gameState as GameState;
           setGameState(newState);
+          setPartnerIsTyping(false); // Clear typing indicator on state change
           const partnerPlayer = newState.players.find(p => p.id !== playerId);
           if (partnerPlayer) {
             setPartnerName(partnerPlayer.name);
@@ -370,6 +388,19 @@ const TruthOrDare: React.FC = () => {
           toast.success(`${payload.playerName} joined! Let the love begin! 💕`);
         }
       })
+      .on('broadcast', { event: 'typing' }, ({ payload }) => {
+        if (payload?.playerId !== playerId) {
+          setPartnerIsTyping(true);
+          // Clear previous timeout
+          if (typingTimeoutRef.current) {
+            clearTimeout(typingTimeoutRef.current);
+          }
+          // Hide typing indicator after 2 seconds of no typing
+          typingTimeoutRef.current = setTimeout(() => {
+            setPartnerIsTyping(false);
+          }, 2000);
+        }
+      })
       .subscribe();
 
     channelRef.current = channel;
@@ -377,6 +408,9 @@ const TruthOrDare: React.FC = () => {
     return () => {
       supabase.removeChannel(channel);
       channelRef.current = null;
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
     };
   }, [roomCode, mode, playerId]);
 
@@ -659,8 +693,8 @@ const TruthOrDare: React.FC = () => {
               </p>
               <Textarea
                 value={questionInput}
-                onChange={(e) => setQuestionInput(e.target.value)}
-                placeholder={gameState.currentType === 'truth' 
+                onChange={(e) => handleQuestionInputChange(e.target.value)}
+                placeholder={gameState.currentType === 'truth'
                   ? "Ask something romantic or cute..." 
                   : "Give a fun dare (keep it loving!)..."}
                 className="w-full min-h-[100px] bg-background/50 border-pink-500/30"
@@ -676,9 +710,20 @@ const TruthOrDare: React.FC = () => {
               </Button>
             </div>
           ) : (
-            <div className="text-center space-y-4 animate-pulse">
-              <p className="text-lg">{partner?.name} is writing your {gameState.currentType}...</p>
-              <p className="text-muted-foreground text-sm">Get ready! 😊</p>
+            <div className="text-center space-y-4">
+              <div className="flex items-center justify-center gap-1">
+                <p className="text-lg">{partner?.name} is writing</p>
+                {partnerIsTyping && (
+                  <span className="flex gap-1">
+                    <span className="w-2 h-2 bg-pink-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                    <span className="w-2 h-2 bg-pink-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                    <span className="w-2 h-2 bg-pink-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                  </span>
+                )}
+              </div>
+              <p className="text-muted-foreground text-sm">
+                {partnerIsTyping ? `${partner?.name} is typing... ✍️` : 'Get ready! 😊'}
+              </p>
             </div>
           )}
         </div>
