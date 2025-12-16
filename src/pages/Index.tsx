@@ -11,9 +11,11 @@ import MathBattle from '@/components/games/MathBattle';
 import DrawingGame from '@/components/games/DrawingGame';
 import TruthOrDare from '@/components/games/TruthOrDare';
 import GameCard from '@/components/GameCard';
+import GameTransition from '@/components/GameTransition';
 import DifficultySelector from '@/components/DifficultySelector';
 import { Button } from '@/components/ui/button';
 import { soundManager } from '@/utils/soundManager';
+import { haptics } from '@/utils/haptics';
 import { DifficultyProvider } from '@/contexts/DifficultyContext';
 
 type GameType = 'tictactoe' | 'math' | 'memory' | 'numberguess' | 'reaction' | 'pattern' | 'colormatch' | 'mathbattle' | 'drawing' | 'truthordare';
@@ -194,8 +196,9 @@ const IndexContent: React.FC = () => {
                   onClick={() => {
                     setActiveGame(game.id);
                     soundManager.playLocalSound('click');
+                    haptics.light();
                   }}
-                  className={`flex-shrink-0 px-3 py-2 rounded-xl border-2 transition-all duration-300 flex items-center gap-2
+                  className={`flex-shrink-0 px-3 py-2 rounded-xl border-2 transition-all duration-300 flex items-center gap-2 active:scale-95
                     ${activeGame === game.id 
                       ? `border-neon-${game.color} bg-neon-${game.color}/10` 
                       : 'border-border bg-card/50'
@@ -223,8 +226,9 @@ const IndexContent: React.FC = () => {
                   onClick={() => {
                     setActiveGame(game.id);
                     soundManager.playLocalSound('click');
+                    haptics.light();
                   }}
-                  className={`flex-shrink-0 px-3 py-2 rounded-xl border-2 transition-all duration-300 flex items-center gap-2
+                  className={`flex-shrink-0 px-3 py-2 rounded-xl border-2 transition-all duration-300 flex items-center gap-2 active:scale-95
                     ${activeGame === game.id 
                       ? `border-neon-${game.color} bg-neon-${game.color}/10` 
                       : 'border-border bg-card/50'
@@ -305,9 +309,9 @@ const IndexContent: React.FC = () => {
 
           {/* Game Area */}
           <main className="bg-card/50 backdrop-blur-sm rounded-2xl sm:rounded-3xl border border-border p-3 sm:p-6 md:p-8 min-h-[400px] sm:min-h-[500px] flex items-center justify-center">
-            <div key={activeGame} className="w-full animate-slide-in">
+            <GameTransition gameKey={activeGame}>
               {renderGame()}
-            </div>
+            </GameTransition>
           </main>
         </div>
 

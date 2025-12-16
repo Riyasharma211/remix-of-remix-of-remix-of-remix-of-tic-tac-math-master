@@ -1,5 +1,6 @@
 import React from 'react';
 import { LucideIcon } from 'lucide-react';
+import { haptics } from '@/utils/haptics';
 
 interface GameCardProps {
   title: string;
@@ -47,9 +48,14 @@ const GameCard: React.FC<GameCardProps> = ({
 }) => {
   const colors = colorClasses[color];
 
+  const handleClick = () => {
+    haptics.light();
+    onClick();
+  };
+
   return (
     <button
-      onClick={onClick}
+      onClick={handleClick}
       className={`relative p-3 sm:p-4 lg:p-5 rounded-xl sm:rounded-2xl border-2 transition-all duration-300 text-left w-full
         ${isActive 
           ? `${colors.border} ${colors.bg} ${colors.glow}` 
