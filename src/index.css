@@ -165,8 +165,33 @@
                 color var(--theme-transition, 0s);
   }
 
+  html {
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+    touch-action: manipulation;
+  }
+
   body {
     @apply bg-background text-foreground font-rajdhani antialiased;
+    user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    overscroll-behavior: none;
+    overflow-x: hidden;
+    min-height: 100dvh;
+  }
+
+  /* Allow selection in input fields */
+  input, textarea {
+    user-select: text;
+    -webkit-user-select: text;
+  }
+
+  #root {
+    min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
   }
 }
 
