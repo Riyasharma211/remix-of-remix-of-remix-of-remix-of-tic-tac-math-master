@@ -82,6 +82,7 @@ const TicTacToeOnline: React.FC = () => {
   const [isDraw, setIsDraw] = useState(false);
   const [showStats, setShowStats] = useState(false);
   const [stats, setStats] = useState<GameStats>(loadStats);
+  const [gameStarted, setGameStarted] = useState(false); // Only true when game actually starts
 
   // Timer state
   const [timeLeft, setTimeLeft] = useState(TURN_TIME);
@@ -124,17 +125,15 @@ const TicTacToeOnline: React.FC = () => {
     });
   }, []);
 
-  // Timer countdown
+  // Timer countdown - ONLY when game actually started
   useEffect(() => {
-    if ((mode === 'online-playing' || mode === 'local') && !winner && !isDraw) {
+    if (gameStarted && !winner && !isDraw) {
       timerRef.current = setInterval(() => {
         setTimeLeft(prev => {
           if (prev <= 1) {
-            // Time's up - switch player or auto-lose
             if (mode === 'online-playing') {
               const isMyTurn = currentPlayer === mySymbol;
               if (isMyTurn) {
-                // Current player loses due to timeout
                 haptics.error();
                 soundManager.playLocalSound('lose');
                 
@@ -144,7 +143,6 @@ const TicTacToeOnline: React.FC = () => {
                 setWinner(opponent);
                 updateStats('loss');
                 
-                // Broadcast timeout
                 if (channelRef.current) {
                   channelRef.current.send({
                     type: 'broadcast',
@@ -153,8 +151,7 @@ const TicTacToeOnline: React.FC = () => {
                   });
                 }
               }
-            } else {
-              // Local mode - just switch player
+            } else if (mode === 'local') {
               setCurrentPlayer(prev => prev === 'X' ? 'O' : 'X');
             }
             return TURN_TIME;
@@ -167,7 +164,7 @@ const TicTacToeOnline: React.FC = () => {
         if (timerRef.current) clearInterval(timerRef.current);
       };
     }
-  }, [mode, winner, isDraw, currentPlayer, mySymbol, scores, updateStats]);
+  }, [gameStarted, winner, isDraw, currentPlayer, mySymbol, scores, updateStats, mode]);
 
   // Reset timer on player change
   useEffect(() => {
@@ -258,6 +255,7 @@ const TicTacToeOnline: React.FC = () => {
       setTimeLeft(TURN_TIME);
       setMode('online-playing');
       setIsConnected(true);
+      setGameStarted(true); // Game starts NOW
       
       // Instant broadcast to host
       const channel = supabase.channel(`ttt-${code}`);
@@ -304,6 +302,7 @@ const TicTacToeOnline: React.FC = () => {
             setMode('online-playing');
             setIsConnected(true);
             setTimeLeft(TURN_TIME);
+            setGameStarted(true); // Game starts NOW when opponent joins
             haptics.success();
             toast({ title: 'Player Joined!', description: 'Game starting!' });
           }
@@ -347,6 +346,7 @@ const TicTacToeOnline: React.FC = () => {
           setMode('online-playing');
           setIsConnected(true);
           setTimeLeft(TURN_TIME);
+          setGameStarted(true); // Game starts NOW
           haptics.success();
           toast({ title: 'Player Joined!', description: 'Game starting!' });
         }
@@ -458,6 +458,7 @@ const TicTacToeOnline: React.FC = () => {
     setIsDraw(false);
     setIsConnected(false);
     setTimeLeft(TURN_TIME);
+    setGameStarted(false); // Reset game started
   };
 
   const startLocalGame = (size: GridSize) => {
@@ -465,6 +466,7 @@ const TicTacToeOnline: React.FC = () => {
     setBoard(Array(size * size).fill(null));
     setScores({ X: 0, O: 0 });
     setTimeLeft(TURN_TIME);
+    setGameStarted(true); // Game starts NOW for local
     setMode('local');
   };
 
