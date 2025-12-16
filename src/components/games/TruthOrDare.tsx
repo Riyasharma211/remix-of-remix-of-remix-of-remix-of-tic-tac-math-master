@@ -3,17 +3,18 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { supabase } from '@/integrations/supabase/client';
-import { Heart, Copy, Users, ArrowLeft, Play, Clock, SkipForward, Check, Sparkles, Send, Loader2 } from 'lucide-react';
+import { Heart, Copy, Users, ArrowLeft, Clock, SkipForward, Check, Sparkles, Send, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { haptics } from '@/utils/haptics';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { celebrateHearts } from '@/utils/confetti';
+import { validatePlayerName, validateRoomCode, validateQuestion, validateAnswer } from '@/utils/gameValidation';
 
 type GameMode = 'menu' | 'create' | 'join' | 'waiting' | 'playing';
 type TurnPhase = 
-  | 'choosing' // Current player chooses Truth or Dare
+  | 'choosing'         // Current player chooses Truth or Dare
   | 'opponent_writing' // Opponent writes the question/dare
-  | 'answering'; // Current player answers/does the task
+  | 'answering';       // Current player answers/does the task
 
 interface GameState {
   players: { id: string; name: string; skipsLeft: number }[];
@@ -21,9 +22,15 @@ interface GameState {
   turnPhase: TurnPhase;
   currentType?: 'truth' | 'dare';
   currentQuestion?: string;
-  currentAnswer?: string;
   roundCount: number;
 }
+
+// Real-time event types
+type GameEvent = 
+  | { type: 'game_update'; gameState: GameState }
+  | { type: 'player_joined'; playerId: string; playerName: string; gameState: GameState }
+  | { type: 'typing'; playerId: string }
+  | { type: 'type_chosen'; chosenType: 'truth' | 'dare'; chooserName: string };
 
 const TruthOrDare: React.FC = () => {
   const [mode, setMode] = useState<GameMode>('menu');
@@ -54,6 +61,7 @@ const TruthOrDare: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [partnerIsTyping, setPartnerIsTyping] = useState(false);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [showTypeNotification, setShowTypeNotification] = useState<'truth' | 'dare' | null>(null);
 
   const currentPlayer = gameState.players[gameState.currentPlayerIndex];
   const isMyTurn = currentPlayer?.id === playerId;
@@ -80,7 +88,6 @@ const TruthOrDare: React.FC = () => {
         setTimeLeft(prev => {
           if (prev <= 1) {
             clearInterval(timerRef.current!);
-            // Auto-skip on timeout
             handleAutoSkip();
             return 0;
           }
@@ -100,14 +107,15 @@ const TruthOrDare: React.FC = () => {
   };
 
   const createRoom = async () => {
-    if (!playerName.trim()) {
-      toast.error('Please enter your name 💕');
+    const validation = validatePlayerName(playerName);
+    if (!validation.success) {
+      toast.error(validation.error || 'Invalid name');
       return;
     }
 
     const code = generateRoomCode();
     const initialState: GameState = {
-      players: [{ id: playerId, name: playerName, skipsLeft: 2 }],
+      players: [{ id: playerId, name: validation.value!, skipsLeft: 2 }],
       currentPlayerIndex: 0,
       turnPhase: 'choosing',
       roundCount: 0
@@ -135,19 +143,27 @@ const TruthOrDare: React.FC = () => {
     setRoomId(data.id);
     setGameState(initialState);
     setMode('waiting');
+    haptics.success();
     toast.success(`Room created! Share code with your love 💖`);
   };
 
   const joinRoom = async () => {
-    if (!playerName.trim()) {
-      toast.error('Please enter your name 💕');
+    const nameValidation = validatePlayerName(playerName);
+    if (!nameValidation.success) {
+      toast.error(nameValidation.error || 'Invalid name');
+      return;
+    }
+
+    const codeValidation = validateRoomCode(inputCode);
+    if (!codeValidation.success) {
+      toast.error(codeValidation.error || 'Invalid code');
       return;
     }
 
     const { data, error } = await supabase
       .from('game_rooms')
       .select('*')
-      .eq('room_code', inputCode.toUpperCase())
+      .eq('room_code', codeValidation.value!)
       .eq('game_type', 'truthordare')
       .maybeSingle();
 
@@ -164,7 +180,7 @@ const TruthOrDare: React.FC = () => {
     }
 
     // Add player to game
-    currentState.players.push({ id: playerId, name: playerName, skipsLeft: 2 });
+    currentState.players.push({ id: playerId, name: nameValidation.value!, skipsLeft: 2 });
 
     await supabase
       .from('game_rooms')
@@ -175,23 +191,24 @@ const TruthOrDare: React.FC = () => {
       })
       .eq('id', data.id);
 
-    setRoomCode(inputCode.toUpperCase());
+    setRoomCode(codeValidation.value!);
     setRoomId(data.id);
     setGameState(currentState);
     setPartnerName(currentState.players[0]?.name || '');
     setMode('playing');
 
-    // Broadcast join event
-    const channel = supabase.channel(`tod-${inputCode.toUpperCase()}`);
+    // Broadcast join event via realtime channel
+    const channel = supabase.channel(`tod-${codeValidation.value!}`);
     await channel.subscribe();
     await channel.send({
       type: 'broadcast',
       event: 'player_joined',
-      payload: { playerId, playerName, gameState: currentState }
+      payload: { playerId, playerName: nameValidation.value!, gameState: currentState }
     });
     supabase.removeChannel(channel);
 
     celebrateHearts();
+    haptics.success();
     toast.success(`Joined ${currentState.players[0]?.name}'s room! Let's play 💕`);
   };
 
@@ -206,8 +223,10 @@ const TruthOrDare: React.FC = () => {
 
   // Handle input change with typing indicator
   const handleQuestionInputChange = (value: string) => {
-    setQuestionInput(value);
-    broadcastTyping();
+    if (value.length <= 300) {
+      setQuestionInput(value);
+      broadcastTyping();
+    }
   };
 
   // Choose Truth or Dare
@@ -220,9 +239,15 @@ const TruthOrDare: React.FC = () => {
       ...gameState,
       currentType: type,
       turnPhase: 'opponent_writing',
-      currentQuestion: undefined,
-      currentAnswer: undefined
+      currentQuestion: undefined
     };
+    
+    // Broadcast the choice immediately for instant feedback
+    channelRef.current?.send({
+      type: 'broadcast',
+      event: 'type_chosen',
+      payload: { chosenType: type, chooserName: myPlayer?.name }
+    });
     
     await updateAndBroadcast(newState);
     setIsSubmitting(false);
@@ -230,24 +255,39 @@ const TruthOrDare: React.FC = () => {
 
   // Opponent submits question
   const submitQuestion = async () => {
-    if (!roomId || !questionInput.trim() || isMyTurn) return;
+    if (!roomId || isMyTurn) return;
+    
+    const validation = validateQuestion(questionInput);
+    if (!validation.success) {
+      toast.error(validation.error || 'Invalid question');
+      return;
+    }
+    
     haptics.light();
     setIsSubmitting(true);
     
     const newState: GameState = {
       ...gameState,
-      currentQuestion: questionInput.trim(),
+      currentQuestion: validation.value!,
       turnPhase: 'answering'
     };
     
     await updateAndBroadcast(newState);
     setQuestionInput('');
     setIsSubmitting(false);
+    toast.success('Sent! 💕');
   };
 
   // Player submits answer - auto switch to next turn
   const submitAnswer = async () => {
     if (!roomId || !isMyTurn) return;
+    
+    const validation = validateAnswer(answerInput);
+    if (!validation.success) {
+      toast.error(validation.error || 'Invalid answer');
+      return;
+    }
+    
     haptics.success();
     setIsSubmitting(true);
     celebrateHearts();
@@ -259,7 +299,6 @@ const TruthOrDare: React.FC = () => {
       turnPhase: 'choosing',
       currentType: undefined,
       currentQuestion: undefined,
-      currentAnswer: undefined,
       roundCount: gameState.roundCount + 1
     };
     
@@ -283,7 +322,6 @@ const TruthOrDare: React.FC = () => {
       turnPhase: 'choosing',
       currentType: undefined,
       currentQuestion: undefined,
-      currentAnswer: undefined,
       roundCount: gameState.roundCount + 1
     };
     
@@ -302,7 +340,6 @@ const TruthOrDare: React.FC = () => {
       p.id === playerId ? { ...p, skipsLeft: p.skipsLeft - 1 } : p
     );
     
-    // Move to next turn
     const nextIndex = (gameState.currentPlayerIndex + 1) % gameState.players.length;
     
     const newState: GameState = {
@@ -312,7 +349,6 @@ const TruthOrDare: React.FC = () => {
       turnPhase: 'choosing',
       currentType: undefined,
       currentQuestion: undefined,
-      currentAnswer: undefined,
       roundCount: gameState.roundCount + 1
     };
     
@@ -332,7 +368,6 @@ const TruthOrDare: React.FC = () => {
       turnPhase: 'choosing',
       currentType: undefined,
       currentQuestion: undefined,
-      currentAnswer: undefined,
       roundCount: gameState.roundCount + 1
     };
     
@@ -351,7 +386,8 @@ const TruthOrDare: React.FC = () => {
         if (payload?.gameState) {
           const newState = payload.gameState as GameState;
           setGameState(newState);
-          setPartnerIsTyping(false); // Clear typing indicator on state change
+          setPartnerIsTyping(false);
+          setShowTypeNotification(null);
           const partnerPlayer = newState.players.find(p => p.id !== playerId);
           if (partnerPlayer) {
             setPartnerName(partnerPlayer.name);
@@ -373,14 +409,20 @@ const TruthOrDare: React.FC = () => {
       .on('broadcast', { event: 'typing' }, ({ payload }) => {
         if (payload?.playerId !== playerId) {
           setPartnerIsTyping(true);
-          // Clear previous timeout
           if (typingTimeoutRef.current) {
             clearTimeout(typingTimeoutRef.current);
           }
-          // Hide typing indicator after 2 seconds of no typing
           typingTimeoutRef.current = setTimeout(() => {
             setPartnerIsTyping(false);
           }, 2000);
+        }
+      })
+      .on('broadcast', { event: 'type_chosen' }, ({ payload }) => {
+        if (payload?.chosenType) {
+          setShowTypeNotification(payload.chosenType);
+          haptics.medium();
+          // Auto-clear notification after 3 seconds
+          setTimeout(() => setShowTypeNotification(null), 3000);
         }
       })
       .subscribe();
@@ -397,18 +439,21 @@ const TruthOrDare: React.FC = () => {
   }, [roomCode, mode, playerId]);
 
   const updateAndBroadcast = async (newState: GameState) => {
-    await supabase
-      .from('game_rooms')
-      .update({ game_state: JSON.parse(JSON.stringify(newState)) })
-      .eq('id', roomId);
-
+    // Update local state immediately for instant feedback
+    setGameState(newState);
+    
+    // Broadcast first for faster real-time sync
     channelRef.current?.send({
       type: 'broadcast',
       event: 'game_update',
       payload: { gameState: newState }
     });
 
-    setGameState(newState);
+    // Then persist to database
+    await supabase
+      .from('game_rooms')
+      .update({ game_state: JSON.parse(JSON.stringify(newState)) })
+      .eq('id', roomId);
   };
 
   const leaveGame = async () => {
@@ -418,6 +463,10 @@ const TruthOrDare: React.FC = () => {
     setMode('menu');
     setRoomId(null);
     setRoomCode('');
+    setPlayerName('');
+    setPartnerName('');
+    setQuestionInput('');
+    setAnswerInput('');
   };
 
   const copyRoomCode = () => {
@@ -440,6 +489,31 @@ const TruthOrDare: React.FC = () => {
       ))}
     </div>
   );
+
+  // Type notification overlay
+  const renderTypeNotification = () => {
+    if (!showTypeNotification || isMyTurn) return null;
+    
+    return (
+      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40 flex items-center justify-center animate-fade-in">
+        <div className={`text-center p-8 rounded-3xl animate-scale-in ${
+          showTypeNotification === 'truth' 
+            ? 'bg-gradient-to-br from-pink-500/90 to-purple-500/90' 
+            : 'bg-gradient-to-br from-red-500/90 to-orange-500/90'
+        }`}>
+          <span className="text-6xl block mb-4 animate-bounce">
+            {showTypeNotification === 'truth' ? '💭' : '🔥'}
+          </span>
+          <h2 className="text-3xl font-orbitron text-white font-bold">
+            {showTypeNotification.toUpperCase()}!
+          </h2>
+          <p className="text-white/80 mt-2">
+            {currentPlayer?.name} chose {showTypeNotification}
+          </p>
+        </div>
+      </div>
+    );
+  };
 
   // Menu
   if (mode === 'menu') {
@@ -503,6 +577,7 @@ const TruthOrDare: React.FC = () => {
           value={playerName}
           onChange={(e) => setPlayerName(e.target.value)}
           placeholder="Your name..."
+          maxLength={30}
           className="w-full bg-background/50 border-pink-500/30 text-base py-6 text-center"
         />
         
@@ -532,7 +607,7 @@ const TruthOrDare: React.FC = () => {
         
         <Input
           value={inputCode}
-          onChange={(e) => setInputCode(e.target.value.toUpperCase())}
+          onChange={(e) => setInputCode(e.target.value.toUpperCase().slice(0, 4))}
           placeholder="Room Code"
           maxLength={4}
           className="w-full text-center text-3xl tracking-[0.5em] bg-background/50 border-pink-500/30 py-6 font-mono"
@@ -542,6 +617,7 @@ const TruthOrDare: React.FC = () => {
           value={playerName}
           onChange={(e) => setPlayerName(e.target.value)}
           placeholder="Your name..."
+          maxLength={30}
           className="w-full bg-background/50 border-pink-500/30 text-base py-6 text-center"
         />
         
@@ -598,6 +674,7 @@ const TruthOrDare: React.FC = () => {
   return (
     <div className="space-y-4 px-4 py-4 max-w-md mx-auto min-h-[80vh] flex flex-col">
       {renderFloatingHearts()}
+      {renderTypeNotification()}
       
       {/* Header */}
       <div className="flex items-center justify-between">
@@ -616,7 +693,11 @@ const TruthOrDare: React.FC = () => {
       </div>
 
       {/* Turn indicator */}
-      <div className={`text-center p-4 rounded-2xl ${isMyTurn ? 'bg-gradient-to-r from-pink-500/20 to-red-500/20 border border-pink-500/30' : 'bg-background/50 border border-border'}`}>
+      <div className={`text-center p-4 rounded-2xl transition-all ${
+        isMyTurn 
+          ? 'bg-gradient-to-r from-pink-500/20 to-red-500/20 border border-pink-500/30' 
+          : 'bg-background/50 border border-border'
+      }`}>
         <p className="text-lg font-medium">
           {isMyTurn ? "Your turn, love! 💕" : `${currentPlayer?.name}'s turn 💭`}
         </p>
@@ -624,7 +705,7 @@ const TruthOrDare: React.FC = () => {
 
       {/* PHASE: Choosing Truth or Dare */}
       {gameState.turnPhase === 'choosing' && (
-        <div className="flex-1 flex flex-col items-center justify-center space-y-6">
+        <div className="flex-1 flex flex-col items-center justify-center space-y-6 animate-fade-in">
           {isMyTurn ? (
             <>
               <p className="text-lg text-center">Choose your fate! ❤️</p>
@@ -632,14 +713,14 @@ const TruthOrDare: React.FC = () => {
                 <Button
                   onClick={() => chooseType('truth')}
                   disabled={isSubmitting}
-                  className="flex-1 py-8 text-xl bg-gradient-to-br from-pink-500 to-purple-500 hover:from-pink-600 hover:to-purple-600"
+                  className="flex-1 py-8 text-xl bg-gradient-to-br from-pink-500 to-purple-500 hover:from-pink-600 hover:to-purple-600 transition-all hover:scale-105"
                 >
                   {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : '💭 Truth'}
                 </Button>
                 <Button
                   onClick={() => chooseType('dare')}
                   disabled={isSubmitting}
-                  className="flex-1 py-8 text-xl bg-gradient-to-br from-red-500 to-orange-500 hover:from-red-600 hover:to-orange-600"
+                  className="flex-1 py-8 text-xl bg-gradient-to-br from-red-500 to-orange-500 hover:from-red-600 hover:to-orange-600 transition-all hover:scale-105"
                 >
                   {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : '🔥 Dare'}
                 </Button>
@@ -659,10 +740,12 @@ const TruthOrDare: React.FC = () => {
       {/* PHASE: Opponent Writing Question */}
       {gameState.turnPhase === 'opponent_writing' && (
         <div className="flex-1 flex flex-col items-center justify-center space-y-6 animate-fade-in">
-          {/* Selection Badge - Shows what was selected */}
-          <div className={`w-full p-6 rounded-3xl text-center animate-scale-in ${gameState.currentType === 'truth' 
-            ? 'bg-gradient-to-br from-pink-500/20 to-purple-500/20 border-2 border-pink-500/30' 
-            : 'bg-gradient-to-br from-red-500/20 to-orange-500/20 border-2 border-red-500/30'}`}>
+          {/* Selection Badge */}
+          <div className={`w-full p-6 rounded-3xl text-center animate-scale-in ${
+            gameState.currentType === 'truth' 
+              ? 'bg-gradient-to-br from-pink-500/20 to-purple-500/20 border-2 border-pink-500/30' 
+              : 'bg-gradient-to-br from-red-500/20 to-orange-500/20 border-2 border-red-500/30'
+          }`}>
             <span className="text-5xl block mb-2">{gameState.currentType === 'truth' ? '💭' : '🔥'}</span>
             <h3 className={`font-orbitron text-2xl ${gameState.currentType === 'truth' ? 'text-pink-400' : 'text-red-400'}`}>
               {currentPlayer?.name} chose {gameState.currentType?.toUpperCase()}!
@@ -683,13 +766,14 @@ const TruthOrDare: React.FC = () => {
                   ? "Ask something romantic or cute..." 
                   : "Give a fun dare (keep it loving!)..."}
                 className="w-full min-h-[100px] bg-background/50 border-pink-500/30 text-base"
-                maxLength={200}
+                maxLength={300}
                 autoFocus
               />
+              <p className="text-xs text-muted-foreground text-right">{questionInput.length}/300</p>
               <Button
                 onClick={submitQuestion}
-                disabled={!questionInput.trim() || isSubmitting}
-                className="w-full bg-gradient-to-r from-pink-500 to-red-500 text-white py-6 text-lg"
+                disabled={!questionInput.trim() || questionInput.length < 3 || isSubmitting}
+                className="w-full bg-gradient-to-r from-pink-500 to-red-500 text-white py-6 text-lg transition-all hover:scale-[1.02]"
               >
                 {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Send className="w-5 h-5 mr-2" />}
                 Send {gameState.currentType === 'truth' ? 'Question' : 'Dare'} 💕
@@ -717,11 +801,13 @@ const TruthOrDare: React.FC = () => {
 
       {/* PHASE: Answering */}
       {gameState.turnPhase === 'answering' && gameState.currentQuestion && (
-        <div className="flex-1 flex flex-col items-center justify-center space-y-4">
+        <div className="flex-1 flex flex-col items-center justify-center space-y-4 animate-fade-in">
           {/* Question Card */}
-          <div className={`w-full p-6 rounded-3xl ${gameState.currentType === 'truth' 
-            ? 'bg-gradient-to-br from-pink-500/20 to-purple-500/20 border-2 border-pink-500/30' 
-            : 'bg-gradient-to-br from-red-500/20 to-orange-500/20 border-2 border-red-500/30'}`}>
+          <div className={`w-full p-6 rounded-3xl ${
+            gameState.currentType === 'truth' 
+              ? 'bg-gradient-to-br from-pink-500/20 to-purple-500/20 border-2 border-pink-500/30' 
+              : 'bg-gradient-to-br from-red-500/20 to-orange-500/20 border-2 border-red-500/30'
+          }`}>
             <div className="text-center mb-4">
               <span className="text-4xl">{gameState.currentType === 'truth' ? '💭' : '🔥'}</span>
               <h3 className={`font-orbitron text-xl mt-2 ${gameState.currentType === 'truth' ? 'text-pink-400' : 'text-red-400'}`}>
@@ -743,15 +829,17 @@ const TruthOrDare: React.FC = () => {
                 <>
                   <Textarea
                     value={answerInput}
-                    onChange={(e) => setAnswerInput(e.target.value)}
+                    onChange={(e) => setAnswerInput(e.target.value.slice(0, 500))}
                     placeholder="Type your answer..."
                     className="w-full min-h-[80px] bg-background/50 border-pink-500/30"
-                    maxLength={300}
+                    maxLength={500}
+                    autoFocus
                   />
+                  <p className="text-xs text-muted-foreground text-right">{answerInput.length}/500</p>
                   <Button
                     onClick={submitAnswer}
                     disabled={!answerInput.trim() || isSubmitting}
-                    className="w-full bg-gradient-to-r from-pink-500 to-red-500 text-white py-6"
+                    className="w-full bg-gradient-to-r from-pink-500 to-red-500 text-white py-6 transition-all hover:scale-[1.02]"
                   >
                     {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <Check className="w-5 h-5 mr-2" />}
                     Submit Answer 💕
@@ -761,7 +849,7 @@ const TruthOrDare: React.FC = () => {
                 <Button
                   onClick={markDone}
                   disabled={isSubmitting}
-                  className="w-full bg-gradient-to-r from-pink-500 to-red-500 text-white py-6"
+                  className="w-full bg-gradient-to-r from-pink-500 to-red-500 text-white py-6 transition-all hover:scale-[1.02]"
                 >
                   {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <Check className="w-5 h-5 mr-2" />}
                   Done! ✅
@@ -789,7 +877,6 @@ const TruthOrDare: React.FC = () => {
           )}
         </div>
       )}
-
     </div>
   );
 };
