@@ -93,17 +93,32 @@ const TicTacToeOnline: React.FC = () => {
         return;
       }
 
-      // Update room to mark as full
-      await supabase
-        .from('game_rooms')
-        .update({ player_count: 2, status: 'playing' })
-        .eq('room_code', joinCode.toUpperCase());
-
-      setRoomCode(joinCode.toUpperCase());
+      const code = joinCode.toUpperCase();
+      setRoomCode(code);
       setMySymbol('O');
       setMode('online-playing');
       setIsConnected(true);
-      toast({ title: 'Joined!', description: 'Game is starting...' });
+      
+      // Instant broadcast to host
+      const channel = supabase.channel(`ttt-${code}`);
+      channel.subscribe(async (status) => {
+        if (status === 'SUBSCRIBED') {
+          await channel.send({
+            type: 'broadcast',
+            event: 'game_update',
+            payload: { player_joined: true }
+          });
+        }
+      });
+
+      // Update DB in background (non-blocking)
+      supabase.from('game_rooms')
+        .update({ player_count: 2, status: 'playing' })
+        .eq('room_code', code)
+        .then();
+
+      haptics.success();
+      toast({ title: 'Joined!', description: 'Game starting!' });
     } catch (error) {
       console.error('Error joining room:', error);
       toast({ variant: 'destructive', title: 'Error', description: 'Failed to join room' });
@@ -116,55 +131,54 @@ const TicTacToeOnline: React.FC = () => {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // Subscribe to room changes
+  // Subscribe to room changes - using broadcast for instant updates
   useEffect(() => {
     if (!roomCode || (mode !== 'online-waiting' && mode !== 'online-playing')) return;
 
     const channel = supabase
-      .channel(`room-${roomCode}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'game_rooms',
-          filter: `room_code=eq.${roomCode}`
-        },
-        (payload) => {
-          const newData = payload.new as any;
-          if (newData) {
-            // Someone joined
-            if (newData.player_count === 2 && mode === 'online-waiting') {
-              setMode('online-playing');
-              setIsConnected(true);
-              toast({ title: 'Player Joined!', description: 'Game is starting!' });
-            }
-            
-            // Update game state
-            if (newData.game_state) {
-              const gs = newData.game_state as GameState;
-              setBoard(gs.board || Array(9).fill(null));
-              if (gs.currentPlayer === 'X' || gs.currentPlayer === 'O') {
-                setCurrentPlayer(gs.currentPlayer);
-              }
-              if (gs.winner) {
-                setWinner(gs.winner);
-                const result = checkWinner(gs.board);
-                setWinningLine(result.line);
-              }
-              if (gs.scores) {
-                setScores(gs.scores);
-              }
-            }
+      .channel(`ttt-${roomCode}`, {
+        config: { broadcast: { self: true } }
+      })
+      .on('broadcast', { event: 'game_update' }, ({ payload }) => {
+        if (payload) {
+          // Someone joined - instant!
+          if (payload.player_joined && mode === 'online-waiting') {
+            setMode('online-playing');
+            setIsConnected(true);
+            haptics.success();
+            toast({ title: 'Player Joined!', description: 'Game starting!' });
           }
+          
+          // Update game state instantly
+          if (payload.board) setBoard(payload.board);
+          if (payload.currentPlayer) setCurrentPlayer(payload.currentPlayer);
+          if (payload.winner) {
+            setWinner(payload.winner);
+            const result = checkWinner(payload.board);
+            setWinningLine(result.line);
+          }
+          if (payload.scores) setScores(payload.scores);
         }
-      )
-      .subscribe();
+      })
+      .on('presence', { event: 'join' }, ({ key, newPresences }) => {
+        // Instant player detection
+        if (mode === 'online-waiting' && newPresences.length > 0) {
+          setMode('online-playing');
+          setIsConnected(true);
+          haptics.success();
+          toast({ title: 'Player Joined!', description: 'Game starting!' });
+        }
+      })
+      .subscribe(async (status) => {
+        if (status === 'SUBSCRIBED') {
+          await channel.track({ player: mySymbol, joined_at: Date.now() });
+        }
+      });
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [roomCode, mode]);
+  }, [roomCode, mode, mySymbol]);
 
   const handleClick = async (index: number) => {
     if (board[index] || winner || isDraw) return;
@@ -203,19 +217,27 @@ const TicTacToeOnline: React.FC = () => {
       setCurrentPlayer(nextPlayer);
     }
 
-    // Sync to database for online mode
+    // Sync instantly via broadcast for online mode
     if (mode === 'online-playing') {
-      await supabase
-        .from('game_rooms')
+      const channel = supabase.channel(`ttt-${roomCode}`);
+      channel.send({
+        type: 'broadcast',
+        event: 'game_update',
+        payload: {
+          board: newBoard,
+          currentPlayer: nextPlayer,
+          winner: newWinner,
+          scores: newScores
+        }
+      });
+
+      // DB update in background
+      supabase.from('game_rooms')
         .update({
-          game_state: {
-            board: newBoard,
-            currentPlayer: nextPlayer,
-            winner: newWinner,
-            scores: newScores
-          }
+          game_state: JSON.parse(JSON.stringify({ board: newBoard, currentPlayer: nextPlayer, winner: newWinner, scores: newScores }))
         })
-        .eq('room_code', roomCode);
+        .eq('room_code', roomCode)
+        .then();
     }
   };
 
@@ -228,17 +250,19 @@ const TicTacToeOnline: React.FC = () => {
     setIsDraw(false);
 
     if (mode === 'online-playing') {
-      await supabase
-        .from('game_rooms')
-        .update({
-          game_state: {
-            board: newBoard,
-            currentPlayer: 'X',
-            winner: null,
-            scores
-          }
-        })
-        .eq('room_code', roomCode);
+      // Instant broadcast
+      const channel = supabase.channel(`ttt-${roomCode}`);
+      channel.send({
+        type: 'broadcast',
+        event: 'game_update',
+        payload: { board: newBoard, currentPlayer: 'X', winner: null, scores }
+      });
+
+      // DB in background
+      supabase.from('game_rooms')
+        .update({ game_state: JSON.parse(JSON.stringify({ board: newBoard, currentPlayer: 'X', winner: null, scores })) })
+        .eq('room_code', roomCode)
+        .then();
     }
   };
 
