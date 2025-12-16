@@ -131,25 +131,37 @@ const MathBattle: React.FC = () => {
         return;
       }
       
+      const code = joinCode.toUpperCase();
       const currentState = data.game_state as unknown as GameState & { options?: number[]; answered?: { player1: boolean; player2: boolean } };
       
-      await supabase
-        .from('game_rooms')
-        .update({
-          player_count: 2,
-          status: 'playing',
-          game_state: JSON.parse(JSON.stringify({ ...currentState, status: 'playing' }))
-        })
-        .eq('room_code', joinCode.toUpperCase());
-      
-      setRoomCode(joinCode.toUpperCase());
+      setRoomCode(code);
       setPlayerNumber(2);
       setMode('playing');
       setProblem(currentState.problem);
       setOptions(currentState.options || []);
       setScores(currentState.scores);
       setRound(currentState.round);
-      toast({ title: 'Joined!', description: 'Game is starting...' });
+      
+      // Instant broadcast to host
+      const channel = supabase.channel(`mb-${code}`);
+      channel.subscribe(async (status) => {
+        if (status === 'SUBSCRIBED') {
+          await channel.send({
+            type: 'broadcast',
+            event: 'game_update',
+            payload: { player_joined: true, status: 'playing' }
+          });
+        }
+      });
+
+      // DB update in background
+      supabase.from('game_rooms')
+        .update({ player_count: 2, status: 'playing', game_state: JSON.parse(JSON.stringify({ ...currentState, status: 'playing' })) })
+        .eq('room_code', code)
+        .then();
+
+      haptics.success();
+      toast({ title: 'Joined!', description: 'Game starting!' });
     } catch (error) {
       toast({ variant: 'destructive', title: 'Error', description: 'Failed to join room' });
     }
@@ -161,57 +173,49 @@ const MathBattle: React.FC = () => {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // Subscribe to room changes
+  // Subscribe to room changes - using broadcast for instant updates
   useEffect(() => {
     if (!roomCode || (mode !== 'waiting' && mode !== 'playing')) return;
 
     const channel = supabase
-      .channel(`mathbattle-${roomCode}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'game_rooms',
-          filter: `room_code=eq.${roomCode}`
-        },
-        (payload) => {
-          const newData = payload.new as any;
-          if (newData?.game_state) {
-            const gs = newData.game_state;
-            
-            if (gs.status === 'playing' && mode === 'waiting') {
-              setMode('playing');
-              toast({ title: 'Player Joined!', description: 'Game is starting!' });
-            }
-            
-            setProblem(gs.problem);
-            setOptions(gs.options || []);
-            setScores(gs.scores);
-            setRound(gs.round);
-            
-            // Reset answered state for new round
-            const playerKey = playerNumber === 1 ? 'player1' : 'player2';
-            if (gs.answered && !gs.answered[playerKey]) {
-              setHasAnswered(false);
-              setFeedback(null);
-            }
-            
-            if (gs.status === 'ended') {
-              setMode('ended');
-              setWinner(gs.winner);
-              const isWinner = gs.winner === `Player ${playerNumber}`;
-              soundManager.playLocalSound(isWinner ? 'win' : 'lose');
-              if (isWinner) {
-                haptics.success();
-                celebrateFireworks();
-              } else {
-                haptics.error();
-              }
+      .channel(`mb-${roomCode}`, {
+        config: { broadcast: { self: true } }
+      })
+      .on('broadcast', { event: 'game_update' }, ({ payload }) => {
+        if (payload) {
+          // Instant player join detection
+          if (payload.player_joined && mode === 'waiting') {
+            setMode('playing');
+            haptics.success();
+            toast({ title: 'Player Joined!', description: 'Game starting!' });
+          }
+          
+          // Instant game state updates
+          if (payload.problem) setProblem(payload.problem);
+          if (payload.options) setOptions(payload.options);
+          if (payload.scores) setScores(payload.scores);
+          if (payload.round) setRound(payload.round);
+          
+          // Reset answered state for new round
+          if (payload.newRound) {
+            setHasAnswered(false);
+            setFeedback(null);
+          }
+          
+          if (payload.status === 'ended') {
+            setMode('ended');
+            setWinner(payload.winner);
+            const isWinner = payload.winner === `Player ${playerNumber}`;
+            soundManager.playLocalSound(isWinner ? 'win' : 'lose');
+            if (isWinner) {
+              haptics.success();
+              celebrateFireworks();
+            } else {
+              haptics.error();
             }
           }
         }
-      )
+      })
       .subscribe();
 
     return () => {
@@ -226,6 +230,7 @@ const MathBattle: React.FC = () => {
     const isCorrect = answer === problem.answer;
     setFeedback(isCorrect ? 'correct' : 'wrong');
     soundManager.playLocalSound(isCorrect ? 'correct' : 'wrong');
+    haptics.light();
     
     const { data } = await supabase
       .from('game_rooms')
@@ -244,37 +249,47 @@ const MathBattle: React.FC = () => {
     }
     
     const newAnswered = { ...currentState.answered, [playerKey]: true };
-    
-    // Check if both players answered
     const bothAnswered = newAnswered.player1 && newAnswered.player2;
     
-    let newState: any = {
-      ...currentState,
-      scores: newScores,
-      answered: newAnswered,
-    };
+    let broadcastPayload: any = { scores: newScores };
+    let newState: any = { ...currentState, scores: newScores, answered: newAnswered };
     
     if (bothAnswered) {
       if (currentState.round >= currentState.maxRounds) {
-        // Game over
         const winner = newScores.player1 > newScores.player2 ? 'Player 1' :
                        newScores.player2 > newScores.player1 ? 'Player 2' : 'Tie';
         newState.status = 'ended';
         newState.winner = winner;
+        broadcastPayload = { ...broadcastPayload, status: 'ended', winner };
       } else {
-        // Next round
         const newProblem = generateProblem();
         newState.round = currentState.round + 1;
         newState.problem = newProblem;
         newState.options = generateOptions(newProblem.answer);
         newState.answered = { player1: false, player2: false };
+        broadcastPayload = { 
+          ...broadcastPayload, 
+          problem: newProblem, 
+          options: newState.options, 
+          round: newState.round,
+          newRound: true
+        };
       }
     }
     
-    await supabase
-      .from('game_rooms')
-      .update({ game_state: newState })
-      .eq('room_code', roomCode);
+    // Instant broadcast
+    const channel = supabase.channel(`mb-${roomCode}`);
+    channel.send({
+      type: 'broadcast',
+      event: 'game_update',
+      payload: broadcastPayload
+    });
+
+    // DB update in background
+    supabase.from('game_rooms')
+      .update({ game_state: JSON.parse(JSON.stringify(newState)) })
+      .eq('room_code', roomCode)
+      .then();
   };
 
   const leaveGame = async () => {
