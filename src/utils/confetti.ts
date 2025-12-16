@@ -104,3 +104,41 @@ export const celebrateFireworks = () => {
     });
   }, 250);
 };
+
+// Heart celebration for romantic moments
+export const celebrateHearts = () => {
+  const colors = ['#ec4899', '#f472b6', '#fb7185', '#ff6b6b', '#ff8fab'];
+  
+  const burst = () => {
+    confetti({
+      particleCount: 30,
+      spread: 60,
+      origin: { y: 0.7 },
+      colors,
+      shapes: ['circle'],
+      scalar: 1.5,
+    });
+  };
+
+  burst();
+  setTimeout(burst, 150);
+  setTimeout(burst, 300);
+  
+  // Side bursts
+  setTimeout(() => {
+    confetti({
+      particleCount: 20,
+      angle: 60,
+      spread: 45,
+      origin: { x: 0, y: 0.6 },
+      colors,
+    });
+    confetti({
+      particleCount: 20,
+      angle: 120,
+      spread: 45,
+      origin: { x: 1, y: 0.6 },
+      colors,
+    });
+  }, 200);
+};
