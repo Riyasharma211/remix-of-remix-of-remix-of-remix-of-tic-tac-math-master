@@ -13,9 +13,7 @@ type GameMode = 'menu' | 'create' | 'join' | 'waiting' | 'playing';
 type TurnPhase = 
   | 'choosing' // Current player chooses Truth or Dare
   | 'opponent_writing' // Opponent writes the question/dare
-  | 'answering' // Current player answers/does the task
-  | 'confirming' // Opponent confirms completion
-  | 'viewing_answer'; // Both view the answer
+  | 'answering'; // Current player answers/does the task
 
 interface GameState {
   players: { id: string; name: string; skipsLeft: number }[];
@@ -247,39 +245,51 @@ const TruthOrDare: React.FC = () => {
     setIsSubmitting(false);
   };
 
-  // Player submits answer
+  // Player submits answer - auto switch to next turn
   const submitAnswer = async () => {
     if (!roomId || !isMyTurn) return;
     haptics.success();
     setIsSubmitting(true);
+    celebrateHearts();
     
+    const nextIndex = (gameState.currentPlayerIndex + 1) % gameState.players.length;
     const newState: GameState = {
       ...gameState,
-      currentAnswer: answerInput.trim() || '(Completed! 💕)',
-      turnPhase: 'confirming'
+      currentPlayerIndex: nextIndex,
+      turnPhase: 'choosing',
+      currentType: undefined,
+      currentQuestion: undefined,
+      currentAnswer: undefined,
+      roundCount: gameState.roundCount + 1
     };
     
     await updateAndBroadcast(newState);
     setAnswerInput('');
     setIsSubmitting(false);
-    toast.success('Submitted! Waiting for partner to confirm 💕');
+    toast.success('Answer submitted! Next turn 💕');
   };
 
-  // Mark dare as done
+  // Mark dare as done - auto switch to next turn
   const markDone = async () => {
     if (!roomId || !isMyTurn) return;
     haptics.success();
     setIsSubmitting(true);
+    celebrateHearts();
     
+    const nextIndex = (gameState.currentPlayerIndex + 1) % gameState.players.length;
     const newState: GameState = {
       ...gameState,
-      currentAnswer: '✅ Done!',
-      turnPhase: 'confirming'
+      currentPlayerIndex: nextIndex,
+      turnPhase: 'choosing',
+      currentType: undefined,
+      currentQuestion: undefined,
+      currentAnswer: undefined,
+      roundCount: gameState.roundCount + 1
     };
     
     await updateAndBroadcast(newState);
     setIsSubmitting(false);
-    toast.success('Waiting for partner to confirm 💕');
+    toast.success('Dare completed! Next turn 💕');
   };
 
   // Skip question
@@ -309,34 +319,6 @@ const TruthOrDare: React.FC = () => {
     await updateAndBroadcast(newState);
     setIsSubmitting(false);
     toast.info(`Skipped! ${myPlayer.skipsLeft - 1} skips left 💭`);
-  };
-
-  // Partner confirms completion
-  const confirmCompletion = async (reaction: string) => {
-    if (!roomId || isMyTurn) return;
-    haptics.success();
-    setIsSubmitting(true);
-    
-    const newState: GameState = {
-      ...gameState,
-      turnPhase: 'viewing_answer'
-    };
-    
-    await updateAndBroadcast(newState);
-    setIsSubmitting(false);
-    
-    if (reaction === 'love') {
-      celebrateHearts();
-      toast.success('So much love! 😍💕');
-    } else {
-      spawnHeart();
-      toast.success('Aww, so cute! 😊💖');
-    }
-    
-    // Auto move to next turn after 3 seconds
-    setTimeout(() => {
-      moveToNextTurn();
-    }, 3000);
   };
 
   const moveToNextTurn = async () => {
@@ -804,68 +786,6 @@ const TruthOrDare: React.FC = () => {
         </div>
       )}
 
-      {/* PHASE: Confirming */}
-      {gameState.turnPhase === 'confirming' && (
-        <div className="flex-1 flex flex-col items-center justify-center space-y-6">
-          {/* Show question and answer */}
-          <div className={`w-full p-6 rounded-3xl ${gameState.currentType === 'truth' 
-            ? 'bg-gradient-to-br from-pink-500/20 to-purple-500/20 border-2 border-pink-500/30' 
-            : 'bg-gradient-to-br from-red-500/20 to-orange-500/20 border-2 border-red-500/30'}`}>
-            <div className="text-center mb-4">
-              <span className="text-3xl">{gameState.currentType === 'truth' ? '💭' : '🔥'}</span>
-            </div>
-            <p className="text-muted-foreground text-sm mb-2">{gameState.currentQuestion}</p>
-            <p className="text-lg font-medium text-center">{gameState.currentAnswer}</p>
-          </div>
-
-          {isOpponent ? (
-            <div className="w-full space-y-3">
-              <p className="text-center text-muted-foreground">How was that? 💕</p>
-              <div className="flex gap-3">
-                <Button
-                  onClick={() => confirmCompletion('blush')}
-                  disabled={isSubmitting}
-                  className="flex-1 bg-pink-500/20 border border-pink-500 text-pink-500 hover:bg-pink-500/30 py-6 text-lg"
-                >
-                  😳 Blush
-                </Button>
-                <Button
-                  onClick={() => confirmCompletion('love')}
-                  disabled={isSubmitting}
-                  className="flex-1 bg-gradient-to-r from-pink-500 to-red-500 text-white hover:from-pink-600 hover:to-red-600 py-6 text-lg"
-                >
-                  😍 Love!
-                </Button>
-              </div>
-            </div>
-          ) : (
-            <div className="text-center p-4 bg-background/50 rounded-xl border border-border animate-pulse">
-              <p className="text-muted-foreground">
-                Waiting for {partner?.name}'s reaction... 💕
-              </p>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* PHASE: Viewing Answer */}
-      {gameState.turnPhase === 'viewing_answer' && (
-        <div className="flex-1 flex flex-col items-center justify-center space-y-6">
-          <div className={`w-full p-6 rounded-3xl ${gameState.currentType === 'truth' 
-            ? 'bg-gradient-to-br from-pink-500/20 to-purple-500/20 border-2 border-pink-500/30' 
-            : 'bg-gradient-to-br from-red-500/20 to-orange-500/20 border-2 border-red-500/30'}`}>
-            <div className="text-center mb-4">
-              <span className="text-4xl">💕</span>
-            </div>
-            <p className="text-muted-foreground text-sm mb-2">{gameState.currentQuestion}</p>
-            <p className="text-lg font-medium text-center">{gameState.currentAnswer}</p>
-          </div>
-          
-          <div className="text-center animate-pulse">
-            <p className="text-muted-foreground">Next turn starting... 💕</p>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
