@@ -658,20 +658,23 @@ const TruthOrDare: React.FC = () => {
 
       {/* PHASE: Opponent Writing Question */}
       {gameState.turnPhase === 'opponent_writing' && (
-        <div className="flex-1 flex flex-col items-center justify-center space-y-6">
-          <div className={`w-full p-6 rounded-3xl text-center ${gameState.currentType === 'truth' 
+        <div className="flex-1 flex flex-col items-center justify-center space-y-6 animate-fade-in">
+          {/* Selection Badge - Shows what was selected */}
+          <div className={`w-full p-6 rounded-3xl text-center animate-scale-in ${gameState.currentType === 'truth' 
             ? 'bg-gradient-to-br from-pink-500/20 to-purple-500/20 border-2 border-pink-500/30' 
             : 'bg-gradient-to-br from-red-500/20 to-orange-500/20 border-2 border-red-500/30'}`}>
-            <span className="text-4xl">{gameState.currentType === 'truth' ? '💭' : '🔥'}</span>
-            <h3 className={`font-orbitron text-2xl mt-2 ${gameState.currentType === 'truth' ? 'text-pink-400' : 'text-red-400'}`}>
-              {gameState.currentType?.toUpperCase()}
+            <span className="text-5xl block mb-2">{gameState.currentType === 'truth' ? '💭' : '🔥'}</span>
+            <h3 className={`font-orbitron text-2xl ${gameState.currentType === 'truth' ? 'text-pink-400' : 'text-red-400'}`}>
+              {currentPlayer?.name} chose {gameState.currentType?.toUpperCase()}!
             </h3>
           </div>
 
           {isOpponent ? (
-            <div className="w-full space-y-4">
-              <p className="text-center text-muted-foreground">
-                Write a {gameState.currentType} for {currentPlayer?.name}! ✍️
+            <div className="w-full space-y-4 animate-fade-in" style={{ animationDelay: '200ms' }}>
+              <p className="text-center text-muted-foreground text-lg">
+                {gameState.currentType === 'truth' 
+                  ? `Ask ${currentPlayer?.name} a question! 💕` 
+                  : `Give ${currentPlayer?.name} a dare! 🔥`}
               </p>
               <Textarea
                 value={questionInput}
@@ -679,24 +682,25 @@ const TruthOrDare: React.FC = () => {
                 placeholder={gameState.currentType === 'truth'
                   ? "Ask something romantic or cute..." 
                   : "Give a fun dare (keep it loving!)..."}
-                className="w-full min-h-[100px] bg-background/50 border-pink-500/30"
+                className="w-full min-h-[100px] bg-background/50 border-pink-500/30 text-base"
                 maxLength={200}
+                autoFocus
               />
               <Button
                 onClick={submitQuestion}
                 disabled={!questionInput.trim() || isSubmitting}
-                className="w-full bg-gradient-to-r from-pink-500 to-red-500 text-white py-6"
+                className="w-full bg-gradient-to-r from-pink-500 to-red-500 text-white py-6 text-lg"
               >
                 {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Send className="w-5 h-5 mr-2" />}
                 Send {gameState.currentType === 'truth' ? 'Question' : 'Dare'} 💕
               </Button>
             </div>
           ) : (
-            <div className="text-center space-y-4">
-              <div className="flex items-center justify-center gap-1">
-                <p className="text-lg">{partner?.name} is writing</p>
+            <div className="text-center space-y-4 p-6 bg-background/50 rounded-2xl border border-border">
+              <div className="flex items-center justify-center gap-2">
+                <p className="text-lg">{partner?.name} is writing your {gameState.currentType}</p>
                 {partnerIsTyping && (
-                  <span className="flex gap-1">
+                  <span className="flex gap-1 ml-1">
                     <span className="w-2 h-2 bg-pink-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
                     <span className="w-2 h-2 bg-pink-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
                     <span className="w-2 h-2 bg-pink-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
@@ -704,7 +708,7 @@ const TruthOrDare: React.FC = () => {
                 )}
               </div>
               <p className="text-muted-foreground text-sm">
-                {partnerIsTyping ? `${partner?.name} is typing... ✍️` : 'Get ready! 😊'}
+                {partnerIsTyping ? '✍️ Typing...' : 'Get ready! 😊'}
               </p>
             </div>
           )}
