@@ -4,6 +4,8 @@ import { Input } from '@/components/ui/input';
 import { Swords, Users, Copy, Check, Play, Trophy, Clock, Zap } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { soundManager } from '@/utils/soundManager';
+import { haptics } from '@/utils/haptics';
+import { celebrateFireworks } from '@/utils/confetti';
 import { useToast } from '@/hooks/use-toast';
 
 type GameMode = 'menu' | 'create' | 'join' | 'waiting' | 'playing' | 'ended';
@@ -198,7 +200,14 @@ const MathBattle: React.FC = () => {
             if (gs.status === 'ended') {
               setMode('ended');
               setWinner(gs.winner);
-              soundManager.playLocalSound(gs.winner === `Player ${playerNumber}` ? 'win' : 'lose');
+              const isWinner = gs.winner === `Player ${playerNumber}`;
+              soundManager.playLocalSound(isWinner ? 'win' : 'lose');
+              if (isWinner) {
+                haptics.success();
+                celebrateFireworks();
+              } else {
+                haptics.error();
+              }
             }
           }
         }

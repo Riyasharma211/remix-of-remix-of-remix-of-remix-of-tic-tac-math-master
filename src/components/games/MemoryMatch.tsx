@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { RotateCcw, Brain, Trophy, Clock } from 'lucide-react';
 import { soundManager } from '@/utils/soundManager';
+import { haptics } from '@/utils/haptics';
+import { celebrateStars } from '@/utils/confetti';
 
 const EMOJIS = ['🚀', '⭐', '🎮', '🎯', '💎', '🔥', '⚡', '🎪'];
 
@@ -58,6 +60,8 @@ const MemoryMatch: React.FC = () => {
       setGameComplete(true);
       setIsPlaying(false);
       soundManager.playLocalSound('win');
+      haptics.success();
+      celebrateStars();
       if (bestTime === null || timer < bestTime) {
         setBestTime(timer);
       }
@@ -69,6 +73,7 @@ const MemoryMatch: React.FC = () => {
     
     if (!isPlaying) setIsPlaying(true);
     soundManager.playLocalSound('click');
+    haptics.light();
 
     const newFlippedCards = [...flippedCards, id];
     setFlippedCards(newFlippedCards);
