@@ -2,16 +2,21 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Zap, RotateCcw, Play, Trophy, Clock, AlertTriangle } from 'lucide-react';
 import { soundManager } from '@/utils/soundManager';
+import { haptics } from '@/utils/haptics';
+import { celebrateBurst } from '@/utils/confetti';
+import { useLeaderboard, GAME_TYPES } from '@/hooks/useLeaderboard';
 
 type GameState = 'idle' | 'waiting' | 'ready' | 'clicked' | 'too-early' | 'results';
 
 const ReactionTime: React.FC = () => {
+  const { addScore, isNewHighScore } = useLeaderboard();
   const [gameState, setGameState] = useState<GameState>('idle');
   const [reactionTime, setReactionTime] = useState<number | null>(null);
   const [attempts, setAttempts] = useState<number[]>([]);
   const [bestTime, setBestTime] = useState<number | null>(null);
   const [startTime, setStartTime] = useState<number>(0);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [playerName] = useState(() => localStorage.getItem('mindgames-player-name') || 'Player');
 
   const startGame = () => {
     setGameState('waiting');
@@ -36,18 +41,25 @@ const ReactionTime: React.FC = () => {
       }
       setGameState('too-early');
       soundManager.playLocalSound('wrong');
+      haptics.error();
     } else if (gameState === 'ready') {
       // Calculate reaction time
       const time = Date.now() - startTime;
       setReactionTime(time);
       setAttempts(prev => [...prev, time]);
       
-      if (bestTime === null || time < bestTime) {
+      const isNewBest = bestTime === null || time < bestTime;
+      if (isNewBest) {
         setBestTime(time);
+        // Convert to score: faster = higher (1000 - time, min 100)
+        const score = Math.max(100, 1000 - time);
+        addScore(GAME_TYPES.REACTION_TIME, playerName, score, `${time}ms reaction`);
+        celebrateBurst();
       }
       
       setGameState('clicked');
       soundManager.playLocalSound('win');
+      haptics.success();
     }
   };
 

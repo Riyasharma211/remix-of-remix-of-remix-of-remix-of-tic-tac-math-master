@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Grid3X3, Zap, Brain, Target, Gamepad2, Volume2, VolumeX, Timer, Sparkles, Palette, Swords, Pencil, Heart } from 'lucide-react';
+import { Grid3X3, Zap, Brain, Target, Gamepad2, Volume2, VolumeX, Timer, Sparkles, Palette, Swords, Pencil, Heart, Trophy } from 'lucide-react';
 import TicTacToeOnline from '@/components/games/TicTacToeOnline';
 import MathChallenge from '@/components/games/MathChallenge';
 import MemoryMatch from '@/components/games/MemoryMatch';
@@ -14,6 +14,7 @@ import GameCard from '@/components/GameCard';
 import GameTransition from '@/components/GameTransition';
 import DifficultySelector from '@/components/DifficultySelector';
 import ThemeToggle from '@/components/ThemeToggle';
+import Leaderboard from '@/components/Leaderboard';
 import { Button } from '@/components/ui/button';
 import { soundManager } from '@/utils/soundManager';
 import { haptics } from '@/utils/haptics';
@@ -107,6 +108,7 @@ const games = [
 const IndexContent: React.FC = () => {
   const [activeGame, setActiveGame] = useState<GameType>('tictactoe');
   const [soundEnabled, setSoundEnabled] = useState(true);
+  const [showLeaderboard, setShowLeaderboard] = useState(false);
 
   const toggleSound = () => {
     const newState = !soundEnabled;
@@ -115,6 +117,11 @@ const IndexContent: React.FC = () => {
     if (newState) {
       soundManager.playLocalSound('click');
     }
+  };
+
+  const openLeaderboard = () => {
+    haptics.light();
+    setShowLeaderboard(true);
   };
 
   const renderGame = () => {
@@ -174,6 +181,14 @@ const IndexContent: React.FC = () => {
               ) : (
                 <VolumeX className="w-4 h-4 sm:w-5 sm:h-5 text-muted-foreground" />
               )}
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={openLeaderboard}
+              className="h-8 w-8 sm:h-10 sm:w-10"
+            >
+              <Trophy className="w-4 h-4 sm:w-5 sm:h-5 text-neon-orange" />
             </Button>
             <ThemeToggle />
           </div>
@@ -322,6 +337,9 @@ const IndexContent: React.FC = () => {
           <p>Train your brain • Challenge friends • Have fun! 🎮</p>
         </footer>
       </div>
+
+      {/* Leaderboard Modal */}
+      <Leaderboard isOpen={showLeaderboard} onClose={() => setShowLeaderboard(false)} />
     </div>
   );
 };

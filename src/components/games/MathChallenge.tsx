@@ -4,6 +4,7 @@ import { Play, RotateCcw, Zap, Clock, Target } from 'lucide-react';
 import { soundManager } from '@/utils/soundManager';
 import { haptics } from '@/utils/haptics';
 import { celebrateBurst } from '@/utils/confetti';
+import { useLeaderboard, GAME_TYPES } from '@/hooks/useLeaderboard';
 
 type Operator = '+' | '-' | '×' | '÷';
 
@@ -62,6 +63,7 @@ const generateOptions = (answer: number): number[] => {
 };
 
 const MathChallenge: React.FC = () => {
+  const { addScore, isNewHighScore } = useLeaderboard();
   const [gameState, setGameState] = useState<'idle' | 'playing' | 'ended'>('idle');
   const [problem, setProblem] = useState<Problem | null>(null);
   const [options, setOptions] = useState<number[]>([]);
@@ -71,6 +73,7 @@ const MathChallenge: React.FC = () => {
   const [timeLeft, setTimeLeft] = useState(30);
   const [difficulty, setDifficulty] = useState(1);
   const [feedback, setFeedback] = useState<'correct' | 'wrong' | null>(null);
+  const [playerName] = useState(() => localStorage.getItem('mindgames-player-name') || 'Player');
 
   const startGame = () => {
     setGameState('playing');
@@ -119,9 +122,15 @@ const MathChallenge: React.FC = () => {
       setTimeLeft((prev) => {
         if (prev <= 1) {
           setGameState('ended');
-          const isNewHighScore = score > highScore;
+          const isHighScore = isNewHighScore(GAME_TYPES.MATH_CHALLENGE, score);
           setHighScore((hs) => Math.max(hs, score));
-          if (isNewHighScore && score > 0) {
+          
+          // Save to leaderboard
+          if (score > 0) {
+            addScore(GAME_TYPES.MATH_CHALLENGE, playerName, score, `Streak: ${streak}, Difficulty: ${difficulty}`);
+          }
+          
+          if (isHighScore && score > 0) {
             soundManager.playLocalSound('win');
             haptics.success();
             celebrateBurst();
@@ -139,7 +148,7 @@ const MathChallenge: React.FC = () => {
     }, 1000);
     
     return () => clearInterval(timer);
-  }, [gameState, score, highScore]);
+  }, [gameState, score, highScore, streak, difficulty, playerName, addScore, isNewHighScore]);
 
   return (
     <div className="flex flex-col items-center gap-6 w-full max-w-md mx-auto">

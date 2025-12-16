@@ -3,10 +3,14 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { HelpCircle, Flame, Snowflake, Target, RotateCcw, Play } from 'lucide-react';
 import { soundManager } from '@/utils/soundManager';
+import { haptics } from '@/utils/haptics';
+import { celebrateWin } from '@/utils/confetti';
+import { useLeaderboard, GAME_TYPES } from '@/hooks/useLeaderboard';
 
 type GameState = 'idle' | 'playing' | 'won';
 
 const NumberGuess: React.FC = () => {
+  const { addScore } = useLeaderboard();
   const [gameState, setGameState] = useState<GameState>('idle');
   const [targetNumber, setTargetNumber] = useState(0);
   const [guess, setGuess] = useState('');
@@ -16,6 +20,7 @@ const NumberGuess: React.FC = () => {
   const [history, setHistory] = useState<{ guess: number; hint: string }[]>([]);
   const [range, setRange] = useState({ min: 1, max: 100 });
   const [bestScore, setBestScore] = useState<number | null>(null);
+  const [playerName] = useState(() => localStorage.getItem('mindgames-player-name') || 'Player');
 
   const startGame = () => {
     const target = Math.floor(Math.random() * (range.max - range.min + 1)) + range.min;
@@ -50,6 +55,13 @@ const NumberGuess: React.FC = () => {
       setGameState('won');
       setHint(null);
       soundManager.playLocalSound('win');
+      haptics.success();
+      celebrateWin();
+      
+      // Score: higher for fewer attempts (max 7 attempts -> score from 100-700)
+      const calculatedScore = (maxAttempts - newAttempts + 1) * 100;
+      addScore(GAME_TYPES.NUMBER_GUESS, playerName, calculatedScore, `Found in ${newAttempts} tries`);
+      
       if (bestScore === null || newAttempts < bestScore) {
         setBestScore(newAttempts);
       }

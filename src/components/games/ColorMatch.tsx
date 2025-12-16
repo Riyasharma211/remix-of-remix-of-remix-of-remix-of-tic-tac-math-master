@@ -3,6 +3,9 @@ import { Button } from '@/components/ui/button';
 import { Palette, Play, RotateCcw, Trophy, Clock, Zap } from 'lucide-react';
 import { soundManager } from '@/utils/soundManager';
 import { useDifficulty } from '@/contexts/DifficultyContext';
+import { haptics } from '@/utils/haptics';
+import { celebrateBurst } from '@/utils/confetti';
+import { useLeaderboard, GAME_TYPES } from '@/hooks/useLeaderboard';
 
 type GameState = 'idle' | 'playing' | 'ended';
 
@@ -24,6 +27,7 @@ interface Challenge {
 
 const ColorMatch: React.FC = () => {
   const { config, difficulty } = useDifficulty();
+  const { addScore, isNewHighScore } = useLeaderboard();
   const [gameState, setGameState] = useState<GameState>('idle');
   const [challenge, setChallenge] = useState<Challenge | null>(null);
   const [score, setScore] = useState(0);
@@ -31,6 +35,7 @@ const ColorMatch: React.FC = () => {
   const [highScore, setHighScore] = useState(0);
   const [timeLeft, setTimeLeft] = useState(30);
   const [feedback, setFeedback] = useState<'correct' | 'wrong' | null>(null);
+  const [playerName] = useState(() => localStorage.getItem('mindgames-player-name') || 'Player');
 
   const generateChallenge = useCallback((): Challenge => {
     const wordIndex = Math.floor(Math.random() * COLORS.length);
@@ -90,8 +95,22 @@ const ColorMatch: React.FC = () => {
       setTimeLeft(prev => {
         if (prev <= 1) {
           setGameState('ended');
+          const isHighScore = isNewHighScore(GAME_TYPES.COLOR_MATCH, score);
           if (score > highScore) setHighScore(score);
-          soundManager.playLocalSound('lose');
+          
+          // Save to leaderboard
+          if (score > 0) {
+            addScore(GAME_TYPES.COLOR_MATCH, playerName, score, `Streak: ${streak}`);
+          }
+          
+          if (isHighScore && score > 0) {
+            soundManager.playLocalSound('win');
+            haptics.success();
+            celebrateBurst();
+          } else {
+            soundManager.playLocalSound('lose');
+            haptics.light();
+          }
           return 0;
         }
         return prev - 1;
@@ -99,7 +118,7 @@ const ColorMatch: React.FC = () => {
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [gameState, score, highScore]);
+  }, [gameState, score, highScore, streak, playerName, addScore, isNewHighScore]);
 
   return (
     <div className="flex flex-col items-center gap-6 w-full max-w-md mx-auto">

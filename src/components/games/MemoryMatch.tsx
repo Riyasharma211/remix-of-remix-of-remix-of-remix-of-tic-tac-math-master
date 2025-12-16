@@ -4,6 +4,7 @@ import { RotateCcw, Brain, Trophy, Clock } from 'lucide-react';
 import { soundManager } from '@/utils/soundManager';
 import { haptics } from '@/utils/haptics';
 import { celebrateStars } from '@/utils/confetti';
+import { useLeaderboard, GAME_TYPES } from '@/hooks/useLeaderboard';
 
 const EMOJIS = ['🚀', '⭐', '🎮', '🎯', '💎', '🔥', '⚡', '🎪'];
 
@@ -35,6 +36,7 @@ const createCards = (): Card[] => {
 };
 
 const MemoryMatch: React.FC = () => {
+  const { addScore } = useLeaderboard();
   const [cards, setCards] = useState<Card[]>(createCards());
   const [flippedCards, setFlippedCards] = useState<number[]>([]);
   const [moves, setMoves] = useState(0);
@@ -44,6 +46,7 @@ const MemoryMatch: React.FC = () => {
   const [timer, setTimer] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [bestTime, setBestTime] = useState<number | null>(null);
+  const [playerName] = useState(() => localStorage.getItem('mindgames-player-name') || 'Player');
 
   useEffect(() => {
     if (!isPlaying || gameComplete) return;
@@ -62,11 +65,16 @@ const MemoryMatch: React.FC = () => {
       soundManager.playLocalSound('win');
       haptics.success();
       celebrateStars();
+      
+      // Calculate score: base 1000 - (time * 5) - (moves * 10), minimum 100
+      const calculatedScore = Math.max(100, 1000 - (timer * 5) - (moves * 10));
+      addScore(GAME_TYPES.MEMORY_MATCH, playerName, calculatedScore, `${moves} moves in ${timer}s`);
+      
       if (bestTime === null || timer < bestTime) {
         setBestTime(timer);
       }
     }
-  }, [matches, timer, bestTime]);
+  }, [matches, timer, bestTime, moves, playerName, addScore]);
 
   const handleCardClick = (id: number) => {
     if (isLocked || flippedCards.includes(id) || cards[id].isMatched) return;
