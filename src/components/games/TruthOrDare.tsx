@@ -5,6 +5,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { supabase } from '@/integrations/supabase/client';
 import { Heart, Zap, Copy, Users, ArrowLeft, Send, MessageCircle } from 'lucide-react';
 import { toast } from 'sonner';
+import { haptics } from '@/utils/haptics';
 
 type GameMode = 'menu' | 'create' | 'join' | 'waiting' | 'playing';
 type TurnPhase = 'choosing' | 'waiting_question' | 'answering' | 'viewing_answer';
@@ -177,6 +178,8 @@ const TruthOrDare: React.FC = () => {
 
   const selectChoice = async (type: 'truth' | 'dare') => {
     if (!isMyTurn || !roomId) return;
+    
+    haptics.medium();
 
     // Pick a random other player to ask the question
     const otherPlayers = gameState.players.filter(p => p.id !== playerId);
@@ -207,6 +210,8 @@ const TruthOrDare: React.FC = () => {
 
   const submitQuestion = async () => {
     if (!roomId || !questionInput.trim()) return;
+    
+    haptics.success();
 
     const newState: GameState = {
       ...gameState,
@@ -226,6 +231,8 @@ const TruthOrDare: React.FC = () => {
 
   const submitAnswer = async () => {
     if (!roomId || !answerInput.trim()) return;
+    
+    haptics.success();
 
     const newState: GameState = {
       ...gameState,
@@ -244,6 +251,8 @@ const TruthOrDare: React.FC = () => {
 
   const nextTurn = async () => {
     if (!roomId) return;
+    
+    haptics.light();
 
     const challenge: Challenge = {
       type: gameState.currentType || 'truth',

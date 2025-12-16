@@ -4,6 +4,7 @@ import { Input } from '@/components/ui/input';
 import { Grid3X3, Users, Copy, Check, RotateCcw, Wifi, WifiOff } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { soundManager } from '@/utils/soundManager';
+import { haptics } from '@/utils/haptics';
 import { useToast } from '@/hooks/use-toast';
 
 type Player = 'X' | 'O' | null;
@@ -170,6 +171,8 @@ const TicTacToeOnline: React.FC = () => {
     // In online mode, only allow moves on your turn
     if (mode === 'online-playing' && currentPlayer !== mySymbol) return;
 
+    haptics.medium();
+    
     const newBoard = [...board];
     newBoard[index] = currentPlayer;
     setBoard(newBoard);
@@ -189,9 +192,11 @@ const TicTacToeOnline: React.FC = () => {
       };
       setScores(newScores);
       soundManager.playLocalSound('win');
+      haptics.success();
     } else if (newBoard.every(cell => cell !== null)) {
       setIsDraw(true);
       soundManager.playLocalSound('lose');
+      haptics.error();
     } else {
       setCurrentPlayer(nextPlayer);
     }
