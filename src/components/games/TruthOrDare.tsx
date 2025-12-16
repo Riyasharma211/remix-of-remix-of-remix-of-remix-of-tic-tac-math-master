@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -6,6 +6,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Heart, Zap, Copy, Users, ArrowLeft, Send, MessageCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { haptics } from '@/utils/haptics';
+import { RealtimeChannel } from '@supabase/supabase-js';
 
 type GameMode = 'menu' | 'create' | 'join' | 'waiting' | 'playing';
 type TurnPhase = 'choosing' | 'waiting_question' | 'answering' | 'viewing_answer';
@@ -44,6 +45,7 @@ const TruthOrDare: React.FC = () => {
     challenges: [],
     turnPhase: 'choosing'
   });
+  const channelRef = useRef<RealtimeChannel | null>(null);
 
   const currentPlayer = gameState.players[gameState.currentPlayerIndex];
   const isMyTurn = currentPlayer?.id === playerId;
@@ -103,7 +105,7 @@ const TruthOrDare: React.FC = () => {
       .select('*')
       .eq('room_code', inputCode.toUpperCase())
       .eq('game_type', 'truthordare')
-      .single();
+      .maybeSingle();
 
     if (error || !data) {
       toast.error('Room not found');
@@ -131,6 +133,20 @@ const TruthOrDare: React.FC = () => {
       })
       .eq('id', data.id);
 
+    // Broadcast player joined event instantly to host
+    const tempChannel = supabase.channel(`tod-${inputCode.toUpperCase()}`);
+    await tempChannel.subscribe();
+    await tempChannel.send({
+      type: 'broadcast',
+      event: 'game_update',
+      payload: { 
+        player_joined: true, 
+        gameState: currentState,
+        status: shouldAutoStart ? 'playing' : data.status
+      }
+    });
+    supabase.removeChannel(tempChannel);
+
     setRoomCode(inputCode.toUpperCase());
     setRoomId(data.id);
     setGameState(currentState);
@@ -156,61 +172,75 @@ const TruthOrDare: React.FC = () => {
     setMode('playing');
   };
 
-  // Subscribe to realtime updates
+  // Subscribe to realtime updates using broadcast channels (like TicTacToe)
   useEffect(() => {
-    if (!roomId) return;
-
-    let cancelled = false;
-
-    const syncState = async () => {
-      const { data, error } = await supabase
-        .from('game_rooms')
-        .select('game_state,status')
-        .eq('id', roomId)
-        .single();
-
-      if (cancelled) return;
-      if (error || !data) return;
-
-      const fetchedState = JSON.parse(JSON.stringify(data.game_state)) as GameState;
-      setGameState(fetchedState);
-
-      if (data.status === 'playing') {
-        setMode('playing');
-      }
-    };
-
-    void syncState();
+    if (!roomCode || (mode !== 'waiting' && mode !== 'playing')) return;
 
     const channel = supabase
-      .channel(`truthordare-${roomId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'game_rooms',
-          filter: `id=eq.${roomId}`
-        },
-        (payload) => {
-          const newState = JSON.parse(JSON.stringify(payload.new.game_state)) as GameState;
-          setGameState(newState);
-
-          if (payload.new.status === 'playing') {
+      .channel(`tod-${roomCode}`, {
+        config: { broadcast: { self: false } }
+      })
+      .on('broadcast', { event: 'game_update' }, ({ payload }) => {
+        if (payload) {
+          // Handle player joined
+          if (payload.player_joined && mode === 'waiting') {
+            const newState = payload.gameState as GameState;
+            setGameState(newState);
             setMode('playing');
-            if ((payload.old as any)?.status !== 'playing') {
-              toast.success('Game started!');
-            }
+            haptics.success();
+            toast.success('Opponent joined! Game starting!');
+          }
+          
+          // Handle game state updates
+          if (payload.gameState) {
+            setGameState(payload.gameState as GameState);
+          }
+          
+          // Handle status change
+          if (payload.status === 'playing' && mode === 'waiting') {
+            setMode('playing');
           }
         }
-      )
-      .subscribe();
+      })
+      .on('presence', { event: 'join' }, ({ newPresences }) => {
+        // Auto-start when opponent joins via presence
+        if (mode === 'waiting' && newPresences.length > 0) {
+          const isOpponentJoining = newPresences.some(p => (p as any).playerId !== playerId);
+          if (isOpponentJoining) {
+            // Fetch latest state from DB
+            supabase
+              .from('game_rooms')
+              .select('game_state,status')
+              .eq('room_code', roomCode)
+              .eq('game_type', 'truthordare')
+              .maybeSingle()
+              .then(({ data }) => {
+                if (data) {
+                  const newState = JSON.parse(JSON.stringify(data.game_state)) as GameState;
+                  setGameState(newState);
+                  if (data.status === 'playing' || newState.players.length >= 2) {
+                    setMode('playing');
+                    haptics.success();
+                    toast.success('Opponent joined! Game starting!');
+                  }
+                }
+              });
+          }
+        }
+      })
+      .subscribe(async (status) => {
+        if (status === 'SUBSCRIBED') {
+          await channel.track({ playerId, playerName, joined_at: Date.now() });
+        }
+      });
+
+    channelRef.current = channel;
 
     return () => {
-      cancelled = true;
       supabase.removeChannel(channel);
+      channelRef.current = null;
     };
-  }, [roomId]);
+  }, [roomCode, mode, playerId, playerName]);
 
   const selectChoice = async (type: 'truth' | 'dare') => {
     if (!isMyTurn || !roomId) return;
@@ -240,6 +270,13 @@ const TruthOrDare: React.FC = () => {
       .update({ game_state: JSON.parse(JSON.stringify(newState)) })
       .eq('id', roomId);
 
+    // Broadcast update instantly
+    channelRef.current?.send({
+      type: 'broadcast',
+      event: 'game_update',
+      payload: { gameState: newState }
+    });
+
     setGameState(newState);
     toast.info(`${asker.name} will type a ${type} for you!`);
   };
@@ -259,6 +296,13 @@ const TruthOrDare: React.FC = () => {
       .from('game_rooms')
       .update({ game_state: JSON.parse(JSON.stringify(newState)) })
       .eq('id', roomId);
+
+    // Broadcast update instantly
+    channelRef.current?.send({
+      type: 'broadcast',
+      event: 'game_update',
+      payload: { gameState: newState }
+    });
 
     setGameState(newState);
     setQuestionInput('');
@@ -280,6 +324,13 @@ const TruthOrDare: React.FC = () => {
       .from('game_rooms')
       .update({ game_state: JSON.parse(JSON.stringify(newState)) })
       .eq('id', roomId);
+
+    // Broadcast update instantly
+    channelRef.current?.send({
+      type: 'broadcast',
+      event: 'game_update',
+      payload: { gameState: newState }
+    });
 
     setGameState(newState);
     setAnswerInput('');
@@ -315,6 +366,13 @@ const TruthOrDare: React.FC = () => {
       .from('game_rooms')
       .update({ game_state: JSON.parse(JSON.stringify(newState)) })
       .eq('id', roomId);
+
+    // Broadcast update instantly
+    channelRef.current?.send({
+      type: 'broadcast',
+      event: 'game_update',
+      payload: { gameState: newState }
+    });
 
     setGameState(newState);
     toast.success('Next player\'s turn!');
