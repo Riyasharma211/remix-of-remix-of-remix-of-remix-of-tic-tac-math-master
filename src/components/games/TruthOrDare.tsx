@@ -310,13 +310,6 @@ const TruthOrDare: React.FC = () => {
           <Zap className="w-8 h-8 text-neon-orange animate-pulse" />
         </div>
 
-        <Input
-          value={playerName}
-          onChange={(e) => setPlayerName(e.target.value)}
-          placeholder="Your name..."
-          className="w-full bg-background/50 border-border text-base py-6"
-        />
-
         <div className="flex flex-col gap-4">
           <Button
             onClick={() => setMode('create')}
@@ -338,7 +331,7 @@ const TruthOrDare: React.FC = () => {
     );
   }
 
-  // Create room
+  // Create room - ask for name here
   if (mode === 'create') {
     return (
       <div className="text-center space-y-6 px-4 py-6 max-w-md mx-auto">
@@ -346,9 +339,16 @@ const TruthOrDare: React.FC = () => {
           <ArrowLeft className="w-4 h-4 mr-2" /> Back
         </Button>
         <h3 className="font-orbitron text-xl text-foreground">Create Room</h3>
+        <Input
+          value={playerName}
+          onChange={(e) => setPlayerName(e.target.value)}
+          placeholder="Your name..."
+          className="w-full bg-background/50 border-border text-base py-6"
+        />
         <Button
           onClick={createRoom}
-          className="w-full bg-neon-pink/20 border border-neon-pink text-neon-pink hover:bg-neon-pink/30 py-6 text-lg"
+          disabled={!playerName.trim()}
+          className="w-full bg-neon-pink/20 border border-neon-pink text-neon-pink hover:bg-neon-pink/30 py-6 text-lg disabled:opacity-50"
         >
           Create Game
         </Button>
@@ -356,7 +356,7 @@ const TruthOrDare: React.FC = () => {
     );
   }
 
-  // Join room
+  // Join room - ask for code AND name together
   if (mode === 'join') {
     return (
       <div className="text-center space-y-6 px-4 py-6 max-w-md mx-auto">
@@ -364,17 +364,26 @@ const TruthOrDare: React.FC = () => {
           <ArrowLeft className="w-4 h-4 mr-2" /> Back
         </Button>
         <h3 className="font-orbitron text-xl text-foreground">Join Room</h3>
+        
         <Input
           value={inputCode}
           onChange={(e) => setInputCode(e.target.value.toUpperCase())}
-          placeholder="Enter code..."
+          placeholder="Room Code"
           maxLength={4}
           className="w-full text-center text-3xl tracking-[0.5em] bg-background/50 border-border py-6 font-mono"
         />
+        
+        <Input
+          value={playerName}
+          onChange={(e) => setPlayerName(e.target.value)}
+          placeholder="Your name..."
+          className="w-full bg-background/50 border-border text-base py-6"
+        />
+        
         <Button
           onClick={joinRoom}
-          disabled={inputCode.length !== 4}
-          className="w-full bg-neon-green/20 border border-neon-green text-neon-green hover:bg-neon-green/30 py-6 text-lg"
+          disabled={inputCode.length !== 4 || !playerName.trim()}
+          className="w-full bg-neon-green/20 border border-neon-green text-neon-green hover:bg-neon-green/30 py-6 text-lg disabled:opacity-50"
         >
           Join Game
         </Button>
