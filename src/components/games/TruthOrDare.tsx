@@ -14,7 +14,8 @@ type GameMode = 'menu' | 'create' | 'join' | 'waiting' | 'playing';
 type TurnPhase = 
   | 'choosing'         // Current player chooses Truth or Dare
   | 'opponent_writing' // Opponent writes the question/dare
-  | 'answering';       // Current player answers/does the task
+  | 'answering'        // Current player answers/does the task
+  | 'showing_answer';  // Show answer to both players before next turn
 
 interface GameState {
   players: { id: string; name: string; skipsLeft: number }[];
@@ -22,6 +23,8 @@ interface GameState {
   turnPhase: TurnPhase;
   currentType?: 'truth' | 'dare';
   currentQuestion?: string;
+  currentAnswer?: string;
+  answeredBy?: string;
   roundCount: number;
 }
 
@@ -278,7 +281,7 @@ const TruthOrDare: React.FC = () => {
     toast.success('Sent! 💕');
   };
 
-  // Player submits answer - auto switch to next turn
+  // Player submits answer - show to both before switching
   const submitAnswer = async () => {
     if (!roomId || !isMyTurn) return;
     
@@ -292,29 +295,42 @@ const TruthOrDare: React.FC = () => {
     setIsSubmitting(true);
     celebrateHearts();
     
-    const nextIndex = (gameState.currentPlayerIndex + 1) % gameState.players.length;
     const newState: GameState = {
       ...gameState,
-      currentPlayerIndex: nextIndex,
-      turnPhase: 'choosing',
-      currentType: undefined,
-      currentQuestion: undefined,
-      roundCount: gameState.roundCount + 1
+      turnPhase: 'showing_answer',
+      currentAnswer: validation.value!,
+      answeredBy: myPlayer?.name
     };
     
     await updateAndBroadcast(newState);
     setAnswerInput('');
     setIsSubmitting(false);
-    toast.success('Answer submitted! Next turn 💕');
   };
 
-  // Mark dare as done - auto switch to next turn
+  // Mark dare as done - show to both before switching
   const markDone = async () => {
     if (!roomId || !isMyTurn) return;
     haptics.success();
     setIsSubmitting(true);
     celebrateHearts();
     
+    const newState: GameState = {
+      ...gameState,
+      turnPhase: 'showing_answer',
+      currentAnswer: '✅ Dare completed!',
+      answeredBy: myPlayer?.name
+    };
+    
+    await updateAndBroadcast(newState);
+    setIsSubmitting(false);
+  };
+
+  // Proceed to next turn after showing answer
+  const proceedToNextTurn = async () => {
+    if (!roomId) return;
+    haptics.light();
+    setIsSubmitting(true);
+    
     const nextIndex = (gameState.currentPlayerIndex + 1) % gameState.players.length;
     const newState: GameState = {
       ...gameState,
@@ -322,12 +338,14 @@ const TruthOrDare: React.FC = () => {
       turnPhase: 'choosing',
       currentType: undefined,
       currentQuestion: undefined,
+      currentAnswer: undefined,
+      answeredBy: undefined,
       roundCount: gameState.roundCount + 1
     };
     
     await updateAndBroadcast(newState);
     setIsSubmitting(false);
-    toast.success('Dare completed! Next turn 💕');
+    toast.success('Next turn! 💕');
   };
 
   // Skip question
@@ -875,6 +893,45 @@ const TruthOrDare: React.FC = () => {
               </p>
             </div>
           )}
+        </div>
+      )}
+
+      {/* PHASE: Showing Answer to Both Players */}
+      {gameState.turnPhase === 'showing_answer' && gameState.currentAnswer && (
+        <div className="flex-1 flex flex-col items-center justify-center space-y-6 animate-fade-in">
+          {/* Question/Dare Card */}
+          <div className={`w-full p-5 rounded-2xl ${
+            gameState.currentType === 'truth' 
+              ? 'bg-gradient-to-br from-pink-500/10 to-purple-500/10 border border-pink-500/20' 
+              : 'bg-gradient-to-br from-red-500/10 to-orange-500/10 border border-red-500/20'
+          }`}>
+            <div className="text-center mb-2">
+              <span className="text-2xl">{gameState.currentType === 'truth' ? '💭' : '🔥'}</span>
+              <p className="text-sm text-muted-foreground mt-1">{gameState.currentType?.toUpperCase()}</p>
+            </div>
+            <p className="text-center text-muted-foreground">{gameState.currentQuestion}</p>
+          </div>
+
+          {/* Answer Card */}
+          <div className="w-full p-6 rounded-3xl bg-gradient-to-br from-green-500/20 to-emerald-500/20 border-2 border-green-500/30 animate-scale-in">
+            <div className="text-center mb-3">
+              <span className="text-4xl">💕</span>
+              <h3 className="font-orbitron text-lg text-green-400 mt-2">
+                {gameState.answeredBy}'s {gameState.currentType === 'truth' ? 'Answer' : 'Response'}
+              </h3>
+            </div>
+            <p className="text-lg text-center leading-relaxed">{gameState.currentAnswer}</p>
+          </div>
+
+          {/* Next Turn Button - either player can click */}
+          <Button
+            onClick={proceedToNextTurn}
+            disabled={isSubmitting}
+            className="w-full bg-gradient-to-r from-pink-500 to-red-500 text-white py-6 text-lg transition-all hover:scale-[1.02]"
+          >
+            {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Sparkles className="w-5 h-5 mr-2" />}
+            Next Turn 💕
+          </Button>
         </div>
       )}
     </div>
