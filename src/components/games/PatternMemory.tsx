@@ -3,6 +3,9 @@ import { Button } from '@/components/ui/button';
 import { Sparkles, Play, RotateCcw, Trophy, Volume2 } from 'lucide-react';
 import { soundManager } from '@/utils/soundManager';
 import { useDifficulty } from '@/contexts/DifficultyContext';
+import { haptics } from '@/utils/haptics';
+import { celebrateStars } from '@/utils/confetti';
+import { useLeaderboard, GAME_TYPES } from '@/hooks/useLeaderboard';
 
 type GameState = 'idle' | 'showing' | 'input' | 'success' | 'failed';
 
@@ -15,6 +18,7 @@ const COLORS = [
 
 const PatternMemory: React.FC = () => {
   const { config } = useDifficulty();
+  const { addScore } = useLeaderboard();
   const [gameState, setGameState] = useState<GameState>('idle');
   const [pattern, setPattern] = useState<number[]>([]);
   const [playerInput, setPlayerInput] = useState<number[]>([]);
@@ -23,6 +27,7 @@ const PatternMemory: React.FC = () => {
   const [highScore, setHighScore] = useState(0);
   const [round, setRound] = useState(0);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [playerName] = useState(() => localStorage.getItem('mindgames-player-name') || 'Player');
 
   const playTone = (index: number) => {
     const frequencies = [261.63, 329.63, 392.00, 523.25]; // C4, E4, G4, C5
@@ -91,8 +96,16 @@ const PatternMemory: React.FC = () => {
       // Wrong!
       setGameState('failed');
       soundManager.playLocalSound('lose');
+      haptics.error();
+      
+      // Save score to leaderboard
+      if (score > 0) {
+        addScore(GAME_TYPES.PATTERN_MEMORY, playerName, score, `Round ${round}`);
+      }
+      
       if (score > highScore) {
         setHighScore(score);
+        celebrateStars();
       }
       return;
     }
