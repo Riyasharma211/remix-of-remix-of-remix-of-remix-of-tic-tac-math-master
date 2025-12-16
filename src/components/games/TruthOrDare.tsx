@@ -247,6 +247,7 @@ const TruthOrDare: React.FC = () => {
     
     // Check if already in the game
     const alreadyJoined = currentState.players.some(p => p.id === playerId);
+    const isJoiner = !alreadyJoined;
     
     if (!alreadyJoined) {
       currentState.players.push({ id: playerId, name: playerName, skipsLeft: 2 });
@@ -271,10 +272,28 @@ const TruthOrDare: React.FC = () => {
       })
       .eq('id', roomId);
 
-    // Broadcast update
-    const tempChannel = supabase.channel(`tod-${roomCode}`);
-    await tempChannel.subscribe();
-    await tempChannel.send({
+    // Use existing channel if available, otherwise create temp channel
+    const broadcastChannel = channelRef.current || supabase.channel(`tod-${roomCode}`);
+    
+    if (!channelRef.current) {
+      await broadcastChannel.subscribe();
+    }
+    
+    // Broadcast player_joined event for instant host notification
+    if (isJoiner) {
+      await broadcastChannel.send({
+        type: 'broadcast',
+        event: 'player_joined',
+        payload: { 
+          playerId,
+          playerName,
+          timestamp: Date.now()
+        }
+      });
+    }
+    
+    // Broadcast game update
+    await broadcastChannel.send({
       type: 'broadcast',
       event: 'game_update',
       payload: { 
@@ -282,7 +301,10 @@ const TruthOrDare: React.FC = () => {
         status: shouldStart ? 'playing' : 'waiting'
       }
     });
-    supabase.removeChannel(tempChannel);
+    
+    if (!channelRef.current) {
+      supabase.removeChannel(broadcastChannel);
+    }
 
     setGameState(currentState);
     setPartnerName(currentState.players.find(p => p.id !== playerId)?.name || '');
@@ -315,9 +337,9 @@ const TruthOrDare: React.FC = () => {
     return { type, question };
   };
 
-  // Realtime subscription
+  // Realtime subscription - start from setup/waiting/playing modes
   useEffect(() => {
-    if (!roomCode || (mode !== 'waiting' && mode !== 'playing')) return;
+    if (!roomCode || (mode !== 'setup' && mode !== 'waiting' && mode !== 'playing')) return;
 
     const channel = supabase
       .channel(`tod-${roomCode}`, {
@@ -327,9 +349,13 @@ const TruthOrDare: React.FC = () => {
         if (payload?.gameState) {
           const newState = payload.gameState as GameState;
           setGameState(newState);
-          setPartnerName(newState.players.find(p => p.id !== playerId)?.name || '');
+          const partnerPlayer = newState.players.find(p => p.id !== playerId);
+          if (partnerPlayer) {
+            setPartnerName(partnerPlayer.name);
+          }
           
-          if (payload.status === 'playing' && mode === 'waiting') {
+          // Transition to playing when game starts
+          if (payload.status === 'playing' && (mode === 'waiting' || mode === 'setup')) {
             setMode('playing');
             celebrateHearts();
             haptics.success();
@@ -343,8 +369,14 @@ const TruthOrDare: React.FC = () => {
           }
         }
       })
-      .on('presence', { event: 'join' }, ({ newPresences }) => {
-        if (mode === 'waiting' && newPresences.length > 0) {
+      .on('broadcast', { event: 'player_joined' }, ({ payload }) => {
+        // Instant notification when partner joins
+        if (payload?.playerName && payload.playerId !== playerId) {
+          setPartnerName(payload.playerName);
+          toast.success(`${payload.playerName} joined! 💕`);
+          haptics.success();
+          
+          // Refresh game state from server
           supabase
             .from('game_rooms')
             .select('game_state,status')
@@ -354,15 +386,38 @@ const TruthOrDare: React.FC = () => {
               if (data) {
                 const newState = JSON.parse(JSON.stringify(data.game_state)) as GameState;
                 setGameState(newState);
-                setPartnerName(newState.players.find(p => p.id !== playerId)?.name || '');
                 if (data.status === 'playing' || newState.players.length >= 2) {
                   setMode('playing');
                   celebrateHearts();
-                  haptics.success();
-                  toast.success('Your partner joined! 💕');
                 }
               }
             });
+        }
+      })
+      .on('presence', { event: 'join' }, ({ newPresences }) => {
+        // Also listen to presence for backup detection
+        if ((mode === 'waiting' || mode === 'setup') && newPresences.length > 0) {
+          const otherPlayer = newPresences.find((p: any) => p.playerId !== playerId);
+          if (otherPlayer) {
+            supabase
+              .from('game_rooms')
+              .select('game_state,status')
+              .eq('room_code', roomCode)
+              .maybeSingle()
+              .then(({ data }) => {
+                if (data) {
+                  const newState = JSON.parse(JSON.stringify(data.game_state)) as GameState;
+                  setGameState(newState);
+                  setPartnerName(newState.players.find(p => p.id !== playerId)?.name || '');
+                  if (data.status === 'playing' || newState.players.length >= 2) {
+                    setMode('playing');
+                    celebrateHearts();
+                    haptics.success();
+                    toast.success('Your partner joined! 💕');
+                  }
+                }
+              });
+          }
         }
       })
       .subscribe(async (status) => {
