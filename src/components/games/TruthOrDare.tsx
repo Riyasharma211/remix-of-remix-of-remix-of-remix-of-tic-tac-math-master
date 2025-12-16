@@ -1,34 +1,76 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { supabase } from '@/integrations/supabase/client';
-import { Heart, Zap, Copy, Users, ArrowLeft, Send, MessageCircle } from 'lucide-react';
+import { Heart, Copy, Users, ArrowLeft, Plus, Trash2, Play, Clock, SkipForward, Check, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import { haptics } from '@/utils/haptics';
 import { RealtimeChannel } from '@supabase/supabase-js';
+import { celebrateHearts } from '@/utils/confetti';
 
-type GameMode = 'menu' | 'create' | 'join' | 'waiting' | 'playing';
-type TurnPhase = 'choosing' | 'waiting_question' | 'answering' | 'viewing_answer';
+type GameMode = 'menu' | 'create' | 'join' | 'setup' | 'waiting' | 'playing';
+type TurnPhase = 'showing_question' | 'waiting_confirmation' | 'viewing_reaction';
 
-interface Challenge {
+interface CustomQuestion {
   type: 'truth' | 'dare';
   question: string;
-  answer: string;
-  asker: string;
-  answerer: string;
+  addedBy: string;
 }
 
 interface GameState {
-  players: { id: string; name: string }[];
+  players: { id: string; name: string; skipsLeft: number }[];
   currentPlayerIndex: number;
-  challenges: Challenge[];
+  currentQuestion?: { type: 'truth' | 'dare'; question: string };
   turnPhase: TurnPhase;
-  currentType?: 'truth' | 'dare';
-  currentQuestion?: string;
-  currentAnswer?: string;
-  askerName?: string;
+  customQuestions: CustomQuestion[];
+  usedQuestions: string[];
+  reaction?: string;
+  roundCount: number;
 }
+
+// System romantic questions
+const SYSTEM_TRUTHS = [
+  "When did you first feel emotionally connected to your partner? 💕",
+  "What is one small thing your partner does that melts your heart?",
+  "What's your favorite memory of us together?",
+  "What made you realize you were falling in love?",
+  "What's one thing you've never told me but always wanted to?",
+  "What do you love most about our relationship?",
+  "When do you feel most loved by me?",
+  "What's the sweetest thing I've ever done for you?",
+  "What was your first impression of me?",
+  "What's your favorite physical feature of mine?",
+  "What song reminds you of us?",
+  "What's one thing you want us to do together someday?",
+  "What makes you feel safe with me?",
+  "What's the most romantic moment we've shared?",
+  "What do you appreciate most about how I love you?",
+  "What's something I do that always makes you smile?",
+  "What's your favorite way to spend time with me?",
+  "What do you think is our greatest strength as a couple?",
+];
+
+const SYSTEM_DARES = [
+  "Send your partner a sweet message right now 💖",
+  "Give your partner the longest hug (at least 30 seconds!)",
+  "Whisper something sweet in your partner's ear",
+  "Kiss your partner's forehead and tell them why they're special",
+  "Look into your partner's eyes for 60 seconds without talking",
+  "Dance slowly with your partner for one minute",
+  "Write a short love note on your partner's hand",
+  "Tell your partner 5 things you love about them",
+  "Give your partner a gentle shoulder massage for 1 minute",
+  "Serenade your partner with any love song",
+  "Hold hands with your partner and share a wish for your future",
+  "Take a cute selfie together right now",
+  "Feed your partner something sweet (if available)",
+  "Recreate your first kiss",
+  "Give your partner butterfly kisses",
+  "Create a heart shape with your hands together",
+  "Slow dance to an imaginary song",
+  "Tell your partner your favorite thing about their personality",
+];
 
 const TruthOrDare: React.FC = () => {
   const [mode, setMode] = useState<GameMode>('menu');
@@ -37,36 +79,78 @@ const TruthOrDare: React.FC = () => {
   const [roomId, setRoomId] = useState<string | null>(null);
   const [playerId] = useState(() => Math.random().toString(36).substring(2, 8));
   const [playerName, setPlayerName] = useState('');
-  const [questionInput, setQuestionInput] = useState('');
-  const [answerInput, setAnswerInput] = useState('');
+  const [partnerName, setPartnerName] = useState('');
+  
+  // Custom questions setup
+  const [customTruthInput, setCustomTruthInput] = useState('');
+  const [customDareInput, setCustomDareInput] = useState('');
+  const [myCustomQuestions, setMyCustomQuestions] = useState<CustomQuestion[]>([]);
+  
+  // Timer
+  const [timeLeft, setTimeLeft] = useState(45);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  
   const [gameState, setGameState] = useState<GameState>({
     players: [],
     currentPlayerIndex: 0,
-    challenges: [],
-    turnPhase: 'choosing'
+    turnPhase: 'showing_question',
+    customQuestions: [],
+    usedQuestions: [],
+    roundCount: 0
   });
+  
+  const [floatingHearts, setFloatingHearts] = useState<{ id: number; x: number }[]>([]);
   const channelRef = useRef<RealtimeChannel | null>(null);
 
   const currentPlayer = gameState.players[gameState.currentPlayerIndex];
   const isMyTurn = currentPlayer?.id === playerId;
-  const amIAsker = gameState.askerName === playerName;
+  const myPlayer = gameState.players.find(p => p.id === playerId);
+  const partner = gameState.players.find(p => p.id !== playerId);
 
-  const generateRoomCode = () => {
-    return Math.random().toString(36).substring(2, 6).toUpperCase();
-  };
+  const generateRoomCode = () => Math.random().toString(36).substring(2, 6).toUpperCase();
+
+  // Floating hearts animation
+  const spawnHeart = useCallback(() => {
+    const newHeart = { id: Date.now(), x: Math.random() * 100 };
+    setFloatingHearts(prev => [...prev, newHeart]);
+    setTimeout(() => {
+      setFloatingHearts(prev => prev.filter(h => h.id !== newHeart.id));
+    }, 3000);
+  }, []);
+
+  // Timer logic
+  useEffect(() => {
+    if (mode === 'playing' && gameState.turnPhase === 'showing_question' && isMyTurn) {
+      setTimeLeft(45);
+      timerRef.current = setInterval(() => {
+        setTimeLeft(prev => {
+          if (prev <= 1) {
+            clearInterval(timerRef.current!);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [mode, gameState.turnPhase, isMyTurn, gameState.currentPlayerIndex]);
 
   const createRoom = async () => {
     if (!playerName.trim()) {
-      toast.error('Please enter your name');
+      toast.error('Please enter your name 💕');
       return;
     }
 
     const code = generateRoomCode();
     const initialState: GameState = {
-      players: [{ id: playerId, name: playerName }],
+      players: [{ id: playerId, name: playerName, skipsLeft: 2 }],
       currentPlayerIndex: 0,
-      challenges: [],
-      turnPhase: 'choosing'
+      turnPhase: 'showing_question',
+      customQuestions: [],
+      usedQuestions: [],
+      roundCount: 0
     };
 
     const { data, error } = await supabase
@@ -90,13 +174,13 @@ const TruthOrDare: React.FC = () => {
     setRoomCode(code);
     setRoomId(data.id);
     setGameState(initialState);
-    setMode('waiting');
-    toast.success(`Room created! Code: ${code}`);
+    setMode('setup');
+    toast.success(`Room created! Add your custom questions 💖`);
   };
 
   const joinRoom = async () => {
     if (!playerName.trim()) {
-      toast.error('Please enter your name');
+      toast.error('Please enter your name 💕');
       return;
     }
 
@@ -114,65 +198,124 @@ const TruthOrDare: React.FC = () => {
 
     const currentState = JSON.parse(JSON.stringify(data.game_state)) as GameState;
 
-    const maxPlayers = data.max_players ?? 2;
-    if (currentState.players.length >= maxPlayers || data.player_count >= maxPlayers) {
-      toast.error('Room is full');
+    if (currentState.players.length >= 2 || data.player_count >= 2) {
+      toast.error('This couple room is full 💔');
       return;
     }
 
-    currentState.players.push({ id: playerId, name: playerName });
+    setRoomCode(inputCode.toUpperCase());
+    setRoomId(data.id);
+    setGameState(currentState);
+    setPartnerName(currentState.players[0]?.name || '');
+    setMode('setup');
+    toast.success(`Joining ${currentState.players[0]?.name}'s room! Add your questions 💕`);
+  };
 
-    const shouldAutoStart = data.status === 'waiting' && data.player_count + 1 >= 2;
+  const addCustomQuestion = (type: 'truth' | 'dare') => {
+    const input = type === 'truth' ? customTruthInput : customDareInput;
+    if (!input.trim()) return;
+    
+    haptics.light();
+    const newQuestion: CustomQuestion = { type, question: input.trim(), addedBy: playerName };
+    setMyCustomQuestions(prev => [...prev, newQuestion]);
+    
+    if (type === 'truth') setCustomTruthInput('');
+    else setCustomDareInput('');
+    
+    toast.success(`${type === 'truth' ? 'Truth' : 'Dare'} added! 💕`);
+  };
 
+  const removeCustomQuestion = (index: number) => {
+    haptics.light();
+    setMyCustomQuestions(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const finishSetupAndJoin = async () => {
+    if (!roomId) return;
+    
+    haptics.success();
+    
+    const { data } = await supabase
+      .from('game_rooms')
+      .select('game_state, player_count')
+      .eq('id', roomId)
+      .single();
+    
+    if (!data) return;
+    
+    const currentState = JSON.parse(JSON.stringify(data.game_state)) as GameState;
+    
+    // Check if already in the game
+    const alreadyJoined = currentState.players.some(p => p.id === playerId);
+    
+    if (!alreadyJoined) {
+      currentState.players.push({ id: playerId, name: playerName, skipsLeft: 2 });
+    }
+    
+    // Add custom questions
+    currentState.customQuestions = [...currentState.customQuestions, ...myCustomQuestions];
+    
+    const shouldStart = currentState.players.length >= 2;
+    
+    // Pick first random question if starting
+    if (shouldStart && !currentState.currentQuestion) {
+      currentState.currentQuestion = getRandomQuestion(currentState);
+    }
+    
     await supabase
       .from('game_rooms')
       .update({
         game_state: JSON.parse(JSON.stringify(currentState)),
-        player_count: data.player_count + 1,
-        status: shouldAutoStart ? 'playing' : data.status
+        player_count: currentState.players.length,
+        status: shouldStart ? 'playing' : 'waiting'
       })
-      .eq('id', data.id);
+      .eq('id', roomId);
 
-    // Broadcast player joined event instantly to host
-    const tempChannel = supabase.channel(`tod-${inputCode.toUpperCase()}`);
+    // Broadcast update
+    const tempChannel = supabase.channel(`tod-${roomCode}`);
     await tempChannel.subscribe();
     await tempChannel.send({
       type: 'broadcast',
       event: 'game_update',
       payload: { 
-        player_joined: true, 
         gameState: currentState,
-        status: shouldAutoStart ? 'playing' : data.status
+        status: shouldStart ? 'playing' : 'waiting'
       }
     });
     supabase.removeChannel(tempChannel);
 
-    setRoomCode(inputCode.toUpperCase());
-    setRoomId(data.id);
     setGameState(currentState);
-    setMode(shouldAutoStart || data.status === 'playing' ? 'playing' : 'waiting');
-    toast.success(shouldAutoStart ? 'Opponent found! Game starting...' : 'Joined room!');
-  };
-
-  const startGame = async () => {
-    if (!roomId || gameState.players.length < 2) {
-      toast.error('Need at least 2 players');
-      return;
+    setPartnerName(currentState.players.find(p => p.id !== playerId)?.name || '');
+    setMode(shouldStart ? 'playing' : 'waiting');
+    
+    if (shouldStart) {
+      celebrateHearts();
+      toast.success('Game starting! Have fun, lovebirds! 💕');
     }
-
-    const newState = { ...gameState, turnPhase: 'choosing' as TurnPhase };
-    await supabase
-      .from('game_rooms')
-      .update({
-        game_state: JSON.parse(JSON.stringify(newState)),
-        status: 'playing'
-      })
-      .eq('id', roomId);
-
-    setMode('playing');
   };
 
-  // Subscribe to realtime updates using broadcast channels (like TicTacToe)
+  const getRandomQuestion = (state: GameState): { type: 'truth' | 'dare'; question: string } => {
+    // Randomly pick truth or dare
+    const type = Math.random() > 0.5 ? 'truth' : 'dare';
+    
+    // Combine custom and system questions
+    const allQuestions = [
+      ...state.customQuestions.filter(q => q.type === type).map(q => q.question),
+      ...(type === 'truth' ? SYSTEM_TRUTHS : SYSTEM_DARES)
+    ];
+    
+    // Filter out used questions
+    const availableQuestions = allQuestions.filter(q => !state.usedQuestions.includes(q));
+    
+    // If all used, reset
+    const questionsPool = availableQuestions.length > 0 ? availableQuestions : allQuestions;
+    
+    const question = questionsPool[Math.floor(Math.random() * questionsPool.length)];
+    
+    return { type, question };
+  };
+
+  // Realtime subscription
   useEffect(() => {
     if (!roomCode || (mode !== 'waiting' && mode !== 'playing')) return;
 
@@ -181,51 +324,45 @@ const TruthOrDare: React.FC = () => {
         config: { broadcast: { self: false } }
       })
       .on('broadcast', { event: 'game_update' }, ({ payload }) => {
-        if (payload) {
-          // Handle player joined
-          if (payload.player_joined && mode === 'waiting') {
-            const newState = payload.gameState as GameState;
-            setGameState(newState);
-            setMode('playing');
-            haptics.success();
-            toast.success('Opponent joined! Game starting!');
-          }
+        if (payload?.gameState) {
+          const newState = payload.gameState as GameState;
+          setGameState(newState);
+          setPartnerName(newState.players.find(p => p.id !== playerId)?.name || '');
           
-          // Handle game state updates
-          if (payload.gameState) {
-            setGameState(payload.gameState as GameState);
-          }
-          
-          // Handle status change
           if (payload.status === 'playing' && mode === 'waiting') {
             setMode('playing');
+            celebrateHearts();
+            haptics.success();
+            toast.success('Your partner joined! Let the love game begin! 💕');
+          }
+          
+          // Show reaction
+          if (newState.reaction) {
+            spawnHeart();
+            if (newState.reaction === 'love') celebrateHearts();
           }
         }
       })
       .on('presence', { event: 'join' }, ({ newPresences }) => {
-        // Auto-start when opponent joins via presence
         if (mode === 'waiting' && newPresences.length > 0) {
-          const isOpponentJoining = newPresences.some(p => (p as any).playerId !== playerId);
-          if (isOpponentJoining) {
-            // Fetch latest state from DB
-            supabase
-              .from('game_rooms')
-              .select('game_state,status')
-              .eq('room_code', roomCode)
-              .eq('game_type', 'truthordare')
-              .maybeSingle()
-              .then(({ data }) => {
-                if (data) {
-                  const newState = JSON.parse(JSON.stringify(data.game_state)) as GameState;
-                  setGameState(newState);
-                  if (data.status === 'playing' || newState.players.length >= 2) {
-                    setMode('playing');
-                    haptics.success();
-                    toast.success('Opponent joined! Game starting!');
-                  }
+          supabase
+            .from('game_rooms')
+            .select('game_state,status')
+            .eq('room_code', roomCode)
+            .maybeSingle()
+            .then(({ data }) => {
+              if (data) {
+                const newState = JSON.parse(JSON.stringify(data.game_state)) as GameState;
+                setGameState(newState);
+                setPartnerName(newState.players.find(p => p.id !== playerId)?.name || '');
+                if (data.status === 'playing' || newState.players.length >= 2) {
+                  setMode('playing');
+                  celebrateHearts();
+                  haptics.success();
+                  toast.success('Your partner joined! 💕');
                 }
-              });
-          }
+              }
+            });
         }
       })
       .subscribe(async (status) => {
@@ -240,134 +377,80 @@ const TruthOrDare: React.FC = () => {
       supabase.removeChannel(channel);
       channelRef.current = null;
     };
-  }, [roomCode, mode, playerId, playerName]);
+  }, [roomCode, mode, playerId, playerName, spawnHeart]);
 
-  const selectChoice = async (type: 'truth' | 'dare') => {
-    if (!isMyTurn || !roomId) return;
-    
-    haptics.medium();
-
-    // Pick a random other player to ask the question
-    const otherPlayers = gameState.players.filter(p => p.id !== playerId);
-    if (otherPlayers.length === 0) {
-      toast.error('Need other players');
-      return;
-    }
-    
-    const asker = otherPlayers[Math.floor(Math.random() * otherPlayers.length)];
-    
-    const newState: GameState = {
-      ...gameState,
-      turnPhase: 'waiting_question',
-      currentType: type,
-      askerName: asker.name,
-      currentQuestion: undefined,
-      currentAnswer: undefined
-    };
-
-    await supabase
-      .from('game_rooms')
-      .update({ game_state: JSON.parse(JSON.stringify(newState)) })
-      .eq('id', roomId);
-
-    // Broadcast update instantly
-    channelRef.current?.send({
-      type: 'broadcast',
-      event: 'game_update',
-      payload: { gameState: newState }
-    });
-
-    setGameState(newState);
-    toast.info(`${asker.name} will type a ${type} for you!`);
-  };
-
-  const submitQuestion = async () => {
-    if (!roomId || !questionInput.trim()) return;
-    
-    haptics.success();
-
-    const newState: GameState = {
-      ...gameState,
-      turnPhase: 'answering',
-      currentQuestion: questionInput.trim()
-    };
-
-    await supabase
-      .from('game_rooms')
-      .update({ game_state: JSON.parse(JSON.stringify(newState)) })
-      .eq('id', roomId);
-
-    // Broadcast update instantly
-    channelRef.current?.send({
-      type: 'broadcast',
-      event: 'game_update',
-      payload: { gameState: newState }
-    });
-
-    setGameState(newState);
-    setQuestionInput('');
-    toast.success('Question sent!');
-  };
-
-  const submitAnswer = async () => {
-    if (!roomId || !answerInput.trim()) return;
-    
-    haptics.success();
-
-    const newState: GameState = {
-      ...gameState,
-      turnPhase: 'viewing_answer',
-      currentAnswer: answerInput.trim()
-    };
-
-    await supabase
-      .from('game_rooms')
-      .update({ game_state: JSON.parse(JSON.stringify(newState)) })
-      .eq('id', roomId);
-
-    // Broadcast update instantly
-    channelRef.current?.send({
-      type: 'broadcast',
-      event: 'game_update',
-      payload: { gameState: newState }
-    });
-
-    setGameState(newState);
-    setAnswerInput('');
-  };
-
-  const nextTurn = async () => {
+  const confirmDone = async () => {
     if (!roomId) return;
+    haptics.success();
     
-    haptics.light();
-
-    const challenge: Challenge = {
-      type: gameState.currentType || 'truth',
-      question: gameState.currentQuestion || '',
-      answer: gameState.currentAnswer || '',
-      asker: gameState.askerName || '',
-      answerer: currentPlayer?.name || ''
-    };
-
-    const nextIndex = (gameState.currentPlayerIndex + 1) % gameState.players.length;
-
     const newState: GameState = {
       ...gameState,
-      challenges: [...gameState.challenges, challenge],
-      currentPlayerIndex: nextIndex,
-      turnPhase: 'choosing',
-      currentType: undefined,
-      currentQuestion: undefined,
-      currentAnswer: undefined,
-      askerName: undefined
+      turnPhase: 'waiting_confirmation'
     };
+    
+    await updateAndBroadcast(newState);
+    toast.success('Waiting for your partner to confirm! 💕');
+  };
 
+  const skipQuestion = async () => {
+    if (!roomId || !myPlayer || myPlayer.skipsLeft <= 0) return;
+    haptics.medium();
+    
+    const updatedPlayers = gameState.players.map(p => 
+      p.id === playerId ? { ...p, skipsLeft: p.skipsLeft - 1 } : p
+    );
+    
+    const newQuestion = getRandomQuestion(gameState);
+    
+    const newState: GameState = {
+      ...gameState,
+      players: updatedPlayers,
+      currentQuestion: newQuestion,
+      usedQuestions: gameState.currentQuestion 
+        ? [...gameState.usedQuestions, gameState.currentQuestion.question]
+        : gameState.usedQuestions
+    };
+    
+    await updateAndBroadcast(newState);
+    toast.info(`Skipped! ${myPlayer.skipsLeft - 1} skips left 💭`);
+  };
+
+  const confirmCompletion = async (reaction: string) => {
+    if (!roomId) return;
+    haptics.success();
+    
+    const newQuestion = getRandomQuestion(gameState);
+    const nextIndex = (gameState.currentPlayerIndex + 1) % gameState.players.length;
+    
+    const newState: GameState = {
+      ...gameState,
+      currentPlayerIndex: nextIndex,
+      currentQuestion: newQuestion,
+      turnPhase: 'showing_question',
+      usedQuestions: gameState.currentQuestion 
+        ? [...gameState.usedQuestions, gameState.currentQuestion.question]
+        : gameState.usedQuestions,
+      reaction,
+      roundCount: gameState.roundCount + 1
+    };
+    
+    await updateAndBroadcast(newState);
+    
+    if (reaction === 'love') {
+      celebrateHearts();
+      toast.success('So much love! 😍💕');
+    } else {
+      spawnHeart();
+      toast.success('Aww, how cute! 😊💖');
+    }
+  };
+
+  const updateAndBroadcast = async (newState: GameState) => {
     await supabase
       .from('game_rooms')
       .update({ game_state: JSON.parse(JSON.stringify(newState)) })
       .eq('id', roomId);
 
-    // Broadcast update instantly
     channelRef.current?.send({
       type: 'broadcast',
       event: 'game_update',
@@ -375,7 +458,6 @@ const TruthOrDare: React.FC = () => {
     });
 
     setGameState(newState);
-    toast.success('Next player\'s turn!');
   };
 
   const leaveGame = async () => {
@@ -385,183 +467,276 @@ const TruthOrDare: React.FC = () => {
     setMode('menu');
     setRoomId(null);
     setRoomCode('');
-    setQuestionInput('');
-    setAnswerInput('');
+    setMyCustomQuestions([]);
   };
 
   const copyRoomCode = () => {
     navigator.clipboard.writeText(roomCode);
-    toast.success('Room code copied!');
+    haptics.light();
+    toast.success('Room code copied! Share with your love 💕');
   };
+
+  // Floating hearts render
+  const renderFloatingHearts = () => (
+    <div className="fixed inset-0 pointer-events-none overflow-hidden z-50">
+      {floatingHearts.map(heart => (
+        <div
+          key={heart.id}
+          className="absolute animate-float-up text-4xl"
+          style={{ left: `${heart.x}%`, bottom: 0 }}
+        >
+          ❤️
+        </div>
+      ))}
+    </div>
+  );
 
   // Menu
   if (mode === 'menu') {
     return (
       <div className="text-center space-y-6 px-4 py-6 max-w-md mx-auto">
-        <div className="flex items-center justify-center gap-3 mb-6">
-          <Heart className="w-8 h-8 text-neon-pink animate-pulse" />
-          <h2 className="font-orbitron text-xl sm:text-2xl text-foreground">Truth or Dare</h2>
-          <Zap className="w-8 h-8 text-neon-orange animate-pulse" />
+        {renderFloatingHearts()}
+        
+        <div className="space-y-2 mb-8">
+          <div className="flex items-center justify-center gap-2">
+            <Heart className="w-8 h-8 text-pink-500 animate-pulse" fill="currentColor" />
+            <h2 className="font-orbitron text-2xl bg-gradient-to-r from-pink-500 to-red-500 bg-clip-text text-transparent">
+              Couples Truth & Dare
+            </h2>
+            <Heart className="w-8 h-8 text-pink-500 animate-pulse" fill="currentColor" />
+          </div>
+          <p className="text-muted-foreground text-sm">A loving game for two hearts 💕</p>
         </div>
 
-        <div className="flex flex-col gap-4">
+        <div className="bg-gradient-to-br from-pink-500/10 to-red-500/10 rounded-2xl p-6 border border-pink-500/20">
+          <Sparkles className="w-6 h-6 text-pink-400 mx-auto mb-3" />
+          <p className="text-sm text-muted-foreground mb-4">
+            Create a private room for you and your partner. Add custom questions and enjoy romantic moments together!
+          </p>
+        </div>
+
+        <div className="flex flex-col gap-4 mt-6">
           <Button
             onClick={() => setMode('create')}
-            className="w-full bg-neon-pink/20 border border-neon-pink text-neon-pink hover:bg-neon-pink/30 py-6 text-lg"
+            className="w-full bg-gradient-to-r from-pink-500 to-red-500 text-white hover:from-pink-600 hover:to-red-600 py-6 text-lg shadow-lg shadow-pink-500/25"
           >
-            <Heart className="w-5 h-5 mr-2" />
-            Create Room
+            <Heart className="w-5 h-5 mr-2" fill="currentColor" />
+            Create Love Room
           </Button>
           <Button
             onClick={() => setMode('join')}
             variant="outline"
-            className="w-full border-border hover:bg-accent py-6 text-lg"
+            className="w-full border-pink-500/30 hover:bg-pink-500/10 py-6 text-lg"
           >
             <Users className="w-5 h-5 mr-2" />
-            Join Room
+            Join Partner's Room
           </Button>
         </div>
       </div>
     );
   }
 
-  // Create room - ask for name here
+  // Create room
   if (mode === 'create') {
     return (
       <div className="text-center space-y-6 px-4 py-6 max-w-md mx-auto">
         <Button variant="ghost" onClick={() => setMode('menu')} className="mb-4">
           <ArrowLeft className="w-4 h-4 mr-2" /> Back
         </Button>
-        <h3 className="font-orbitron text-xl text-foreground">Create Room</h3>
+        
+        <div className="space-y-2">
+          <Heart className="w-10 h-10 text-pink-500 mx-auto animate-pulse" fill="currentColor" />
+          <h3 className="font-orbitron text-xl">What's your name, love?</h3>
+        </div>
+        
         <Input
           value={playerName}
           onChange={(e) => setPlayerName(e.target.value)}
           placeholder="Your name..."
-          className="w-full bg-background/50 border-border text-base py-6"
+          className="w-full bg-background/50 border-pink-500/30 text-base py-6 text-center"
         />
+        
         <Button
           onClick={createRoom}
           disabled={!playerName.trim()}
-          className="w-full bg-neon-pink/20 border border-neon-pink text-neon-pink hover:bg-neon-pink/30 py-6 text-lg disabled:opacity-50"
+          className="w-full bg-gradient-to-r from-pink-500 to-red-500 text-white hover:from-pink-600 hover:to-red-600 py-6 text-lg disabled:opacity-50"
         >
-          Create Game
+          Create Room 💕
         </Button>
       </div>
     );
   }
 
-  // Join room - ask for code AND name together
+  // Join room
   if (mode === 'join') {
     return (
       <div className="text-center space-y-6 px-4 py-6 max-w-md mx-auto">
         <Button variant="ghost" onClick={() => setMode('menu')} className="mb-4">
           <ArrowLeft className="w-4 h-4 mr-2" /> Back
         </Button>
-        <h3 className="font-orbitron text-xl text-foreground">Join Room</h3>
+        
+        <div className="space-y-2">
+          <Heart className="w-10 h-10 text-pink-500 mx-auto animate-pulse" fill="currentColor" />
+          <h3 className="font-orbitron text-xl">Join your partner's room</h3>
+        </div>
         
         <Input
           value={inputCode}
           onChange={(e) => setInputCode(e.target.value.toUpperCase())}
           placeholder="Room Code"
           maxLength={4}
-          className="w-full text-center text-3xl tracking-[0.5em] bg-background/50 border-border py-6 font-mono"
+          className="w-full text-center text-3xl tracking-[0.5em] bg-background/50 border-pink-500/30 py-6 font-mono"
         />
         
         <Input
           value={playerName}
           onChange={(e) => setPlayerName(e.target.value)}
           placeholder="Your name..."
-          className="w-full bg-background/50 border-border text-base py-6"
+          className="w-full bg-background/50 border-pink-500/30 text-base py-6 text-center"
         />
         
         <Button
           onClick={joinRoom}
           disabled={inputCode.length !== 4 || !playerName.trim()}
-          className="w-full bg-neon-green/20 border border-neon-green text-neon-green hover:bg-neon-green/30 py-6 text-lg disabled:opacity-50"
+          className="w-full bg-gradient-to-r from-pink-500 to-red-500 text-white hover:from-pink-600 hover:to-red-600 py-6 text-lg disabled:opacity-50"
         >
-          Join Game
+          Join Room 💕
         </Button>
       </div>
     );
   }
 
-  // Waiting
-  if (mode === 'waiting') {
+  // Setup - Add custom questions
+  if (mode === 'setup') {
     return (
-      <div className="text-center space-y-6 px-4 py-6 max-w-md mx-auto">
-        {/* Animated waiting indicator */}
-        <div className="relative mx-auto w-20 h-20">
-          <div className="w-20 h-20 rounded-full border-4 border-neon-pink/30 animate-pulse" />
-          <div className="absolute inset-0 w-20 h-20 rounded-full border-4 border-transparent border-t-neon-pink animate-spin" />
-          <Users className="absolute inset-0 m-auto w-8 h-8 text-neon-pink" />
-        </div>
-
-        <div className="space-y-2">
-          <h3 className="font-orbitron text-xl text-foreground">Waiting for Opponent...</h3>
-          <p className="text-muted-foreground font-rajdhani text-sm animate-pulse">
-            Share the code to invite friends
+      <div className="space-y-6 px-4 py-6 max-w-md mx-auto">
+        <div className="text-center space-y-2">
+          <h3 className="font-orbitron text-xl">Add Your Questions 💕</h3>
+          <p className="text-muted-foreground text-sm">
+            Optional: Add custom romantic questions for your partner!
           </p>
+          
+          {roomCode && (
+            <button
+              onClick={copyRoomCode}
+              className="flex items-center justify-center gap-2 mx-auto mt-2 px-4 py-2 bg-pink-500/10 rounded-full border border-pink-500/30"
+            >
+              <span className="font-mono text-lg tracking-widest text-pink-400">{roomCode}</span>
+              <Copy className="w-4 h-4 text-pink-400" />
+            </button>
+          )}
         </div>
 
-        {/* Room code card */}
-        <div className="relative p-6 bg-card rounded-2xl border-2 border-neon-pink/50 shadow-lg shadow-neon-pink/20 mx-auto">
-          <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 bg-background rounded-full border border-border">
-            <span className="text-xs font-rajdhani text-muted-foreground">ROOM CODE</span>
-          </div>
-          <div className="flex items-center justify-center gap-3">
-            <span className="text-4xl font-mono tracking-[0.4em] text-neon-pink">{roomCode}</span>
-            <Button 
-              variant="ghost" 
-              size="icon" 
-              onClick={copyRoomCode} 
-              className="h-12 w-12 hover:bg-neon-pink/20"
+        {/* Add Truth */}
+        <div className="space-y-2">
+          <label className="text-sm text-pink-400 font-medium">Add a Truth 💭</label>
+          <div className="flex gap-2">
+            <Input
+              value={customTruthInput}
+              onChange={(e) => setCustomTruthInput(e.target.value)}
+              placeholder="e.g., What do you love most about us?"
+              className="flex-1 bg-background/50 border-pink-500/30"
+            />
+            <Button
+              onClick={() => addCustomQuestion('truth')}
+              disabled={!customTruthInput.trim()}
+              size="icon"
+              className="bg-pink-500/20 border border-pink-500 text-pink-500 hover:bg-pink-500/30"
             >
-              <Copy className="w-5 h-5 text-neon-pink" />
+              <Plus className="w-4 h-4" />
             </Button>
           </div>
         </div>
 
-        {/* Players list */}
-        <div className="space-y-3">
-          <p className="text-muted-foreground text-sm">Players joined ({gameState.players.length}):</p>
-          <div className="flex flex-wrap justify-center gap-2">
-            {gameState.players.map((p) => (
-              <span
-                key={p.id}
-                className={`px-4 py-2 rounded-full text-sm transition-all ${
-                  p.id === playerId
-                    ? 'bg-neon-cyan/20 text-neon-cyan border border-neon-cyan animate-pulse'
-                    : 'bg-accent text-foreground'
-                }`}
-              >
-                {p.name} {p.id === playerId && '(You)'}
-              </span>
-            ))}
+        {/* Add Dare */}
+        <div className="space-y-2">
+          <label className="text-sm text-red-400 font-medium">Add a Dare 🔥</label>
+          <div className="flex gap-2">
+            <Input
+              value={customDareInput}
+              onChange={(e) => setCustomDareInput(e.target.value)}
+              placeholder="e.g., Give me a long hug!"
+              className="flex-1 bg-background/50 border-red-500/30"
+            />
+            <Button
+              onClick={() => addCustomQuestion('dare')}
+              disabled={!customDareInput.trim()}
+              size="icon"
+              className="bg-red-500/20 border border-red-500 text-red-500 hover:bg-red-500/30"
+            >
+              <Plus className="w-4 h-4" />
+            </Button>
           </div>
         </div>
 
-        {/* Waiting dots animation */}
-        <div className="flex justify-center gap-2">
-          {[0, 1, 2].map(i => (
-            <div 
-              key={i} 
-              className="w-3 h-3 rounded-full bg-neon-pink"
-              style={{ 
-                animation: 'pulse 1.5s ease-in-out infinite',
-                animationDelay: `${i * 0.2}s`
-              }}
-            />
-          ))}
-        </div>
-
-        {/* Auto-start note (1v1) */}
-        {gameState.players.length < 2 && (
-          <div className="w-full rounded-xl border border-border bg-card/50 px-4 py-4 text-sm text-muted-foreground">
-            Game will start automatically when your opponent joins.
+        {/* My questions list */}
+        {myCustomQuestions.length > 0 && (
+          <div className="space-y-2">
+            <label className="text-sm text-muted-foreground">Your questions ({myCustomQuestions.length})</label>
+            <div className="space-y-2 max-h-40 overflow-y-auto">
+              {myCustomQuestions.map((q, i) => (
+                <div key={i} className={`flex items-center gap-2 p-2 rounded-lg ${q.type === 'truth' ? 'bg-pink-500/10' : 'bg-red-500/10'}`}>
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-background/50">
+                    {q.type === 'truth' ? '💭' : '🔥'}
+                  </span>
+                  <span className="flex-1 text-sm truncate">{q.question}</span>
+                  <Button
+                    onClick={() => removeCustomQuestion(i)}
+                    size="icon"
+                    variant="ghost"
+                    className="w-6 h-6"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </Button>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 
-        <Button variant="outline" onClick={leaveGame} className="w-full py-4 text-muted-foreground">
+        <Button
+          onClick={finishSetupAndJoin}
+          className="w-full bg-gradient-to-r from-pink-500 to-red-500 text-white hover:from-pink-600 hover:to-red-600 py-6 text-lg"
+        >
+          <Play className="w-5 h-5 mr-2" />
+          Ready to Play! 💕
+        </Button>
+      </div>
+    );
+  }
+
+  // Waiting for partner
+  if (mode === 'waiting') {
+    return (
+      <div className="text-center space-y-6 px-4 py-6 max-w-md mx-auto">
+        {renderFloatingHearts()}
+        
+        <div className="relative mx-auto w-24 h-24">
+          <div className="w-24 h-24 rounded-full bg-gradient-to-br from-pink-500/20 to-red-500/20 animate-pulse" />
+          <Heart className="absolute inset-0 m-auto w-12 h-12 text-pink-500 animate-bounce" fill="currentColor" />
+        </div>
+
+        <div className="space-y-2">
+          <h3 className="font-orbitron text-xl">Waiting for your love... 💕</h3>
+          <p className="text-muted-foreground text-sm">Share the room code with your partner</p>
+        </div>
+
+        <button
+          onClick={copyRoomCode}
+          className="flex items-center justify-center gap-3 mx-auto px-6 py-4 bg-gradient-to-r from-pink-500/20 to-red-500/20 rounded-2xl border border-pink-500/30 hover:border-pink-500/50 transition-all"
+        >
+          <span className="font-mono text-3xl tracking-[0.5em] text-pink-400">{roomCode}</span>
+          <Copy className="w-5 h-5 text-pink-400" />
+        </button>
+
+        <div className="bg-background/50 rounded-xl p-4 border border-border">
+          <p className="text-sm text-muted-foreground">Players: {gameState.players.length}/2</p>
+          {gameState.players.map(p => (
+            <p key={p.id} className="text-pink-400">{p.name} {p.id === playerId ? '(You)' : ''}</p>
+          ))}
+        </div>
+
+        <Button variant="ghost" onClick={leaveGame} className="text-muted-foreground">
           <ArrowLeft className="w-4 h-4 mr-2" /> Leave Room
         </Button>
       </div>
@@ -570,234 +745,124 @@ const TruthOrDare: React.FC = () => {
 
   // Playing
   return (
-    <div className="space-y-4 px-4 py-4 max-w-md mx-auto min-h-[70vh] flex flex-col">
+    <div className="space-y-4 px-4 py-4 max-w-md mx-auto min-h-[80vh] flex flex-col">
+      {renderFloatingHearts()}
+      
       {/* Header */}
       <div className="flex items-center justify-between">
-        <Button variant="ghost" size="sm" onClick={leaveGame} className="p-2">
-          <ArrowLeft className="w-5 h-5" />
+        <Button variant="ghost" size="sm" onClick={leaveGame}>
+          <ArrowLeft className="w-4 h-4" />
         </Button>
-        <span className="font-mono text-sm text-neon-cyan px-3 py-1 bg-neon-cyan/10 rounded-full">{roomCode}</span>
-      </div>
-
-      {/* Player indicators */}
-      <div className="flex justify-center gap-2 flex-wrap pb-2">
-        {gameState.players.map((p, i) => (
-          <span
-            key={p.id}
-            className={`px-3 py-1.5 rounded-full text-sm transition-all ${
-              i === gameState.currentPlayerIndex
-                ? 'bg-neon-pink/30 text-neon-pink border border-neon-pink scale-105'
-                : 'bg-accent/50 text-muted-foreground'
-            }`}
-          >
-            {p.name}
-          </span>
-        ))}
-      </div>
-
-      {/* Main game area */}
-      <div className="flex-1 flex flex-col justify-center">
-        {/* Phase: Choosing Truth or Dare */}
-        {gameState.turnPhase === 'choosing' && (
-          <div className="space-y-6 text-center">
-            <p className="text-lg">
-              {isMyTurn ? (
-                <span className="text-neon-cyan font-bold text-xl">Your turn! Choose:</span>
-              ) : (
-                <span className="text-muted-foreground">
-                  <span className="text-neon-pink font-semibold">{currentPlayer?.name}</span> is choosing...
-                </span>
-              )}
-            </p>
-
-            {isMyTurn && (
-              <div className="flex flex-col sm:flex-row justify-center gap-4">
-                <Button
-                  onClick={() => selectChoice('truth')}
-                  className="flex-1 bg-neon-pink/20 border-2 border-neon-pink text-neon-pink hover:bg-neon-pink/30 text-xl py-8 rounded-2xl"
-                >
-                  <Heart className="w-6 h-6 mr-3" />
-                  Truth
-                </Button>
-                <Button
-                  onClick={() => selectChoice('dare')}
-                  className="flex-1 bg-neon-orange/20 border-2 border-neon-orange text-neon-orange hover:bg-neon-orange/30 text-xl py-8 rounded-2xl"
-                >
-                  <Zap className="w-6 h-6 mr-3" />
-                  Dare
-                </Button>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Phase: Waiting for question */}
-        {gameState.turnPhase === 'waiting_question' && (
-          <div className="space-y-6 text-center">
-            <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-full ${
-              gameState.currentType === 'truth' ? 'bg-neon-pink/20 text-neon-pink' : 'bg-neon-orange/20 text-neon-orange'
-            }`}>
-              {gameState.currentType === 'truth' ? <Heart className="w-5 h-5" /> : <Zap className="w-5 h-5" />}
-              <span className="font-bold uppercase">{gameState.currentType}</span>
-            </div>
-
-            {amIAsker ? (
-              <div className="space-y-4">
-                <p className="text-lg text-neon-cyan font-semibold">
-                  Type a {gameState.currentType} for <span className="text-neon-pink">{currentPlayer?.name}</span>!
-                </p>
-                <Textarea
-                  value={questionInput}
-                  onChange={(e) => setQuestionInput(e.target.value)}
-                  placeholder={gameState.currentType === 'truth' 
-                    ? "Ask a truth question..." 
-                    : "Give a dare challenge..."}
-                  className="w-full bg-background/50 border-border min-h-[120px] text-base resize-none"
-                  maxLength={300}
-                />
-                <Button
-                  onClick={submitQuestion}
-                  disabled={!questionInput.trim()}
-                  className="w-full bg-neon-green/20 border border-neon-green text-neon-green hover:bg-neon-green/30 py-6 text-lg"
-                >
-                  <Send className="w-5 h-5 mr-2" />
-                  Send Question
-                </Button>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <div className="animate-pulse">
-                  <MessageCircle className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-                </div>
-                <p className="text-muted-foreground text-lg">
-                  <span className="text-neon-pink font-semibold">{gameState.askerName}</span> is typing a {gameState.currentType}...
-                </p>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Phase: Answering */}
-        {gameState.turnPhase === 'answering' && (
-          <div className="space-y-6">
-            <div className={`p-6 rounded-2xl border-2 ${
-              gameState.currentType === 'truth'
-                ? 'bg-neon-pink/10 border-neon-pink'
-                : 'bg-neon-orange/10 border-neon-orange'
-            }`}>
-              <div className="flex items-center gap-2 mb-3">
-                {gameState.currentType === 'truth' ? (
-                  <Heart className="w-5 h-5 text-neon-pink" />
-                ) : (
-                  <Zap className="w-5 h-5 text-neon-orange" />
-                )}
-                <span className={`text-xs uppercase tracking-widest ${
-                  gameState.currentType === 'truth' ? 'text-neon-pink' : 'text-neon-orange'
-                }`}>
-                  {gameState.currentType} from {gameState.askerName}
-                </span>
-              </div>
-              <p className="text-xl text-foreground font-medium leading-relaxed">
-                {gameState.currentQuestion}
-              </p>
-            </div>
-
-            {isMyTurn ? (
-              <div className="space-y-4">
-                <Textarea
-                  value={answerInput}
-                  onChange={(e) => setAnswerInput(e.target.value)}
-                  placeholder={gameState.currentType === 'truth' ? "Type your answer..." : "Describe what you did..."}
-                  className="w-full bg-background/50 border-border min-h-[100px] text-base resize-none"
-                  maxLength={500}
-                />
-                <Button
-                  onClick={submitAnswer}
-                  disabled={!answerInput.trim()}
-                  className="w-full bg-neon-cyan/20 border border-neon-cyan text-neon-cyan hover:bg-neon-cyan/30 py-6 text-lg"
-                >
-                  <Send className="w-5 h-5 mr-2" />
-                  Submit Answer
-                </Button>
-              </div>
-            ) : (
-              <div className="text-center py-4">
-                <div className="animate-pulse">
-                  <MessageCircle className="w-10 h-10 mx-auto text-muted-foreground mb-3" />
-                </div>
-                <p className="text-muted-foreground">
-                  <span className="text-neon-pink font-semibold">{currentPlayer?.name}</span> is answering...
-                </p>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Phase: Viewing Answer */}
-        {gameState.turnPhase === 'viewing_answer' && (
-          <div className="space-y-6">
-            <div className={`p-6 rounded-2xl border-2 ${
-              gameState.currentType === 'truth'
-                ? 'bg-neon-pink/10 border-neon-pink'
-                : 'bg-neon-orange/10 border-neon-orange'
-            }`}>
-              <div className="flex items-center gap-2 mb-2">
-                {gameState.currentType === 'truth' ? (
-                  <Heart className="w-4 h-4 text-neon-pink" />
-                ) : (
-                  <Zap className="w-4 h-4 text-neon-orange" />
-                )}
-                <span className={`text-xs uppercase tracking-widest ${
-                  gameState.currentType === 'truth' ? 'text-neon-pink' : 'text-neon-orange'
-                }`}>
-                  {gameState.currentType}
-                </span>
-              </div>
-              <p className="text-lg text-foreground mb-4">
-                {gameState.currentQuestion}
-              </p>
-              <div className="border-t border-border/50 pt-4">
-                <p className="text-xs text-muted-foreground mb-2">{currentPlayer?.name}'s answer:</p>
-                <p className="text-lg text-neon-cyan font-medium">
-                  {gameState.currentAnswer}
-                </p>
-              </div>
-            </div>
-
-            {isMyTurn && (
-              <Button
-                onClick={nextTurn}
-                className="w-full bg-neon-green/20 border border-neon-green text-neon-green hover:bg-neon-green/30 py-6 text-lg"
-              >
-                Next Turn →
-              </Button>
-            )}
-
-            {!isMyTurn && (
-              <p className="text-center text-muted-foreground">
-                Waiting for <span className="text-neon-pink">{currentPlayer?.name}</span> to continue...
-              </p>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* History */}
-      {gameState.challenges.length > 0 && (
-        <div className="border-t border-border pt-4 mt-auto">
-          <p className="text-sm text-muted-foreground mb-2 text-center">History</p>
-          <div className="max-h-24 overflow-y-auto space-y-2">
-            {gameState.challenges.slice(-3).reverse().map((c, i) => (
-              <div key={i} className="text-sm bg-accent/30 rounded-lg p-2">
-                <span className={c.type === 'truth' ? 'text-neon-pink' : 'text-neon-orange'}>
-                  {c.answerer}
-                </span>
-                <span className="text-muted-foreground">: {c.question.substring(0, 30)}...</span>
-              </div>
-            ))}
+        <div className="text-center">
+          <p className="text-xs text-muted-foreground">Round {gameState.roundCount + 1}</p>
+          <div className="flex items-center gap-2">
+            <span className="text-pink-400">{playerName}</span>
+            <Heart className="w-4 h-4 text-pink-500" fill="currentColor" />
+            <span className="text-pink-400">{partnerName || '...'}</span>
           </div>
         </div>
+        <div className="w-8" />
+      </div>
+
+      {/* Turn indicator */}
+      <div className={`text-center p-4 rounded-2xl ${isMyTurn ? 'bg-gradient-to-r from-pink-500/20 to-red-500/20 border border-pink-500/30' : 'bg-background/50 border border-border'}`}>
+        <p className="text-lg font-medium">
+          {isMyTurn ? "It's your turn, love! 💕" : `${currentPlayer?.name}'s turn 💭`}
+        </p>
+      </div>
+
+      {/* Question Card */}
+      {gameState.currentQuestion && (
+        <div className="flex-1 flex flex-col items-center justify-center">
+          <div className={`w-full p-6 rounded-3xl ${gameState.currentQuestion.type === 'truth' 
+            ? 'bg-gradient-to-br from-pink-500/20 to-purple-500/20 border-2 border-pink-500/30' 
+            : 'bg-gradient-to-br from-red-500/20 to-orange-500/20 border-2 border-red-500/30'}`}
+          >
+            <div className="text-center mb-4">
+              <span className={`text-4xl`}>
+                {gameState.currentQuestion.type === 'truth' ? '💭' : '🔥'}
+              </span>
+              <h3 className={`font-orbitron text-xl mt-2 ${gameState.currentQuestion.type === 'truth' ? 'text-pink-400' : 'text-red-400'}`}>
+                {gameState.currentQuestion.type.toUpperCase()}
+              </h3>
+            </div>
+            
+            <p className="text-lg text-center leading-relaxed">
+              {gameState.currentQuestion.question}
+            </p>
+          </div>
+
+          {/* Timer for current player */}
+          {isMyTurn && gameState.turnPhase === 'showing_question' && (
+            <div className="mt-4 flex items-center gap-2 text-muted-foreground">
+              <Clock className="w-4 h-4" />
+              <span className={timeLeft <= 10 ? 'text-red-400 animate-pulse' : ''}>{timeLeft}s</span>
+            </div>
+          )}
+        </div>
       )}
+
+      {/* Action buttons */}
+      <div className="space-y-3 pb-4">
+        {isMyTurn && gameState.turnPhase === 'showing_question' && (
+          <>
+            <Button
+              onClick={confirmDone}
+              className="w-full bg-gradient-to-r from-pink-500 to-red-500 text-white hover:from-pink-600 hover:to-red-600 py-6 text-lg"
+            >
+              <Check className="w-5 h-5 mr-2" />
+              Done! 💕
+            </Button>
+            
+            {myPlayer && myPlayer.skipsLeft > 0 && (
+              <Button
+                onClick={skipQuestion}
+                variant="outline"
+                className="w-full border-muted-foreground/30 text-muted-foreground py-4"
+              >
+                <SkipForward className="w-4 h-4 mr-2" />
+                Skip ({myPlayer.skipsLeft} left)
+              </Button>
+            )}
+          </>
+        )}
+
+        {!isMyTurn && gameState.turnPhase === 'waiting_confirmation' && (
+          <div className="space-y-3">
+            <p className="text-center text-muted-foreground">Did {currentPlayer?.name} complete it?</p>
+            <div className="flex gap-3">
+              <Button
+                onClick={() => confirmCompletion('blush')}
+                className="flex-1 bg-pink-500/20 border border-pink-500 text-pink-500 hover:bg-pink-500/30 py-6"
+              >
+                😊 Cute!
+              </Button>
+              <Button
+                onClick={() => confirmCompletion('love')}
+                className="flex-1 bg-gradient-to-r from-pink-500 to-red-500 text-white hover:from-pink-600 hover:to-red-600 py-6"
+              >
+                😍 Love it!
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {!isMyTurn && gameState.turnPhase === 'showing_question' && (
+          <div className="text-center p-4 bg-background/50 rounded-xl border border-border">
+            <p className="text-muted-foreground">
+              Waiting for {currentPlayer?.name} to complete... 💕
+            </p>
+          </div>
+        )}
+
+        {isMyTurn && gameState.turnPhase === 'waiting_confirmation' && (
+          <div className="text-center p-4 bg-background/50 rounded-xl border border-border">
+            <p className="text-muted-foreground animate-pulse">
+              Waiting for {partner?.name} to confirm... 💕
+            </p>
+          </div>
+        )}
+      </div>
     </div>
   );
 };
