@@ -1273,177 +1273,218 @@ const TruthOrDare: React.FC = () => {
     </>
   );
 
-  // Render a single chat message
+  // Format timestamp
+  const formatTime = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
+
+  // Render a single chat message - WhatsApp style
   const renderMessage = (msg: ChatMessage) => {
     const isSystem = msg.sender === 'system';
     const isMe = (msg.sender === 'player1' && myPlayerIndex === 0) || (msg.sender === 'player2' && myPlayerIndex === 1);
     
+    // System messages (centered cards)
+    if (isSystem) {
+      return (
+        <div key={msg.id} className="flex justify-center animate-slide-up my-3">
+          <div className="max-w-[90%] w-full">
+            <div className="bg-gradient-to-br from-pink-500/15 to-purple-500/15 backdrop-blur-sm rounded-2xl p-4 border border-pink-500/20 shadow-lg shadow-pink-500/5">
+              {/* Buttons message */}
+              {msg.message_type === 'buttons' && (
+                <div className="space-y-3">
+                  <div className="text-center">
+                    <p className="text-base font-semibold">{msg.content.text}</p>
+                    {msg.content.subtext && (
+                      <p className="text-xs text-muted-foreground mt-1">{msg.content.subtext}</p>
+                    )}
+                  </div>
+                  {shouldShowButtonsForMessage(msg, messages) && (
+                    <div className="flex flex-wrap gap-2 justify-center pt-1">
+                      {msg.content.buttons!.map(btn => (
+                        <Button
+                          key={btn.value}
+                          onClick={() => handleButtonClick(btn.value, msg.id, msg.content)}
+                          disabled={isSubmitting}
+                          size="sm"
+                          className={`px-5 py-4 text-sm font-medium transition-all hover:scale-105 shadow-md ${
+                            btn.variant === 'truth' 
+                              ? 'bg-gradient-to-r from-pink-500 to-purple-500 hover:from-pink-600 hover:to-purple-600 shadow-pink-500/20' 
+                              : btn.variant === 'dare'
+                                ? 'bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 shadow-orange-500/20'
+                                : btn.variant === 'end'
+                                  ? 'bg-muted/80 hover:bg-muted text-muted-foreground'
+                                  : 'bg-primary hover:bg-primary/90'
+                          }`}
+                        >
+                          {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : btn.label}
+                        </Button>
+                      ))}
+                    </div>
+                  )}
+                  {msg.disabled && (
+                    <p className="text-center text-xs text-green-400/80 font-medium">Choice made ✓</p>
+                  )}
+                  {!shouldShowButtonsForMessage(msg, messages) && !msg.disabled && msg.content.buttons && (
+                    <p className="text-center text-xs text-muted-foreground italic">Waiting for partner...</p>
+                  )}
+                </div>
+              )}
+
+              {/* Input message */}
+              {msg.message_type === 'input' && (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-center gap-2">
+                    <span className="text-lg">{msg.content.text?.includes('TRUTH') ? '💬' : '🔥'}</span>
+                    <p className={`text-sm font-bold uppercase tracking-wide ${
+                      msg.content.text?.includes('TRUTH') ? 'text-pink-400' : 'text-orange-400'
+                    }`}>{msg.content.text?.includes('TRUTH') ? 'TRUTH QUESTION' : 'DARE CHALLENGE'}</p>
+                  </div>
+                  {msg.content.subtext && (
+                    <p className="text-xs text-center text-muted-foreground">{msg.content.subtext}</p>
+                  )}
+                  {msg.content.question && (
+                    <div className={`p-3 rounded-xl ${
+                      msg.content.questionType === 'truth' 
+                        ? 'bg-pink-500/20 border border-pink-400/30' 
+                        : 'bg-orange-500/20 border border-orange-400/30'
+                    }`}>
+                      <p className="text-center text-base font-medium">{msg.content.question}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Result message */}
+              {msg.message_type === 'result' && (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-center gap-2">
+                    <span className="text-2xl">💕</span>
+                    <p className={`text-sm font-bold uppercase tracking-wide ${
+                      msg.content.questionType === 'truth' ? 'text-pink-400' : 'text-orange-400'
+                    }`}>{msg.content.questionType === 'truth' ? 'TRUTH RESULT' : 'DARE RESULT'}</p>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <div className="p-2.5 rounded-lg bg-background/40">
+                      <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-0.5">Question:</p>
+                      <p className="text-sm">{msg.content.question}</p>
+                    </div>
+                    <div className="p-2.5 rounded-lg bg-green-500/15 border border-green-400/25">
+                      <p className="text-[10px] uppercase tracking-wider text-green-400 mb-0.5">{msg.content.answeredBy}'s Answer:</p>
+                      <p className="text-base font-medium">{msg.content.answer}</p>
+                    </div>
+                    {msg.content.proofPhotoUrl && (
+                      <div className="mt-2">
+                        <p className="text-[10px] uppercase tracking-wider text-purple-400 mb-1 text-center">📸 Proof Photo</p>
+                        <img 
+                          src={msg.content.proofPhotoUrl} 
+                          alt="Dare proof" 
+                          className="w-full max-h-40 object-cover rounded-xl border border-purple-400/40"
+                        />
+                      </div>
+                    )}
+                  </div>
+                  
+                  {/* Compact reaction buttons */}
+                  <div className="flex flex-wrap gap-1.5 justify-center pt-1">
+                    {REACTION_EMOJIS.map(emoji => {
+                      const msgReactions = reactions[msg.id] || {};
+                      const emojiReactors = msgReactions[emoji] || [];
+                      const hasReacted = emojiReactors.includes(playerName);
+                      const count = emojiReactors.length;
+                      
+                      return (
+                        <button
+                          key={emoji}
+                          onClick={() => sendReaction(msg.id, emoji)}
+                          className={`flex items-center gap-0.5 px-2 py-1 rounded-full text-base transition-all hover:scale-110 active:scale-95 ${
+                            hasReacted 
+                              ? 'bg-pink-500/30 ring-1 ring-pink-400' 
+                              : 'bg-background/40 hover:bg-background/60'
+                          }`}
+                        >
+                          <span className={hasReacted ? 'animate-bounce' : ''}>{emoji}</span>
+                          {count > 0 && (
+                            <span className="text-[10px] font-semibold">{count}</span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Text message for system */}
+              {msg.message_type === 'text' && (
+                <div className="text-center">
+                  <p className="text-sm">{msg.content.text}</p>
+                  {msg.content.subtext && (
+                    <p className="text-xs text-muted-foreground mt-1">{msg.content.subtext}</p>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    }
+    
+    // Player messages (WhatsApp-style bubbles)
     return (
       <div
         key={msg.id}
-        className={`animate-slide-up ${isSystem ? 'flex justify-center' : isMe ? 'flex justify-end' : 'flex justify-start'}`}
+        className={`flex animate-slide-up my-1 ${isMe ? 'justify-end' : 'justify-start'}`}
       >
-        <div className={`max-w-[85%] ${isSystem ? 'w-full' : ''}`}>
-          {/* Sender name for player messages */}
-          {!isSystem && msg.sender_name && (
-            <p className={`text-xs text-muted-foreground mb-1 ${isMe ? 'text-right' : 'text-left'}`}>
+        <div className={`max-w-[75%] ${isMe ? 'items-end' : 'items-start'} flex flex-col`}>
+          {/* Sender name */}
+          {msg.sender_name && (
+            <p className={`text-[11px] font-medium mb-0.5 px-2 ${
+              isMe ? 'text-pink-400' : 'text-purple-400'
+            }`}>
               {msg.sender_name}
             </p>
           )}
           
-          {/* Message bubble */}
-          <div className={`rounded-2xl p-4 ${
-            isSystem 
-              ? 'bg-gradient-to-br from-pink-500/10 to-purple-500/10 border border-pink-500/20' 
-              : isMe 
-                ? 'bg-gradient-to-br from-pink-500 to-red-500 text-white' 
-                : 'bg-muted'
-          }`}>
-            {/* Text message */}
-            {msg.message_type === 'text' && (
-              <div>
-                <p className="text-base">{msg.content.text}</p>
-                {msg.content.subtext && (
-                  <p className={`text-sm mt-1 ${isMe ? 'text-white/70' : 'text-muted-foreground'}`}>
-                    {msg.content.subtext}
-                  </p>
-                )}
-              </div>
-            )}
-
-            {/* Buttons message */}
-            {msg.message_type === 'buttons' && (
-              <div className="space-y-3">
-                <div className="text-center">
-                  <p className="text-lg font-semibold">{msg.content.text}</p>
+          {/* Message bubble with tail */}
+          <div className="relative">
+            <div className={`relative px-3 py-2 rounded-2xl shadow-sm ${
+              isMe 
+                ? 'bg-gradient-to-br from-pink-500 to-rose-500 text-white rounded-br-md' 
+                : 'bg-white/10 backdrop-blur-sm border border-white/10 rounded-bl-md'
+            }`}>
+              {/* Bubble tail */}
+              <div className={`absolute bottom-0 w-3 h-3 ${
+                isMe 
+                  ? 'right-[-6px] bg-rose-500' 
+                  : 'left-[-6px] bg-white/10 border-l border-b border-white/10'
+              }`} style={{
+                clipPath: isMe 
+                  ? 'polygon(0 0, 100% 100%, 0 100%)' 
+                  : 'polygon(100% 0, 100% 100%, 0 100%)'
+              }} />
+              
+              {/* Message content */}
+              {msg.message_type === 'text' && (
+                <div>
+                  <p className="text-[15px] leading-relaxed">{msg.content.text}</p>
                   {msg.content.subtext && (
-                    <p className="text-sm text-muted-foreground">{msg.content.subtext}</p>
+                    <p className={`text-xs mt-0.5 ${isMe ? 'text-white/70' : 'text-muted-foreground'}`}>
+                      {msg.content.subtext}
+                    </p>
                   )}
                 </div>
-                {shouldShowButtonsForMessage(msg, messages) && (
-                  <div className="flex flex-wrap gap-2 justify-center">
-                    {msg.content.buttons!.map(btn => (
-                      <Button
-                        key={btn.value}
-                        onClick={() => handleButtonClick(btn.value, msg.id, msg.content)}
-                        disabled={isSubmitting}
-                        className={`px-6 py-5 text-base transition-all hover:scale-105 ${
-                          btn.variant === 'truth' 
-                            ? 'bg-gradient-to-r from-pink-500 to-purple-500 hover:from-pink-600 hover:to-purple-600' 
-                            : btn.variant === 'dare'
-                              ? 'bg-gradient-to-r from-red-500 to-orange-500 hover:from-red-600 hover:to-orange-600'
-                              : btn.variant === 'end'
-                                ? 'bg-muted hover:bg-muted/80 text-muted-foreground'
-                                : 'bg-primary hover:bg-primary/90'
-                        }`}
-                      >
-                        {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : btn.label}
-                      </Button>
-                    ))}
-                  </div>
-                )}
-                {msg.disabled && (
-                  <p className="text-center text-sm text-muted-foreground">Choice made ✓</p>
-                )}
-                {!shouldShowButtonsForMessage(msg, messages) && !msg.disabled && msg.content.buttons && (
-                  <p className="text-center text-sm text-muted-foreground">Waiting for partner's choice...</p>
-                )}
-              </div>
-            )}
-
-            {/* Input message */}
-            {msg.message_type === 'input' && (
-              <div className="space-y-3">
-                <div className="text-center">
-                  <p className={`text-lg font-semibold ${
-                    msg.content.text?.includes('TRUTH') ? 'text-pink-400' : 'text-orange-400'
-                  }`}>{msg.content.text}</p>
-                  {msg.content.subtext && (
-                    <p className="text-sm text-muted-foreground">{msg.content.subtext}</p>
-                  )}
-                </div>
-                {msg.content.question && (
-                  <div className={`p-4 rounded-xl ${
-                    msg.content.questionType === 'truth' 
-                      ? 'bg-pink-500/20 border border-pink-500/30' 
-                      : 'bg-orange-500/20 border border-orange-500/30'
-                  }`}>
-                    <p className="text-center text-lg">{msg.content.question}</p>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Result message */}
-            {msg.message_type === 'result' && (
-              <div className="space-y-4">
-                <div className="text-center">
-                  <span className="text-3xl">💕</span>
-                  <p className={`text-lg font-semibold mt-2 ${
-                    msg.content.questionType === 'truth' ? 'text-pink-400' : 'text-orange-400'
-                  }`}>{msg.content.text}</p>
-                </div>
-                <div className="space-y-2">
-                  <div className="p-3 rounded-lg bg-background/50">
-                    <p className="text-xs text-muted-foreground mb-1">Question:</p>
-                    <p>{msg.content.question}</p>
-                  </div>
-                  <div className="p-3 rounded-lg bg-green-500/20 border border-green-500/30">
-                    <p className="text-xs text-green-400 mb-1">{msg.content.answeredBy}'s Answer:</p>
-                    <p className="text-lg">{msg.content.answer}</p>
-                  </div>
-                  {/* Proof photo */}
-                  {msg.content.proofPhotoUrl && (
-                    <div className="mt-2">
-                      <p className="text-xs text-purple-400 mb-1 text-center">📸 Proof Photo:</p>
-                      <img 
-                        src={msg.content.proofPhotoUrl} 
-                        alt="Dare proof" 
-                        className="w-full max-h-48 object-cover rounded-xl border border-purple-500/50"
-                      />
-                    </div>
-                  )}
-                </div>
-                
-                {/* Reaction buttons */}
-                <div className="flex flex-wrap gap-2 justify-center pt-2">
-                  {REACTION_EMOJIS.map(emoji => {
-                    const msgReactions = reactions[msg.id] || {};
-                    const emojiReactors = msgReactions[emoji] || [];
-                    const hasReacted = emojiReactors.includes(playerName);
-                    const count = emojiReactors.length;
-                    
-                    return (
-                      <button
-                        key={emoji}
-                        onClick={() => sendReaction(msg.id, emoji)}
-                        className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-lg transition-all hover:scale-110 ${
-                          hasReacted 
-                            ? 'bg-pink-500/30 border-2 border-pink-500' 
-                            : 'bg-muted/50 border border-muted-foreground/20 hover:bg-muted'
-                        }`}
-                      >
-                        <span className={hasReacted ? 'animate-bounce' : ''}>{emoji}</span>
-                        {count > 0 && (
-                          <span className="text-xs font-medium">{count}</span>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-                
-                {/* Show who reacted */}
-                {Object.entries(reactions[msg.id] || {}).some(([, reactors]) => reactors.length > 0) && (
-                  <div className="text-center text-xs text-muted-foreground">
-                    {Object.entries(reactions[msg.id] || {})
-                      .filter(([, reactors]) => reactors.length > 0)
-                      .map(([emoji, reactors]) => `${emoji} ${reactors.join(', ')}`)
-                      .join(' • ')}
-                  </div>
-                )}
-              </div>
-            )}
-
+              )}
+              
+              {/* Timestamp */}
+              {msg.created_at && (
+                <p className={`text-[10px] mt-0.5 text-right ${
+                  isMe ? 'text-white/50' : 'text-muted-foreground/60'
+                }`}>
+                  {formatTime(msg.created_at)}
+                </p>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -1614,75 +1655,98 @@ const TruthOrDare: React.FC = () => {
 
   // Chat-style gameplay
   return (
-    <div className="flex flex-col h-[calc(100dvh-120px)] max-w-md mx-auto">
+    <div className="flex flex-col h-[calc(100dvh-120px)] max-w-md mx-auto bg-gradient-to-b from-pink-950/20 to-background">
       {renderFloatingHearts()}
       
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-pink-500/20 bg-gradient-to-r from-pink-500/5 to-purple-500/5">
-        <Button variant="ghost" size="icon" onClick={leaveGame} className="text-muted-foreground">
+      {/* WhatsApp-style Header */}
+      <div className="flex items-center gap-3 px-3 py-2.5 bg-gradient-to-r from-pink-500/10 to-purple-500/10 backdrop-blur-sm border-b border-white/5 shadow-sm">
+        <Button 
+          variant="ghost" 
+          size="icon" 
+          onClick={leaveGame} 
+          className="text-muted-foreground hover:text-foreground h-9 w-9"
+        >
           <ArrowLeft className="w-5 h-5" />
         </Button>
-        <div className="text-center flex-1">
-          <p className="text-sm">
-            {playerName} <span className="text-pink-500">❤️</span> {partnerName}
-          </p>
-          <p className="text-xs text-muted-foreground">Round {gameState.roundCount + 1}</p>
+        
+        {/* Profile section */}
+        <div className="flex items-center gap-2.5 flex-1 min-w-0">
+          <div className="relative">
+            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-pink-500 to-rose-500 flex items-center justify-center shadow-lg shadow-pink-500/20">
+              <Heart className="w-5 h-5 text-white" fill="white" />
+            </div>
+            <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-500 rounded-full border-2 border-background" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold truncate">
+              {playerName} <span className="text-pink-400">❤️</span> {partnerName}
+            </p>
+            <p className="text-[11px] text-muted-foreground">Round {gameState.roundCount + 1}</p>
+          </div>
         </div>
-        {/* Points display */}
-        <div className="text-right min-w-[60px]">
-          <p className="text-xs text-yellow-400 font-semibold">⭐ {gameState.players[myPlayerIndex]?.points || 0}</p>
+        
+        {/* Points badge */}
+        <div className="flex items-center gap-1.5 bg-yellow-500/15 px-2.5 py-1.5 rounded-full border border-yellow-500/20">
+          <span className="text-sm">⭐</span>
+          <span className="text-xs font-bold text-yellow-400">{gameState.players[myPlayerIndex]?.points || 0}</span>
         </div>
       </div>
 
-      {/* Chat messages */}
+      {/* Chat messages with wallpaper */}
       <div 
         ref={chatContainerRef}
-        className="flex-1 overflow-y-auto px-4 py-4 space-y-4"
+        className="flex-1 overflow-y-auto px-3 py-3 space-y-1"
+        style={{
+          backgroundImage: 'radial-gradient(circle at 20% 50%, rgba(236, 72, 153, 0.03) 0%, transparent 50%), radial-gradient(circle at 80% 80%, rgba(168, 85, 247, 0.03) 0%, transparent 50%)'
+        }}
       >
         {messages.map(msg => renderMessage(msg))}
         
-        {/* Typing indicator */}
+        {/* Typing indicator - WhatsApp style */}
         {partnerIsTyping && (
-          <div className="flex justify-start animate-slide-up">
-            <div className="bg-muted rounded-2xl px-4 py-3">
-              <div className="flex gap-1">
-                <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+          <div className="flex justify-start animate-slide-up my-1">
+            <div className="relative">
+              <div className="bg-white/10 backdrop-blur-sm border border-white/10 rounded-2xl rounded-bl-md px-4 py-2.5">
+                <div className="flex gap-1 items-center">
+                  <span className="w-2 h-2 bg-pink-400/60 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                  <span className="w-2 h-2 bg-pink-400/60 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                  <span className="w-2 h-2 bg-pink-400/60 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                </div>
               </div>
+              {/* Tail */}
+              <div className="absolute bottom-0 left-[-6px] w-3 h-3 bg-white/10 border-l border-b border-white/10" style={{
+                clipPath: 'polygon(100% 0, 100% 100%, 0 100%)'
+              }} />
             </div>
           </div>
         )}
       </div>
 
-      {/* Input bar */}
+      {/* WhatsApp-style Input bar */}
       {shouldShowInput && (
-        <div className="px-4 py-3 border-t border-pink-500/20 bg-gradient-to-r from-pink-500/5 to-purple-500/5">
+        <div className="px-3 py-2.5 bg-gradient-to-r from-pink-500/5 to-purple-500/5 border-t border-white/5">
           {currentInputAction === 'complete_dare' ? (
-            <div className="space-y-3">
+            <div className="space-y-2.5">
               {/* Timer display */}
               {dareTimer !== null && (
-                <div className={`text-center p-3 rounded-xl ${
+                <div className={`text-center p-2.5 rounded-xl ${
                   dareTimer <= 10 
-                    ? 'bg-red-500/20 border border-red-500/50' 
+                    ? 'bg-red-500/15 border border-red-500/30' 
                     : dareTimer <= 30 
-                      ? 'bg-orange-500/20 border border-orange-500/50'
-                      : 'bg-blue-500/20 border border-blue-500/50'
+                      ? 'bg-orange-500/15 border border-orange-500/30'
+                      : 'bg-blue-500/15 border border-blue-500/30'
                 }`}>
-                  <p className="text-xs text-muted-foreground mb-1">⏱️ Time Remaining</p>
-                  <p className={`text-3xl font-bold font-mono ${
+                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-0.5">⏱️ Time Remaining</p>
+                  <p className={`text-2xl font-bold font-mono ${
                     dareTimer <= 10 ? 'text-red-400 animate-pulse' : dareTimer <= 30 ? 'text-orange-400' : 'text-blue-400'
                   }`}>
                     {Math.floor(dareTimer / 60)}:{(dareTimer % 60).toString().padStart(2, '0')}
                   </p>
-                  {dareTimer === 0 && (
-                    <p className="text-red-400 text-sm mt-1">⏰ Time is up! Complete or skip!</p>
-                  )}
                 </div>
               )}
               
               {/* Photo upload section */}
-              <div className="space-y-2">
+              <div>
                 <input
                   type="file"
                   ref={fileInputRef}
@@ -1696,60 +1760,103 @@ const TruthOrDare: React.FC = () => {
                     <img 
                       src={darePhotoPreview} 
                       alt="Dare proof" 
-                      className="w-full h-32 object-cover rounded-xl border border-green-500/50"
+                      className="w-full h-28 object-cover rounded-xl border border-green-400/30"
                     />
                     <button
                       onClick={clearPhoto}
-                      className="absolute top-2 right-2 p-1 bg-red-500 rounded-full hover:bg-red-600 transition-colors"
+                      className="absolute top-1.5 right-1.5 p-1 bg-red-500/90 rounded-full hover:bg-red-500 transition-colors"
                     >
-                      <X className="w-4 h-4 text-white" />
+                      <X className="w-3.5 h-3.5 text-white" />
                     </button>
-                    <p className="text-xs text-green-400 text-center mt-1">📸 Photo ready!</p>
+                    <div className="absolute bottom-1.5 left-1.5 bg-green-500/90 px-2 py-0.5 rounded-full">
+                      <p className="text-[10px] text-white font-medium">📸 Ready</p>
+                    </div>
                   </div>
                 ) : (
-                  <Button
+                  <button
                     onClick={() => fileInputRef.current?.click()}
-                    variant="outline"
-                    className="w-full border-dashed border-2 border-purple-500/30 hover:bg-purple-500/10 text-purple-400 py-4"
+                    className="w-full flex items-center justify-center gap-2 py-3 border-2 border-dashed border-purple-400/30 rounded-xl hover:bg-purple-500/5 transition-colors text-purple-400"
                   >
-                    <Camera className="w-5 h-5 mr-2" />
-                    Add Photo Proof (Optional)
-                  </Button>
+                    <Camera className="w-4 h-4" />
+                    <span className="text-sm">Add Photo Proof (Optional)</span>
+                  </button>
                 )}
               </div>
               
               <Button
                 onClick={handleDareComplete}
                 disabled={isSubmitting || isUploading}
-                className="w-full bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 py-6 text-lg"
+                className="w-full bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 py-5 text-base font-semibold shadow-lg shadow-green-500/20"
               >
                 {isSubmitting || isUploading ? (
-                  <><Loader2 className="w-5 h-5 animate-spin mr-2" /> {isUploading ? 'Uploading...' : 'Saving...'}</>
+                  <><Loader2 className="w-4 h-4 animate-spin mr-2" /> {isUploading ? 'Uploading...' : 'Saving...'}</>
                 ) : (
                   <>✅ Mark Dare as Done! (+20 pts){darePhoto && ' 📸'}</>
                 )}
               </Button>
+              
               {/* Skip button for dare */}
               {gameState.players[myPlayerIndex]?.skipsLeft > 0 && (
-                <Button
+                <button
                   onClick={handleSkip}
                   disabled={isSubmitting}
-                  variant="outline"
-                  className="w-full border-orange-500/30 hover:bg-orange-500/10 text-orange-400"
+                  className="w-full text-center text-sm text-orange-400 hover:text-orange-300 py-1.5 transition-colors disabled:opacity-50"
                 >
                   ⏭️ Skip ({gameState.players[myPlayerIndex]?.skipsLeft} left) (-5 pts)
-                </Button>
+                </button>
               )}
             </div>
           ) : currentInputAction === 'submit_answer' ? (
             <div className="space-y-2">
-              <div className="flex gap-2">
+              <div className="flex items-end gap-2">
+                <div className="flex-1 relative">
+                  <Input
+                    value={inputValue}
+                    onChange={(e) => handleInputChange(e.target.value)}
+                    placeholder="Type your answer..."
+                    maxLength={300}
+                    className="w-full bg-white/5 border-white/10 rounded-full py-5 px-4 pr-12 text-[15px] placeholder:text-muted-foreground/50"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        handleInputSubmit();
+                      }
+                    }}
+                  />
+                  <span className="absolute right-4 bottom-2.5 text-[10px] text-muted-foreground/50">
+                    {inputValue.length}/300
+                  </span>
+                </div>
+                <Button
+                  onClick={handleInputSubmit}
+                  disabled={!inputValue.trim() || isSubmitting}
+                  size="icon"
+                  className="h-11 w-11 rounded-full bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-600 hover:to-rose-600 shadow-lg shadow-pink-500/20 shrink-0"
+                >
+                  {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
+                </Button>
+              </div>
+              
+              {/* Skip button for truth */}
+              {gameState.players[myPlayerIndex]?.skipsLeft > 0 && (
+                <button
+                  onClick={handleSkip}
+                  disabled={isSubmitting}
+                  className="w-full text-center text-sm text-orange-400 hover:text-orange-300 py-1 transition-colors disabled:opacity-50"
+                >
+                  ⏭️ Skip ({gameState.players[myPlayerIndex]?.skipsLeft} left) (-5 pts)
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="flex items-end gap-2">
+              <div className="flex-1 relative">
                 <Input
                   value={inputValue}
                   onChange={(e) => handleInputChange(e.target.value)}
-                  placeholder="Type your answer..."
+                  placeholder={gameState.currentType === 'truth' ? 'Ask a truth question...' : 'Give a dare...'}
                   maxLength={300}
-                  className="flex-1 bg-background/50 border-pink-500/30"
+                  className="w-full bg-white/5 border-white/10 rounded-full py-5 px-4 pr-12 text-[15px] placeholder:text-muted-foreground/50"
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && !e.shiftKey) {
                       e.preventDefault();
@@ -1757,58 +1864,19 @@ const TruthOrDare: React.FC = () => {
                     }
                   }}
                 />
-                <Button
-                  onClick={handleInputSubmit}
-                  disabled={!inputValue.trim() || isSubmitting}
-                  className="bg-gradient-to-r from-pink-500 to-red-500 hover:from-pink-600 hover:to-red-600 px-4"
-                >
-                  {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
-                </Button>
+                <span className="absolute right-4 bottom-2.5 text-[10px] text-muted-foreground/50">
+                  {inputValue.length}/300
+                </span>
               </div>
-              {/* Skip button for truth */}
-              {gameState.players[myPlayerIndex]?.skipsLeft > 0 && (
-                <Button
-                  onClick={handleSkip}
-                  disabled={isSubmitting}
-                  variant="outline"
-                  size="sm"
-                  className="w-full border-orange-500/30 hover:bg-orange-500/10 text-orange-400"
-                >
-                  ⏭️ Skip ({gameState.players[myPlayerIndex]?.skipsLeft} left) (-5 pts)
-                </Button>
-              )}
-              <p className="text-xs text-muted-foreground text-center">
-                {inputValue.length}/300 • Answer = +10 pts
-              </p>
-            </div>
-          ) : (
-            <div className="flex gap-2">
-              <Input
-                value={inputValue}
-                onChange={(e) => handleInputChange(e.target.value)}
-                placeholder={gameState.currentType === 'truth' ? 'Ask a truth question...' : 'Give a dare...'}
-                maxLength={300}
-                className="flex-1 bg-background/50 border-pink-500/30"
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    handleInputSubmit();
-                  }
-                }}
-              />
               <Button
                 onClick={handleInputSubmit}
                 disabled={!inputValue.trim() || isSubmitting}
-                className="bg-gradient-to-r from-pink-500 to-red-500 hover:from-pink-600 hover:to-red-600 px-4"
+                size="icon"
+                className="h-11 w-11 rounded-full bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-600 hover:to-rose-600 shadow-lg shadow-pink-500/20 shrink-0"
               >
                 {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
               </Button>
             </div>
-          )}
-          {currentInputAction === 'submit_question' && (
-            <p className="text-xs text-muted-foreground text-center mt-2">
-              {inputValue.length}/300
-            </p>
           )}
         </div>
       )}
