@@ -111,6 +111,7 @@ const IndexContent: React.FC = () => {
   const [showLeaderboard, setShowLeaderboard] = useState(false);
 
   const toggleSound = () => {
+    haptics.light();
     const newState = !soundEnabled;
     setSoundEnabled(newState);
     soundManager.setEnabled(newState);
