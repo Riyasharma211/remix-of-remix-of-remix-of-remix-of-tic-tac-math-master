@@ -631,6 +631,15 @@ const TruthOrDare: React.FC = () => {
     if (msg.message_type !== 'buttons' || !msg.content.buttons || msg.disabled) {
       return false;
     }
+    
+    // Only show buttons for the MOST RECENT non-disabled buttons message
+    const latestButtonsMsg = [...messagesRef.current].reverse().find(
+      m => m.message_type === 'buttons' && !m.disabled && m.content.buttons
+    );
+    if (!latestButtonsMsg || latestButtonsMsg.id !== msg.id) {
+      return false;
+    }
+    
     // Check if it's this player's turn based on latest game state
     const currentTurnPlayer = gameStateRef.current.players[gameStateRef.current.currentPlayerIndex];
     return currentTurnPlayer?.id === playerId;
