@@ -14,9 +14,10 @@ type GameMode = 'menu' | 'create' | 'join' | 'waiting' | 'playing';
 // Chat message types
 interface ChatMessage {
   id: string;
+  room_id?: string;
   sender: 'system' | 'player1' | 'player2';
-  senderName?: string;
-  type: 'text' | 'buttons' | 'input' | 'result';
+  sender_name?: string;
+  message_type: 'text' | 'buttons' | 'input' | 'result';
   content: {
     text?: string;
     subtext?: string;
@@ -29,7 +30,7 @@ interface ChatMessage {
     questionType?: 'truth' | 'dare';
   };
   disabled?: boolean;
-  timestamp: number;
+  created_at?: string;
 }
 
 interface GameState {
@@ -40,12 +41,6 @@ interface GameState {
   truthCount: number;
   dareCount: number;
 }
-
-// Real-time event types
-type GameEvent = 
-  | { type: 'chat_message'; message: ChatMessage; gameState: GameState }
-  | { type: 'player_joined'; playerId: string; playerName: string; gameState: GameState }
-  | { type: 'typing'; playerId: string };
 
 const TruthOrDare: React.FC = () => {
   const [mode, setMode] = useState<GameMode>('menu');
@@ -81,7 +76,6 @@ const TruthOrDare: React.FC = () => {
   const myPlayerIndex = gameState.players.findIndex(p => p.id === playerId);
 
   const generateRoomCode = () => Math.random().toString(36).substring(2, 6).toUpperCase();
-  const generateMessageId = () => `msg_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -102,80 +96,99 @@ const TruthOrDare: React.FC = () => {
     }, 3000);
   }, []);
 
-  // Create initial turn message
-  const createTurnMessage = (playerName: string, truthCount: number, dareCount: number, isCurrentPlayer: boolean): ChatMessage => ({
-    id: generateMessageId(),
-    sender: 'system',
-    type: 'buttons',
-    content: {
-      text: `🎭 ${playerName}'s Turn`,
-      subtext: `Truths: ${truthCount} | Dares: ${dareCount}`,
-      buttons: isCurrentPlayer ? [
-        { label: '💬 Truth', value: 'truth', variant: 'truth' },
-        { label: '🔥 Dare', value: 'dare', variant: 'dare' },
-        { label: '🏁 End Game', value: 'end', variant: 'end' }
-      ] : undefined
-    },
-    timestamp: Date.now()
-  });
+  // Save message to database
+  const saveMessage = async (msg: Omit<ChatMessage, 'id' | 'created_at'>, currentRoomId: string): Promise<ChatMessage | null> => {
+    const { data, error } = await supabase
+      .from('chat_messages')
+      .insert({
+        room_id: currentRoomId,
+        sender: msg.sender,
+        sender_name: msg.sender_name || null,
+        message_type: msg.message_type,
+        content: msg.content,
+        disabled: msg.disabled || false
+      })
+      .select()
+      .single();
 
-  // Create input request message
-  const createInputMessage = (questionType: 'truth' | 'dare', targetPlayerName: string): ChatMessage => ({
-    id: generateMessageId(),
-    sender: 'system',
-    type: 'input',
-    content: {
-      text: questionType === 'truth' ? '💬 TRUTH' : '🔥 DARE',
-      subtext: `Type your ${questionType} ${questionType === 'truth' ? 'question' : 'challenge'} for ${targetPlayerName}:`,
-      inputPlaceholder: questionType === 'truth' 
-        ? 'Ask something romantic or deep...' 
-        : 'Give a fun dare (keep it loving!)...',
-      inputAction: 'submit_question'
-    },
-    timestamp: Date.now()
-  });
+    if (error) {
+      console.error('Failed to save message:', error);
+      return null;
+    }
 
-  // Create question display message
-  const createQuestionMessage = (questionType: 'truth' | 'dare', question: string, askerName: string): ChatMessage => ({
-    id: generateMessageId(),
-    sender: 'system',
-    type: 'input',
-    content: {
-      text: questionType === 'truth' ? '💬 TRUTH QUESTION' : '🔥 DARE CHALLENGE',
-      subtext: `From ${askerName}:`,
-      question: question,
-      inputPlaceholder: questionType === 'truth' ? 'Type your answer...' : undefined,
-      inputAction: questionType === 'truth' ? 'submit_answer' : 'complete_dare',
-      questionType
-    },
-    timestamp: Date.now()
-  });
+    return data as unknown as ChatMessage;
+  };
 
-  // Create result message
-  const createResultMessage = (questionType: 'truth' | 'dare', question: string, answer: string, answeredBy: string): ChatMessage => ({
-    id: generateMessageId(),
-    sender: 'system',
-    type: 'result',
-    content: {
-      text: questionType === 'truth' ? '💬 TRUTH RESULT' : '🔥 DARE COMPLETED',
-      question,
-      answer,
-      answeredBy,
-      questionType
-    },
-    timestamp: Date.now()
+  // Save multiple messages
+  const saveMessages = async (msgs: Omit<ChatMessage, 'id' | 'created_at'>[], currentRoomId: string): Promise<ChatMessage[]> => {
+    const { data, error } = await supabase
+      .from('chat_messages')
+      .insert(msgs.map(msg => ({
+        room_id: currentRoomId,
+        sender: msg.sender,
+        sender_name: msg.sender_name || null,
+        message_type: msg.message_type,
+        content: msg.content,
+        disabled: msg.disabled || false
+      })))
+      .select();
+
+    if (error) {
+      console.error('Failed to save messages:', error);
+      return [];
+    }
+
+    return (data || []) as unknown as ChatMessage[];
+  };
+
+  // Update message disabled state
+  const updateMessageDisabled = async (messageId: string) => {
+    await supabase
+      .from('chat_messages')
+      .update({ disabled: true })
+      .eq('id', messageId);
+  };
+
+  // Load messages for a room
+  const loadMessages = async (currentRoomId: string): Promise<ChatMessage[]> => {
+    const { data, error } = await supabase
+      .from('chat_messages')
+      .select('*')
+      .eq('room_id', currentRoomId)
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      console.error('Failed to load messages:', error);
+      return [];
+    }
+
+    return (data || []) as unknown as ChatMessage[];
+  };
+
+  // Create turn message content
+  const createTurnMessageContent = (targetPlayerName: string, truthCount: number, dareCount: number, showButtons: boolean) => ({
+    text: `🎭 ${targetPlayerName}'s Turn`,
+    subtext: `Truths: ${truthCount} | Dares: ${dareCount}`,
+    buttons: showButtons ? [
+      { label: '💬 Truth', value: 'truth', variant: 'truth' as const },
+      { label: '🔥 Dare', value: 'dare', variant: 'dare' as const },
+      { label: '🏁 End Game', value: 'end', variant: 'end' as const }
+    ] : undefined
   });
 
   // Handle button click
   const handleButtonClick = async (buttonValue: string, messageId: string) => {
-    if (isSubmitting) return;
+    if (isSubmitting || !roomId) return;
     haptics.light();
     setIsSubmitting(true);
 
-    // Disable the clicked message's buttons
+    // Disable the clicked message's buttons locally
     setMessages(prev => prev.map(msg => 
       msg.id === messageId ? { ...msg, disabled: true } : msg
     ));
+
+    // Update in DB
+    await updateMessageDisabled(messageId);
 
     if (buttonValue === 'truth' || buttonValue === 'dare') {
       const newState: GameState = {
@@ -183,28 +196,47 @@ const TruthOrDare: React.FC = () => {
         currentType: buttonValue as 'truth' | 'dare'
       };
 
-      // Add player's choice message
-      const choiceMessage: ChatMessage = {
-        id: generateMessageId(),
+      // Save choice message
+      const choiceMsg: Omit<ChatMessage, 'id' | 'created_at'> = {
         sender: myPlayerIndex === 0 ? 'player1' : 'player2',
-        senderName: playerName,
-        type: 'text',
+        sender_name: playerName,
+        message_type: 'text',
         content: {
           text: buttonValue === 'truth' ? '💬 I choose TRUTH!' : '🔥 I choose DARE!'
-        },
-        timestamp: Date.now()
+        }
       };
 
-      // Create input message for opponent
-      const partner = gameState.players.find(p => p.id !== playerId);
-      const inputMessage = createInputMessage(buttonValue as 'truth' | 'dare', currentPlayer?.name || '');
+      // Save input prompt message for opponent
+      const inputMsg: Omit<ChatMessage, 'id' | 'created_at'> = {
+        sender: 'system',
+        message_type: 'input',
+        content: {
+          text: buttonValue === 'truth' ? '💬 TRUTH' : '🔥 DARE',
+          subtext: `Type your ${buttonValue} ${buttonValue === 'truth' ? 'question' : 'challenge'} for ${currentPlayer?.name || ''}:`,
+          inputPlaceholder: buttonValue === 'truth' 
+            ? 'Ask something romantic or deep...' 
+            : 'Give a fun dare (keep it loving!)...',
+          inputAction: 'submit_question'
+        }
+      };
 
-      const newMessages = [choiceMessage, inputMessage];
-      setMessages(prev => [...prev, ...newMessages]);
-      setCurrentInputAction('submit_question');
+      await saveMessages([choiceMsg, inputMsg], roomId);
       setGameState(newState);
+      setCurrentInputAction('submit_question');
 
-      await broadcastChatUpdate(newMessages, newState);
+      // Update game state in room
+      await supabase
+        .from('game_rooms')
+        .update({ game_state: JSON.parse(JSON.stringify(newState)) })
+        .eq('id', roomId);
+
+      // Broadcast state change
+      channelRef.current?.send({
+        type: 'broadcast',
+        event: 'game_state',
+        payload: { gameState: newState }
+      });
+
     } else if (buttonValue === 'end') {
       await leaveGame();
     }
@@ -214,7 +246,7 @@ const TruthOrDare: React.FC = () => {
 
   // Handle input submit
   const handleInputSubmit = async () => {
-    if (!inputValue.trim() || isSubmitting) return;
+    if (!inputValue.trim() || isSubmitting || !roomId) return;
     
     haptics.light();
     setIsSubmitting(true);
@@ -227,32 +259,33 @@ const TruthOrDare: React.FC = () => {
         return;
       }
 
-      // Add opponent's question message
-      const questionMessage: ChatMessage = {
-        id: generateMessageId(),
+      // Save question message
+      const questionMsg: Omit<ChatMessage, 'id' | 'created_at'> = {
         sender: myPlayerIndex === 0 ? 'player1' : 'player2',
-        senderName: playerName,
-        type: 'text',
-        content: {
-          text: validation.value!
-        },
-        timestamp: Date.now()
+        sender_name: playerName,
+        message_type: 'text',
+        content: { text: validation.value! }
       };
 
-      // Create answer input for current player
-      const answerInputMessage = createQuestionMessage(
-        gameState.currentType!,
-        validation.value!,
-        playerName
-      );
+      // Save answer input message for current player
+      const answerInputMsg: Omit<ChatMessage, 'id' | 'created_at'> = {
+        sender: 'system',
+        message_type: 'input',
+        content: {
+          text: gameState.currentType === 'truth' ? '💬 TRUTH QUESTION' : '🔥 DARE CHALLENGE',
+          subtext: `From ${playerName}:`,
+          question: validation.value!,
+          inputPlaceholder: gameState.currentType === 'truth' ? 'Type your answer...' : undefined,
+          inputAction: gameState.currentType === 'truth' ? 'submit_answer' : 'complete_dare',
+          questionType: gameState.currentType
+        }
+      };
 
-      const newMessages = [questionMessage, answerInputMessage];
-      setMessages(prev => [...prev, ...newMessages]);
+      await saveMessages([questionMsg, answerInputMsg], roomId);
       setCurrentInputAction(gameState.currentType === 'truth' ? 'submit_answer' : 'complete_dare');
       setInputValue('');
-
-      await broadcastChatUpdate(newMessages, gameState);
       toast.success('Sent! 💕');
+
     } else if (currentInputAction === 'submit_answer') {
       const validation = validateAnswer(inputValue);
       if (!validation.success) {
@@ -267,27 +300,28 @@ const TruthOrDare: React.FC = () => {
       const questionMsg = [...messages].reverse().find(m => m.content.question);
       const question = questionMsg?.content.question || '';
 
-      // Add answer message
-      const answerMessage: ChatMessage = {
-        id: generateMessageId(),
+      // Save answer message
+      const answerMsg: Omit<ChatMessage, 'id' | 'created_at'> = {
         sender: myPlayerIndex === 0 ? 'player1' : 'player2',
-        senderName: playerName,
-        type: 'text',
-        content: {
-          text: validation.value!
-        },
-        timestamp: Date.now()
+        sender_name: playerName,
+        message_type: 'text',
+        content: { text: validation.value! }
       };
 
-      // Create result message
-      const resultMessage = createResultMessage(
-        gameState.currentType!,
-        question,
-        validation.value!,
-        playerName
-      );
+      // Save result message
+      const resultMsg: Omit<ChatMessage, 'id' | 'created_at'> = {
+        sender: 'system',
+        message_type: 'result',
+        content: {
+          text: gameState.currentType === 'truth' ? '💬 TRUTH RESULT' : '🔥 DARE COMPLETED',
+          question,
+          answer: validation.value!,
+          answeredBy: playerName,
+          questionType: gameState.currentType
+        }
+      };
 
-      // Create next turn message
+      // Create next turn
       const nextIndex = (gameState.currentPlayerIndex + 1) % gameState.players.length;
       const nextPlayer = gameState.players[nextIndex];
       const newState: GameState = {
@@ -299,20 +333,35 @@ const TruthOrDare: React.FC = () => {
         dareCount: gameState.currentType === 'dare' ? gameState.dareCount + 1 : gameState.dareCount
       };
 
-      const turnMessage = createTurnMessage(
-        nextPlayer?.name || '',
-        newState.truthCount,
-        newState.dareCount,
-        nextPlayer?.id === playerId
-      );
+      // Save turn message - buttons only for next player
+      const turnMsg: Omit<ChatMessage, 'id' | 'created_at'> = {
+        sender: 'system',
+        message_type: 'buttons',
+        content: createTurnMessageContent(
+          nextPlayer?.name || '',
+          newState.truthCount,
+          newState.dareCount,
+          true // Will be adjusted on load based on player
+        )
+      };
 
-      const newMessages = [answerMessage, resultMessage, turnMessage];
-      setMessages(prev => [...prev, ...newMessages]);
+      await saveMessages([answerMsg, resultMsg, turnMsg], roomId);
       setCurrentInputAction(null);
       setInputValue('');
       setGameState(newState);
 
-      await broadcastChatUpdate(newMessages, newState);
+      // Update game state in room
+      await supabase
+        .from('game_rooms')
+        .update({ game_state: JSON.parse(JSON.stringify(newState)) })
+        .eq('id', roomId);
+
+      // Broadcast state change
+      channelRef.current?.send({
+        type: 'broadcast',
+        event: 'game_state',
+        payload: { gameState: newState }
+      });
     }
 
     setIsSubmitting(false);
@@ -320,7 +369,7 @@ const TruthOrDare: React.FC = () => {
 
   // Handle dare completion
   const handleDareComplete = async () => {
-    if (isSubmitting) return;
+    if (isSubmitting || !roomId) return;
     haptics.success();
     setIsSubmitting(true);
     celebrateHearts();
@@ -329,27 +378,28 @@ const TruthOrDare: React.FC = () => {
     const questionMsg = [...messages].reverse().find(m => m.content.question);
     const question = questionMsg?.content.question || '';
 
-    // Add completion message
-    const completionMessage: ChatMessage = {
-      id: generateMessageId(),
+    // Save completion message
+    const completionMsg: Omit<ChatMessage, 'id' | 'created_at'> = {
       sender: myPlayerIndex === 0 ? 'player1' : 'player2',
-      senderName: playerName,
-      type: 'text',
-      content: {
-        text: '✅ Done! I completed the dare!'
-      },
-      timestamp: Date.now()
+      sender_name: playerName,
+      message_type: 'text',
+      content: { text: '✅ Done! I completed the dare!' }
     };
 
-    // Create result message
-    const resultMessage = createResultMessage(
-      'dare',
-      question,
-      '✅ Dare completed!',
-      playerName
-    );
+    // Save result message
+    const resultMsg: Omit<ChatMessage, 'id' | 'created_at'> = {
+      sender: 'system',
+      message_type: 'result',
+      content: {
+        text: '🔥 DARE COMPLETED',
+        question,
+        answer: '✅ Dare completed!',
+        answeredBy: playerName,
+        questionType: 'dare'
+      }
+    };
 
-    // Create next turn message
+    // Create next turn
     const nextIndex = (gameState.currentPlayerIndex + 1) % gameState.players.length;
     const nextPlayer = gameState.players[nextIndex];
     const newState: GameState = {
@@ -360,34 +410,36 @@ const TruthOrDare: React.FC = () => {
       dareCount: gameState.dareCount + 1
     };
 
-    const turnMessage = createTurnMessage(
-      nextPlayer?.name || '',
-      newState.truthCount,
-      newState.dareCount,
-      nextPlayer?.id === playerId
-    );
+    // Save turn message
+    const turnMsg: Omit<ChatMessage, 'id' | 'created_at'> = {
+      sender: 'system',
+      message_type: 'buttons',
+      content: createTurnMessageContent(
+        nextPlayer?.name || '',
+        newState.truthCount,
+        newState.dareCount,
+        true
+      )
+    };
 
-    const newMessages = [completionMessage, resultMessage, turnMessage];
-    setMessages(prev => [...prev, ...newMessages]);
+    await saveMessages([completionMsg, resultMsg, turnMsg], roomId);
     setCurrentInputAction(null);
     setGameState(newState);
 
-    await broadcastChatUpdate(newMessages, newState);
-    setIsSubmitting(false);
-  };
-
-  // Broadcast chat update
-  const broadcastChatUpdate = async (newMessages: ChatMessage[], newState: GameState) => {
-    channelRef.current?.send({
-      type: 'broadcast',
-      event: 'chat_message',
-      payload: { messages: newMessages, gameState: newState }
-    });
-
+    // Update game state in room
     await supabase
       .from('game_rooms')
       .update({ game_state: JSON.parse(JSON.stringify(newState)) })
       .eq('id', roomId);
+
+    // Broadcast state change
+    channelRef.current?.send({
+      type: 'broadcast',
+      event: 'game_state',
+      payload: { gameState: newState }
+    });
+
+    setIsSubmitting(false);
   };
 
   // Broadcast typing
@@ -497,26 +549,33 @@ const TruthOrDare: React.FC = () => {
     setGameState(currentState);
     setPartnerName(currentState.players[0]?.name || '');
 
-    // Create initial messages
-    const welcomeMessage: ChatMessage = {
-      id: generateMessageId(),
+    // Save initial messages to database
+    const welcomeMsg: Omit<ChatMessage, 'id' | 'created_at'> = {
       sender: 'system',
-      type: 'text',
+      message_type: 'text',
       content: {
         text: `💕 Welcome to Couples Truth & Dare!`,
         subtext: `${currentState.players[0]?.name} ❤️ ${nameValidation.value!}`
-      },
-      timestamp: Date.now()
+      }
     };
 
-    const turnMessage = createTurnMessage(
-      currentState.players[0]?.name || '',
-      0,
-      0,
-      currentState.players[0]?.id === playerId
-    );
+    const turnMsg: Omit<ChatMessage, 'id' | 'created_at'> = {
+      sender: 'system',
+      message_type: 'buttons',
+      content: createTurnMessageContent(
+        currentState.players[0]?.name || '',
+        0,
+        0,
+        true
+      )
+    };
 
-    setMessages([welcomeMessage, turnMessage]);
+    await saveMessages([welcomeMsg, turnMsg], data.id);
+    
+    // Load messages after saving
+    const loadedMessages = await loadMessages(data.id);
+    setMessages(adjustMessagesForPlayer(loadedMessages, currentState, playerId));
+    
     setMode('playing');
 
     // Broadcast join event
@@ -528,8 +587,7 @@ const TruthOrDare: React.FC = () => {
       payload: { 
         playerId, 
         playerName: nameValidation.value!, 
-        gameState: currentState,
-        initialMessages: [welcomeMessage, turnMessage]
+        gameState: currentState
       }
     });
     supabase.removeChannel(channel);
@@ -539,70 +597,134 @@ const TruthOrDare: React.FC = () => {
     toast.success(`Joined ${currentState.players[0]?.name}'s room! Let's play 💕`);
   };
 
+  // Adjust messages for current player (show/hide buttons)
+  const adjustMessagesForPlayer = (msgs: ChatMessage[], state: GameState, currentPlayerId: string): ChatMessage[] => {
+    const currentPlayerIdx = state.players.findIndex(p => p.id === currentPlayerId);
+    const currentTurnPlayer = state.players[state.currentPlayerIndex];
+    const isCurrentPlayerTurn = currentTurnPlayer?.id === currentPlayerId;
+
+    return msgs.map(msg => {
+      if (msg.message_type === 'buttons' && msg.content.buttons && !msg.disabled) {
+        // Only show buttons if it's current player's turn
+        const shouldShowButtons = isCurrentPlayerTurn;
+        return {
+          ...msg,
+          content: {
+            ...msg.content,
+            buttons: shouldShowButtons ? msg.content.buttons : undefined
+          }
+        };
+      }
+      return msg;
+    });
+  };
+
+  // Determine input action from messages
+  const determineInputAction = (msgs: ChatMessage[], state: GameState, currentPlayerId: string): string | null => {
+    const currentTurnPlayer = state.players[state.currentPlayerIndex];
+    const isCurrentPlayerTurn = currentTurnPlayer?.id === currentPlayerId;
+    
+    const lastInputMsg = [...msgs].reverse().find(m => m.message_type === 'input' && m.content.inputAction);
+    
+    if (!lastInputMsg) return null;
+
+    const action = lastInputMsg.content.inputAction;
+    
+    // submit_question is for opponent (not current turn player)
+    if (action === 'submit_question' && !isCurrentPlayerTurn) {
+      return 'submit_question';
+    }
+    // submit_answer and complete_dare are for current turn player
+    if ((action === 'submit_answer' || action === 'complete_dare') && isCurrentPlayerTurn) {
+      return action;
+    }
+
+    return null;
+  };
+
   // Realtime subscription
   useEffect(() => {
-    if (!roomCode || (mode !== 'waiting' && mode !== 'playing')) return;
+    if (!roomCode || !roomId || (mode !== 'waiting' && mode !== 'playing')) return;
 
-    const channel = supabase
+    // Subscribe to chat_messages realtime
+    const messagesChannel = supabase
+      .channel(`messages-${roomId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'chat_messages',
+          filter: `room_id=eq.${roomId}`
+        },
+        (payload) => {
+          const newMsg = payload.new as unknown as ChatMessage;
+          setMessages(prev => {
+            // Avoid duplicates
+            if (prev.some(m => m.id === newMsg.id)) return prev;
+            
+            // Adjust for current player
+            const adjusted = adjustMessagesForPlayer([newMsg], gameState, playerId);
+            return [...prev, ...adjusted];
+          });
+          setPartnerIsTyping(false);
+
+          // Update input action
+          setMessages(prev => {
+            const action = determineInputAction(prev, gameState, playerId);
+            setCurrentInputAction(action);
+            return prev;
+          });
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'chat_messages',
+          filter: `room_id=eq.${roomId}`
+        },
+        (payload) => {
+          const updatedMsg = payload.new as unknown as ChatMessage;
+          setMessages(prev => prev.map(m => m.id === updatedMsg.id ? { ...m, disabled: updatedMsg.disabled } : m));
+        }
+      )
+      .subscribe();
+
+    // Broadcast channel for typing and game state
+    const broadcastChannel = supabase
       .channel(`tod-${roomCode}`, {
         config: { broadcast: { self: false } }
       })
-      .on('broadcast', { event: 'chat_message' }, ({ payload }) => {
-        if (payload?.messages) {
-          const newMessages = payload.messages as ChatMessage[];
-          // Adjust sender perspective and check for buttons
-          const adjustedMessages = newMessages.map(msg => {
-            // If it's a turn message with buttons, only show buttons to current player
-            if (msg.type === 'buttons' && msg.content.buttons) {
-              const newState = payload.gameState as GameState;
-              const nextPlayer = newState.players[newState.currentPlayerIndex];
-              const isMyTurnNow = nextPlayer?.id === playerId;
-              return {
-                ...msg,
-                content: {
-                  ...msg.content,
-                  buttons: isMyTurnNow ? msg.content.buttons : undefined
-                }
-              };
-            }
-            return msg;
-          });
-          
-          setMessages(prev => [...prev, ...adjustedMessages]);
-          setPartnerIsTyping(false);
-
-          // Update input action based on last input message
-          const lastInputMsg = [...adjustedMessages].reverse().find(m => m.type === 'input');
-          if (lastInputMsg?.content.inputAction) {
-            const newState = payload.gameState as GameState;
-            const currentP = newState.players[newState.currentPlayerIndex];
-            // Only set input action if it's relevant to current player
-            if (lastInputMsg.content.inputAction === 'submit_question' && currentP?.id !== playerId) {
-              setCurrentInputAction('submit_question');
-            } else if ((lastInputMsg.content.inputAction === 'submit_answer' || lastInputMsg.content.inputAction === 'complete_dare') && currentP?.id === playerId) {
-              setCurrentInputAction(lastInputMsg.content.inputAction);
-            } else {
-              setCurrentInputAction(null);
-            }
-          }
-        }
-        if (payload?.gameState) {
-          setGameState(payload.gameState);
-        }
-      })
-      .on('broadcast', { event: 'player_joined' }, ({ payload }) => {
+      .on('broadcast', { event: 'player_joined' }, async ({ payload }) => {
         if (payload?.playerName && payload.playerId !== playerId) {
           setPartnerName(payload.playerName);
           if (payload.gameState) {
             setGameState(payload.gameState);
           }
-          if (payload.initialMessages) {
-            setMessages(payload.initialMessages);
+          
+          // Load all messages
+          if (roomId) {
+            const loadedMessages = await loadMessages(roomId);
+            setMessages(adjustMessagesForPlayer(loadedMessages, payload.gameState || gameState, playerId));
+            const action = determineInputAction(loadedMessages, payload.gameState || gameState, playerId);
+            setCurrentInputAction(action);
           }
+          
           setMode('playing');
           celebrateHearts();
           haptics.success();
           toast.success(`${payload.playerName} joined! Let the love begin! 💕`);
+        }
+      })
+      .on('broadcast', { event: 'game_state' }, ({ payload }) => {
+        if (payload?.gameState) {
+          setGameState(payload.gameState);
+          // Re-adjust messages for new game state
+          setMessages(prev => adjustMessagesForPlayer(prev, payload.gameState, playerId));
+          const action = determineInputAction(messages, payload.gameState, playerId);
+          setCurrentInputAction(action);
         }
       })
       .on('broadcast', { event: 'typing' }, ({ payload }) => {
@@ -618,16 +740,17 @@ const TruthOrDare: React.FC = () => {
       })
       .subscribe();
 
-    channelRef.current = channel;
+    channelRef.current = broadcastChannel;
 
     return () => {
-      supabase.removeChannel(channel);
+      supabase.removeChannel(messagesChannel);
+      supabase.removeChannel(broadcastChannel);
       channelRef.current = null;
       if (typingTimeoutRef.current) {
         clearTimeout(typingTimeoutRef.current);
       }
     };
-  }, [roomCode, mode, playerId]);
+  }, [roomCode, roomId, mode, playerId, gameState]);
 
   const leaveGame = async () => {
     if (roomId) {
@@ -676,9 +799,9 @@ const TruthOrDare: React.FC = () => {
       >
         <div className={`max-w-[85%] ${isSystem ? 'w-full' : ''}`}>
           {/* Sender name for player messages */}
-          {!isSystem && msg.senderName && (
+          {!isSystem && msg.sender_name && (
             <p className={`text-xs text-muted-foreground mb-1 ${isMe ? 'text-right' : 'text-left'}`}>
-              {msg.senderName}
+              {msg.sender_name}
             </p>
           )}
           
@@ -691,7 +814,7 @@ const TruthOrDare: React.FC = () => {
                 : 'bg-muted'
           }`}>
             {/* Text message */}
-            {msg.type === 'text' && (
+            {msg.message_type === 'text' && (
               <div>
                 <p className="text-base">{msg.content.text}</p>
                 {msg.content.subtext && (
@@ -703,7 +826,7 @@ const TruthOrDare: React.FC = () => {
             )}
 
             {/* Buttons message */}
-            {msg.type === 'buttons' && (
+            {msg.message_type === 'buttons' && (
               <div className="space-y-3">
                 <div className="text-center">
                   <p className="text-lg font-semibold">{msg.content.text}</p>
@@ -740,7 +863,7 @@ const TruthOrDare: React.FC = () => {
             )}
 
             {/* Input message */}
-            {msg.type === 'input' && (
+            {msg.message_type === 'input' && (
               <div className="space-y-3">
                 <div className="text-center">
                   <p className={`text-lg font-semibold ${
@@ -763,7 +886,7 @@ const TruthOrDare: React.FC = () => {
             )}
 
             {/* Result message */}
-            {msg.type === 'result' && (
+            {msg.message_type === 'result' && (
               <div className="space-y-4">
                 <div className="text-center">
                   <span className="text-3xl">💕</span>
@@ -957,25 +1080,23 @@ const TruthOrDare: React.FC = () => {
       {renderFloatingHearts()}
       
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-background/50 backdrop-blur-sm">
-        <Button variant="ghost" size="sm" onClick={leaveGame}>
-          <ArrowLeft className="w-4 h-4" />
+      <div className="flex items-center justify-between px-4 py-3 border-b border-pink-500/20 bg-gradient-to-r from-pink-500/5 to-purple-500/5">
+        <Button variant="ghost" size="icon" onClick={leaveGame} className="text-muted-foreground">
+          <ArrowLeft className="w-5 h-5" />
         </Button>
         <div className="text-center">
-          <div className="flex items-center gap-2">
-            <span className={isMyTurn ? 'text-pink-400 font-bold' : 'text-muted-foreground'}>{playerName}</span>
-            <Heart className="w-4 h-4 text-pink-500" fill="currentColor" />
-            <span className={!isMyTurn ? 'text-pink-400 font-bold' : 'text-muted-foreground'}>{partnerName || '...'}</span>
-          </div>
+          <p className="text-sm">
+            {playerName} <span className="text-pink-500">❤️</span> {partnerName}
+          </p>
           <p className="text-xs text-muted-foreground">Round {gameState.roundCount + 1}</p>
         </div>
-        <div className="w-8" />
+        <div className="w-10" />
       </div>
 
       {/* Chat messages */}
       <div 
         ref={chatContainerRef}
-        className="flex-1 overflow-y-auto p-4 space-y-4"
+        className="flex-1 overflow-y-auto px-4 py-4 space-y-4"
       >
         {messages.map(msg => renderMessage(msg))}
         
@@ -983,13 +1104,10 @@ const TruthOrDare: React.FC = () => {
         {partnerIsTyping && (
           <div className="flex justify-start animate-slide-up">
             <div className="bg-muted rounded-2xl px-4 py-3">
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-muted-foreground">{partnerName} is typing</span>
-                <span className="flex gap-1">
-                  <span className="w-2 h-2 bg-pink-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                  <span className="w-2 h-2 bg-pink-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                  <span className="w-2 h-2 bg-pink-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-                </span>
+              <div className="flex gap-1">
+                <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
               </div>
             </div>
           </div>
@@ -998,15 +1116,14 @@ const TruthOrDare: React.FC = () => {
 
       {/* Input bar */}
       {shouldShowInput && (
-        <div className="p-4 border-t border-border bg-background/50 backdrop-blur-sm animate-slide-up">
+        <div className="px-4 py-3 border-t border-pink-500/20 bg-gradient-to-r from-pink-500/5 to-purple-500/5">
           {currentInputAction === 'complete_dare' ? (
             <Button
               onClick={handleDareComplete}
               disabled={isSubmitting}
               className="w-full bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 py-6 text-lg"
             >
-              {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : '✅'} 
-              Mark Dare as Done!
+              {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : '✅ Mark Dare as Done!'}
             </Button>
           ) : (
             <div className="flex gap-2">
@@ -1015,23 +1132,30 @@ const TruthOrDare: React.FC = () => {
                 onChange={(e) => handleInputChange(e.target.value)}
                 placeholder={
                   currentInputAction === 'submit_question' 
-                    ? `Ask ${currentPlayer?.name} a ${gameState.currentType}...` 
+                    ? (gameState.currentType === 'truth' ? 'Ask a truth question...' : 'Give a dare...')
                     : 'Type your answer...'
                 }
-                className="flex-1 bg-background border-pink-500/30"
                 maxLength={300}
-                onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleInputSubmit()}
+                className="flex-1 bg-background/50 border-pink-500/30"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handleInputSubmit();
+                  }
+                }}
               />
               <Button
                 onClick={handleInputSubmit}
                 disabled={!inputValue.trim() || isSubmitting}
-                className="bg-gradient-to-r from-pink-500 to-red-500 hover:from-pink-600 hover:to-red-600 px-6"
+                className="bg-gradient-to-r from-pink-500 to-red-500 hover:from-pink-600 hover:to-red-600 px-4"
               >
                 {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
               </Button>
             </div>
           )}
-          <p className="text-xs text-muted-foreground text-right mt-1">{inputValue.length}/300</p>
+          <p className="text-xs text-muted-foreground text-center mt-2">
+            {inputValue.length}/300
+          </p>
         </div>
       )}
     </div>
