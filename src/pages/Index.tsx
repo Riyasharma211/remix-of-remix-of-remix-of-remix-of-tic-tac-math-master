@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { Grid3X3, Zap, Brain, Target, Gamepad2, Volume2, VolumeX, Timer, Sparkles, Palette, Swords, Pencil, Heart, Trophy, Link2, HelpCircle, Maximize, Minimize } from 'lucide-react';
+import { Grid3X3, Zap, Brain, Target, Gamepad2, Volume2, VolumeX, Timer, Sparkles, Palette, Swords, Pencil, Heart, Trophy, Link2, HelpCircle, Maximize, Minimize, BarChart3 } from 'lucide-react';
 import TicTacToeOnline from '@/components/games/TicTacToeOnline';
 import MathChallenge from '@/components/games/MathChallenge';
 import MemoryMatch from '@/components/games/MemoryMatch';
@@ -17,6 +17,7 @@ import GameTransition from '@/components/GameTransition';
 import DifficultySelector from '@/components/DifficultySelector';
 import ThemeToggle from '@/components/ThemeToggle';
 import Leaderboard from '@/components/Leaderboard';
+import GameStatsDashboard from '@/components/GameStatsDashboard';
 import { Button } from '@/components/ui/button';
 import { soundManager } from '@/utils/soundManager';
 import { haptics } from '@/utils/haptics';
@@ -127,6 +128,7 @@ const IndexContent: React.FC = () => {
   const [activeGame, setActiveGame] = useState<GameType>('tictactoe');
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
+  const [showStats, setShowStats] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   const toggleFullscreen = useCallback(async () => {
@@ -166,6 +168,11 @@ const IndexContent: React.FC = () => {
   const openLeaderboard = () => {
     haptics.light();
     setShowLeaderboard(true);
+  };
+
+  const openStats = () => {
+    haptics.light();
+    setShowStats(true);
   };
 
   const renderGame = () => {
@@ -229,6 +236,14 @@ const IndexContent: React.FC = () => {
               ) : (
                 <VolumeX className="w-4 h-4 sm:w-5 sm:h-5 text-muted-foreground" />
               )}
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={openStats}
+              className="h-8 w-8 sm:h-10 sm:w-10"
+            >
+              <BarChart3 className="w-4 h-4 sm:w-5 sm:h-5 text-neon-blue" />
             </Button>
             <Button
               variant="ghost"
@@ -398,8 +413,9 @@ const IndexContent: React.FC = () => {
         </footer>
       </div>
 
-      {/* Leaderboard Modal */}
+      {/* Modals */}
       <Leaderboard isOpen={showLeaderboard} onClose={() => setShowLeaderboard(false)} />
+      <GameStatsDashboard isOpen={showStats} onClose={() => setShowStats(false)} />
     </div>
   );
 };
