@@ -1118,8 +1118,23 @@ const TruthOrDare: React.FC = () => {
     const currentTurnPlayer = state.players[state.currentPlayerIndex];
     const isCurrentPlayerTurn = currentTurnPlayer?.id === currentPlayerId;
     
-    // Find last input message and check if there's a result after it
+    // Check for pending approval message first
     const reversedMsgs = [...msgs].reverse();
+    const lastApprovalMsgIdx = reversedMsgs.findIndex(m => m.message_type === 'approval' && !m.disabled);
+    
+    if (lastApprovalMsgIdx !== -1) {
+      const approvalMsg = reversedMsgs[lastApprovalMsgIdx];
+      // If I'm the one who completed the dare, I'm awaiting approval
+      if (approvalMsg.content.completedByPlayerId === currentPlayerId) {
+        return 'awaiting_approval';
+      }
+      // If I need to approve, return null (approval buttons are shown in message)
+      if (approvalMsg.content.forPlayerId === currentPlayerId) {
+        return null; // Opponent sees approve/reject buttons in the message itself
+      }
+    }
+    
+    // Find last input message and check if there's a result after it
     const lastInputMsgIdx = reversedMsgs.findIndex(m => m.message_type === 'input' && m.content.inputAction);
     const lastResultMsgIdx = reversedMsgs.findIndex(m => m.message_type === 'result');
     const lastButtonsMsgIdx = reversedMsgs.findIndex(m => m.message_type === 'buttons' && !m.disabled);
@@ -1128,6 +1143,9 @@ const TruthOrDare: React.FC = () => {
     if (lastInputMsgIdx === -1) return null;
     if (lastResultMsgIdx !== -1 && lastResultMsgIdx < lastInputMsgIdx) return null;
     if (lastButtonsMsgIdx !== -1 && lastButtonsMsgIdx < lastInputMsgIdx) return null;
+    
+    // Also check if there's a pending approval after the input
+    if (lastApprovalMsgIdx !== -1 && lastApprovalMsgIdx < lastInputMsgIdx) return null;
     
     const lastInputMsg = reversedMsgs[lastInputMsgIdx];
     const action = lastInputMsg.content.inputAction;
@@ -1566,6 +1584,17 @@ const TruthOrDare: React.FC = () => {
                 )}
                 
                 {/* Approve/Reject buttons - only for opponent */}
+                {(() => {
+                  console.log('Approval message render:', { 
+                    msgId: msg.id, 
+                    disabled: msg.disabled, 
+                    forPlayerId: msg.content.forPlayerId, 
+                    playerId, 
+                    buttons: msg.content.buttons,
+                    shouldShowButtons: !msg.disabled && msg.content.forPlayerId === playerId && msg.content.buttons
+                  });
+                  return null;
+                })()}
                 {!msg.disabled && msg.content.forPlayerId === playerId && msg.content.buttons && (
                   <div className="flex flex-wrap gap-2 justify-center">
                     {msg.content.buttons.map(btn => (
