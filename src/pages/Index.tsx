@@ -1,4 +1,5 @@
-import React, { useState, useCallback, createContext, useContext } from 'react';
+import React, { useState, useCallback, createContext, useContext, useMemo } from 'react';
+import { useSwipe } from '@/hooks/useSwipe';
 import { Grid3X3, Zap, Brain, Target, Gamepad2, Volume2, VolumeX, Timer, Sparkles, Palette, Swords, Pencil, Heart, Trophy, Link2, HelpCircle, Maximize, Minimize, BarChart3 } from 'lucide-react';
 import TicTacToeOnline from '@/components/games/TicTacToeOnline';
 import MathChallenge from '@/components/games/MathChallenge';
@@ -196,6 +197,30 @@ const IndexContent: React.FC = () => {
     haptics.light();
     setShowStats(true);
   };
+
+  // Swipe navigation for mobile
+  const allGames = useMemo(() => [...games.filter(g => g.multiplayer), ...games.filter(g => !g.multiplayer)], []);
+  
+  const navigateGame = useCallback((direction: 'next' | 'prev') => {
+    const currentIndex = allGames.findIndex(g => g.id === activeGame);
+    let newIndex: number;
+    
+    if (direction === 'next') {
+      newIndex = currentIndex < allGames.length - 1 ? currentIndex + 1 : 0;
+    } else {
+      newIndex = currentIndex > 0 ? currentIndex - 1 : allGames.length - 1;
+    }
+    
+    setActiveGame(allGames[newIndex].id);
+    soundManager.playLocalSound('whoosh');
+    haptics.light();
+  }, [activeGame, allGames]);
+
+  const swipeHandlers = useSwipe({
+    onSwipeLeft: () => navigateGame('next'),
+    onSwipeRight: () => navigateGame('prev'),
+    threshold: 60,
+  });
 
   const renderGame = () => {
     switch (activeGame) {
@@ -431,7 +456,10 @@ const IndexContent: React.FC = () => {
           </aside>
 
           {/* Game Area */}
-          <main className="bg-card/50 backdrop-blur-sm rounded-2xl sm:rounded-3xl border border-border p-3 sm:p-6 md:p-8 flex items-center justify-center overflow-hidden">
+          <main 
+            className="bg-card/50 backdrop-blur-sm rounded-2xl sm:rounded-3xl border border-border p-3 sm:p-6 md:p-8 flex items-center justify-center overflow-hidden lg:touch-none"
+            {...swipeHandlers}
+          >
             <GameTransition gameKey={activeGame}>
               {renderGame()}
             </GameTransition>
