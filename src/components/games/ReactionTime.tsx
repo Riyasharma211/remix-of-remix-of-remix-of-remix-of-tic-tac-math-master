@@ -29,7 +29,7 @@ const ReactionTime: React.FC = () => {
     timeoutRef.current = setTimeout(() => {
       setGameState('ready');
       setStartTime(Date.now());
-      soundManager.playLocalSound('correct');
+      soundManager.playLocalSound('ding');
     }, delay);
   };
 

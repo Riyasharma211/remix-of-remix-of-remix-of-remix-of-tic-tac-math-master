@@ -97,10 +97,25 @@ const MathChallenge: React.FC = () => {
     
     if (answer === problem.answer) {
       setFeedback('correct');
-      soundManager.playLocalSound('correct');
+      const newStreak = streak + 1;
+      
+      // Play combo sound for streaks
+      if (newStreak >= 5 && newStreak % 5 === 0) {
+        soundManager.playLocalSound('combo');
+        haptics.success();
+      } else {
+        soundManager.playLocalSound('correct');
+        haptics.light();
+      }
+      
+      // Level up sound when difficulty increases
+      if (newStreak > 0 && newStreak % 5 === 0) {
+        setTimeout(() => soundManager.playLocalSound('levelup'), 200);
+      }
+      
       const points = 10 + streak * 2 + difficulty * 5;
       setScore((prev) => prev + points);
-      setStreak((prev) => prev + 1);
+      setStreak(newStreak);
       
       if (streak > 0 && streak % 5 === 0) {
         setDifficulty((prev) => Math.min(prev + 1, 5));
@@ -110,6 +125,7 @@ const MathChallenge: React.FC = () => {
     } else {
       setFeedback('wrong');
       soundManager.playLocalSound('wrong');
+      haptics.error();
       setStreak(0);
       setTimeout(() => nextProblem(difficulty), 500);
     }
