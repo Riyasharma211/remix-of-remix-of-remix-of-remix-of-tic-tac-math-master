@@ -296,6 +296,23 @@ const TicTacToeOnline: React.FC = () => {
       .channel(`ttt-${roomCode}`, {
         config: { broadcast: { self: false } } // Don't receive own broadcasts
       })
+      .on('broadcast', { event: 'game_left' }, () => {
+        // Other player left - reset game
+        toast({ title: 'Opponent Left', description: 'The game has ended' });
+        setMode('menu');
+        setRoomCode('');
+        setJoinCode('');
+        setBoard(Array(9).fill(null));
+        setGridSize(3);
+        setCurrentPlayer('X');
+        setWinner(null);
+        setWinningLine(null);
+        setScores({ X: 0, O: 0 });
+        setIsDraw(false);
+        setIsConnected(false);
+        setTimeLeft(TURN_TIME);
+        setGameStarted(false);
+      })
       .on('broadcast', { event: 'game_update' }, ({ payload }) => {
         if (payload) {
           if (payload.player_joined && mode === 'online-waiting') {
@@ -447,6 +464,16 @@ const TicTacToeOnline: React.FC = () => {
 
   const leaveGame = async () => {
     if (timerRef.current) clearInterval(timerRef.current);
+    
+    // Broadcast to other player that we're leaving
+    if (channelRef.current) {
+      await channelRef.current.send({
+        type: 'broadcast',
+        event: 'game_left',
+        payload: {}
+      });
+    }
+    
     if (roomCode) {
       await supabase.from('game_rooms').delete().eq('room_code', roomCode);
     }
@@ -462,7 +489,7 @@ const TicTacToeOnline: React.FC = () => {
     setIsDraw(false);
     setIsConnected(false);
     setTimeLeft(TURN_TIME);
-    setGameStarted(false); // Reset game started
+    setGameStarted(false);
   };
 
   const startLocalGame = (size: GridSize) => {

@@ -225,6 +225,20 @@ const MathBattle: React.FC = () => {
       .channel(`mathbattle-${roomId}`, {
         config: { broadcast: { self: true } }
       })
+      .on('broadcast', { event: 'game_left' }, () => {
+        // Other player left - reset game
+        toast({ title: 'Opponent Left', description: 'The game has ended' });
+        setMode('menu');
+        setRoomCode('');
+        setRoomId(null);
+        setProblem(null);
+        setOptions([]);
+        setScores({ player1: 0, player2: 0 });
+        setRound(1);
+        setHasAnswered(false);
+        setWinner(null);
+        setFeedback(null);
+      })
       .on('broadcast', { event: 'game_update' }, ({ payload }) => {
         if (!payload) return;
         
@@ -366,6 +380,15 @@ const MathBattle: React.FC = () => {
   };
 
   const leaveGame = async () => {
+    // Broadcast to other player that we're leaving
+    if (channelRef.current) {
+      await channelRef.current.send({
+        type: 'broadcast',
+        event: 'game_left',
+        payload: {}
+      });
+    }
+    
     if (roomId) {
       await supabase.from('game_rooms').delete().eq('id', roomId);
     }

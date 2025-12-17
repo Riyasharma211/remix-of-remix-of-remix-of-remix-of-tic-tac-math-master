@@ -1167,6 +1167,18 @@ const TruthOrDare: React.FC = () => {
       .channel(`tod-${roomCode}`, {
         config: { broadcast: { self: false } }
       })
+      .on('broadcast', { event: 'game_left' }, () => {
+        // Other player left - reset game
+        toast.info('Your friend left the game');
+        setMode('menu');
+        setRoomId(null);
+        setRoomCode('');
+        setPlayerName('');
+        setPartnerName('');
+        setMessages([]);
+        setInputValue('');
+        setCurrentInputAction(null);
+      })
       .on('broadcast', { event: 'player_joined' }, async ({ payload }) => {
         console.log('Player joined event:', payload);
         if (payload?.playerName && payload.playerId !== playerId) {
@@ -1191,8 +1203,8 @@ const TruthOrDare: React.FC = () => {
           soundManager.playLocalSound('start');
           showIOSNotification({
             title: `${payload.playerName} joined!`,
-            message: "Let the love game begin! 💕",
-            icon: '💕',
+            message: "Let the fun game begin! 🎉",
+            icon: '🎉',
             variant: 'love',
           });
         }
@@ -1309,6 +1321,15 @@ const TruthOrDare: React.FC = () => {
   }, [roomCode, roomId, mode, playerId, gameState]);
 
   const leaveGame = async () => {
+    // Broadcast to other player that we're leaving
+    if (channelRef.current) {
+      await channelRef.current.send({
+        type: 'broadcast',
+        event: 'game_left',
+        payload: {}
+      });
+    }
+    
     if (roomId) {
       await supabase.from('game_rooms').delete().eq('id', roomId);
     }
