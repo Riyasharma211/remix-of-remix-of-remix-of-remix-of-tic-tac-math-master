@@ -79,6 +79,7 @@ const TruthOrDare: React.FC = () => {
   });
   
   const [floatingHearts, setFloatingHearts] = useState<{ id: number; x: number }[]>([]);
+  const [floatingReactions, setFloatingReactions] = useState<{ id: number; x: number; emoji: string }[]>([]);
   const channelRef = useRef<RealtimeChannel | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [partnerIsTyping, setPartnerIsTyping] = useState(false);
@@ -163,6 +164,15 @@ const TruthOrDare: React.FC = () => {
     setTimeout(() => {
       setFloatingHearts(prev => prev.filter(h => h.id !== newHeart.id));
     }, 3000);
+  }, []);
+
+  // Floating emoji reaction animation
+  const spawnFloatingEmoji = useCallback((emoji: string) => {
+    const newEmoji = { id: Date.now() + Math.random(), x: Math.random() * 80 + 10, emoji };
+    setFloatingReactions(prev => [...prev, newEmoji]);
+    setTimeout(() => {
+      setFloatingReactions(prev => prev.filter(e => e.id !== newEmoji.id));
+    }, 2500);
   }, []);
 
   // Save message to database
@@ -892,6 +902,9 @@ const TruthOrDare: React.FC = () => {
   const sendReaction = (messageId: string, emoji: string) => {
     haptics.light();
     
+    // Spawn floating emoji for visual feedback
+    spawnFloatingEmoji(emoji);
+    
     // Update local state immediately
     setReactions(prev => {
       const msgReactions = prev[messageId] || {};
@@ -1298,6 +1311,9 @@ const TruthOrDare: React.FC = () => {
       })
       .on('broadcast', { event: 'reaction' }, ({ payload }) => {
         if (payload?.messageId && payload?.emoji && payload?.playerName) {
+          // Spawn floating emoji when partner reacts
+          spawnFloatingEmoji(payload.emoji);
+          
           setReactions(prev => {
             const msgReactions = prev[payload.messageId] || {};
             const emojiReactors = msgReactions[payload.emoji] || [];
@@ -1359,7 +1375,7 @@ const TruthOrDare: React.FC = () => {
     toast.success('Room code copied! Share with your love 💕');
   };
 
-  // Floating hearts render
+  // Floating hearts and reactions render
   const renderFloatingHearts = () => (
     <div className="fixed inset-0 pointer-events-none overflow-hidden z-50">
       {floatingHearts.map(heart => (
@@ -1369,6 +1385,15 @@ const TruthOrDare: React.FC = () => {
           style={{ left: `${heart.x}%`, bottom: 0 }}
         >
           ❤️
+        </div>
+      ))}
+      {floatingReactions.map(reaction => (
+        <div
+          key={reaction.id}
+          className="absolute animate-float-up text-5xl drop-shadow-lg"
+          style={{ left: `${reaction.x}%`, bottom: '20%' }}
+        >
+          {reaction.emoji}
         </div>
       ))}
     </div>
