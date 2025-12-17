@@ -187,6 +187,24 @@ const DrawingGame: React.FC = () => {
       .channel(`drawing-${roomId}`, {
         config: { broadcast: { self: true } }
       })
+      .on('broadcast', { event: 'game_left' }, () => {
+        // Other player left - reset game
+        toast.info('A player left the game');
+        setMode('menu');
+        setRoomId(null);
+        setRoomCode('');
+        setGameState({
+          lines: [],
+          currentDrawer: '',
+          word: '',
+          scores: {},
+          guesses: [],
+          round: 1,
+          maxRounds: 5,
+          players: [],
+          winner: null
+        });
+      })
       .on('broadcast', { event: 'game_update' }, ({ payload }) => {
         if (!payload) return;
 
@@ -464,6 +482,15 @@ const DrawingGame: React.FC = () => {
   };
 
   const leaveGame = async () => {
+    // Broadcast to other players that we're leaving
+    if (channelRef.current) {
+      await channelRef.current.send({
+        type: 'broadcast',
+        event: 'game_left',
+        payload: {}
+      });
+    }
+    
     if (roomId) {
       await supabase.from('game_rooms').delete().eq('id', roomId);
     }
