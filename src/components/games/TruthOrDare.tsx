@@ -620,26 +620,20 @@ const TruthOrDare: React.FC = () => {
     toast.success(`Joined ${currentState.players[0]?.name}'s room! Let's play 💕`);
   };
 
-  // Adjust messages for current player (show/hide buttons)
+  // Adjust messages for current player - no longer remove buttons, just return as is
   const adjustMessagesForPlayer = (msgs: ChatMessage[], state: GameState, currentPlayerId: string): ChatMessage[] => {
-    const currentPlayerIdx = state.players.findIndex(p => p.id === currentPlayerId);
-    const currentTurnPlayer = state.players[state.currentPlayerIndex];
-    const isCurrentPlayerTurn = currentTurnPlayer?.id === currentPlayerId;
+    // Don't modify buttons - they will be shown/hidden dynamically at render time
+    return msgs;
+  };
 
-    return msgs.map(msg => {
-      if (msg.message_type === 'buttons' && msg.content.buttons && !msg.disabled) {
-        // Only show buttons if it's current player's turn
-        const shouldShowButtons = isCurrentPlayerTurn;
-        return {
-          ...msg,
-          content: {
-            ...msg.content,
-            buttons: shouldShowButtons ? msg.content.buttons : undefined
-          }
-        };
-      }
-      return msg;
-    });
+  // Check if buttons should be shown for a message
+  const shouldShowButtonsForMessage = (msg: ChatMessage): boolean => {
+    if (msg.message_type !== 'buttons' || !msg.content.buttons || msg.disabled) {
+      return false;
+    }
+    // Check if it's this player's turn based on latest game state
+    const currentTurnPlayer = gameStateRef.current.players[gameStateRef.current.currentPlayerIndex];
+    return currentTurnPlayer?.id === playerId;
   };
 
   // Determine input action from messages
@@ -905,9 +899,9 @@ const TruthOrDare: React.FC = () => {
                     <p className="text-sm text-muted-foreground">{msg.content.subtext}</p>
                   )}
                 </div>
-                {msg.content.buttons && !msg.disabled && (
+                {shouldShowButtonsForMessage(msg) && (
                   <div className="flex flex-wrap gap-2 justify-center">
-                    {msg.content.buttons.map(btn => (
+                    {msg.content.buttons!.map(btn => (
                       <Button
                         key={btn.value}
                         onClick={() => handleButtonClick(btn.value, msg.id)}
@@ -929,6 +923,9 @@ const TruthOrDare: React.FC = () => {
                 )}
                 {msg.disabled && (
                   <p className="text-center text-sm text-muted-foreground">Choice made ✓</p>
+                )}
+                {!shouldShowButtonsForMessage(msg) && !msg.disabled && msg.content.buttons && (
+                  <p className="text-center text-sm text-muted-foreground">Waiting for partner's choice...</p>
                 )}
               </div>
             )}
