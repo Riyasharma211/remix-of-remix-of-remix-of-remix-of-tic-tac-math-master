@@ -17,12 +17,12 @@ interface ChatMessage {
   room_id?: string;
   sender: 'system' | 'player1' | 'player2';
   sender_name?: string;
-  message_type: 'text' | 'buttons' | 'input' | 'result';
+  message_type: 'text' | 'buttons' | 'input' | 'result' | 'approval';
   content: {
     text?: string;
     subtext?: string;
     forPlayerId?: string; // Who should see the buttons
-    buttons?: { label: string; value: string; icon?: string; variant?: 'truth' | 'dare' | 'end' | 'default' }[];
+    buttons?: { label: string; value: string; icon?: string; variant?: 'truth' | 'dare' | 'end' | 'default' | 'approve' | 'reject' }[];
     inputPlaceholder?: string;
     inputAction?: string;
     question?: string;
@@ -30,6 +30,10 @@ interface ChatMessage {
     answeredBy?: string;
     questionType?: 'truth' | 'dare';
     proofPhotoUrl?: string; // URL of dare proof photo
+    approvalStatus?: 'pending' | 'approved' | 'rejected'; // For approval flow
+    approvalForPlayerId?: string; // Who needs to approve
+    completedByPlayerId?: string; // Who completed the dare
+    completedByPlayerName?: string; // Name of who completed
   };
   disabled?: boolean;
   created_at?: string;
@@ -243,9 +247,32 @@ const TruthOrDare: React.FC = () => {
   });
 
   // Handle button click
-  const handleButtonClick = async (buttonValue: string, messageId: string) => {
+  const handleButtonClick = async (buttonValue: string, messageId: string, msgContent?: ChatMessage['content']) => {
     if (isSubmitting || !roomId) return;
     haptics.light();
+
+    // Handle approve/reject for dare completion
+    if (buttonValue === 'approve' && msgContent) {
+      await handleApproveCompletion(
+        messageId,
+        msgContent.completedByPlayerId || '',
+        msgContent.completedByPlayerName || '',
+        msgContent.question || '',
+        msgContent.proofPhotoUrl
+      );
+      return;
+    }
+    
+    if (buttonValue === 'reject' && msgContent) {
+      await handleRejectCompletion(
+        messageId,
+        msgContent.completedByPlayerId || '',
+        msgContent.completedByPlayerName || '',
+        msgContent.question || ''
+      );
+      return;
+    }
+
     setIsSubmitting(true);
 
     // Disable the clicked message's buttons locally
@@ -515,12 +542,11 @@ const TruthOrDare: React.FC = () => {
     return publicUrl;
   };
 
-  // Handle dare completion
+  // Handle dare completion - sends approval request to opponent
   const handleDareComplete = async () => {
     if (isSubmitting || !roomId) return;
-    haptics.success();
+    haptics.light();
     setIsSubmitting(true);
-    celebrateHearts();
 
     // Upload photo if selected
     let photoUrl: string | null = null;
@@ -532,40 +558,41 @@ const TruthOrDare: React.FC = () => {
     const questionMsg = [...messagesRef.current].reverse().find(m => m.content.question);
     const question = questionMsg?.content.question || '';
 
-    // Save completion message
+    // Get opponent info
+    const currentState = gameStateRef.current;
+    const opponentIndex = myPlayerIndex === 0 ? 1 : 0;
+    const opponent = currentState.players[opponentIndex];
+
+    // Save completion claim message
     const completionMsg: Omit<ChatMessage, 'id' | 'created_at'> = {
       sender: myPlayerIndex === 0 ? 'player1' : 'player2',
       sender_name: playerName,
       message_type: 'text',
-      content: { text: photoUrl ? '✅ Done! Check out my proof! 📸' : '✅ Done! I completed the dare!' }
+      content: { text: photoUrl ? '✅ I completed the dare! Check my proof! 📸' : '✅ I completed the dare!' }
     };
 
-    // Save result message with photo URL
-    const resultMsg: Omit<ChatMessage, 'id' | 'created_at'> = {
+    // Save approval request message with buttons for opponent
+    const approvalMsg: Omit<ChatMessage, 'id' | 'created_at'> = {
       sender: 'system',
-      message_type: 'result',
+      message_type: 'approval',
       content: {
-        text: '🔥 DARE COMPLETED',
+        text: '⏳ Awaiting Approval',
+        subtext: `${playerName} claims to have completed the dare`,
         question,
-        answer: photoUrl ? '✅ Dare completed with photo proof!' : '✅ Dare completed!',
-        answeredBy: playerName,
-        questionType: 'dare',
-        proofPhotoUrl: photoUrl || undefined
+        proofPhotoUrl: photoUrl || undefined,
+        forPlayerId: opponent?.id, // Only opponent sees buttons
+        approvalStatus: 'pending',
+        completedByPlayerId: playerId,
+        completedByPlayerName: playerName,
+        buttons: [
+          { label: '✅ Approve (+20 pts)', value: 'approve', variant: 'approve' as const },
+          { label: '❌ Reject (-5 pts)', value: 'reject', variant: 'reject' as const }
+        ]
       }
     };
 
     // Clear photo state
     clearPhoto();
-
-    // Create next turn - use refs for latest state
-    const currentState = gameStateRef.current;
-    const nextIndex = (currentState.currentPlayerIndex + 1) % currentState.players.length;
-    const nextPlayer = currentState.players[nextIndex];
-    
-    // Add points for completing dare and stop timer
-    const updatedPlayers = currentState.players.map((p, idx) => 
-      idx === myPlayerIndex ? { ...p, points: p.points + POINTS.DARE_COMPLETED } : p
-    );
     
     // Clear dare timer
     if (dareTimerRef.current) {
@@ -573,6 +600,57 @@ const TruthOrDare: React.FC = () => {
       dareTimerRef.current = null;
     }
     setDareTimer(null);
+
+    await saveMessages([completionMsg, approvalMsg], roomId);
+    setCurrentInputAction('awaiting_approval');
+
+    setIsSubmitting(false);
+  };
+
+  // Handle approval of dare completion
+  const handleApproveCompletion = async (messageId: string, completedByPlayerId: string, completedByPlayerName: string, question: string, proofPhotoUrl?: string) => {
+    if (isSubmitting || !roomId) return;
+    haptics.success();
+    setIsSubmitting(true);
+    celebrateHearts();
+
+    // Disable the approval message buttons
+    setMessages(prev => prev.map(msg => 
+      msg.id === messageId ? { ...msg, disabled: true, content: { ...msg.content, approvalStatus: 'approved' as const } } : msg
+    ));
+    await updateMessageDisabled(messageId);
+
+    // Save approval message
+    const approvalTextMsg: Omit<ChatMessage, 'id' | 'created_at'> = {
+      sender: myPlayerIndex === 0 ? 'player1' : 'player2',
+      sender_name: playerName,
+      message_type: 'text',
+      content: { text: '✅ Approved! Well done! 💕' }
+    };
+
+    // Save result message with photo URL
+    const resultMsg: Omit<ChatMessage, 'id' | 'created_at'> = {
+      sender: 'system',
+      message_type: 'result',
+      content: {
+        text: '🔥 DARE COMPLETED ✅',
+        question,
+        answer: proofPhotoUrl ? '✅ Dare approved with photo proof!' : '✅ Dare approved by partner!',
+        answeredBy: completedByPlayerName,
+        questionType: 'dare',
+        proofPhotoUrl
+      }
+    };
+
+    // Create next turn - add points to the player who completed
+    const currentState = gameStateRef.current;
+    const completedPlayerIndex = currentState.players.findIndex(p => p.id === completedByPlayerId);
+    const nextIndex = (currentState.currentPlayerIndex + 1) % currentState.players.length;
+    const nextPlayer = currentState.players[nextIndex];
+    
+    const updatedPlayers = currentState.players.map((p, idx) => 
+      idx === completedPlayerIndex ? { ...p, points: p.points + POINTS.DARE_COMPLETED } : p
+    );
     
     const newState: GameState = {
       ...currentState,
@@ -596,7 +674,7 @@ const TruthOrDare: React.FC = () => {
       )
     };
 
-    await saveMessages([completionMsg, resultMsg, turnMsg], roomId);
+    await saveMessages([approvalTextMsg, resultMsg, turnMsg], roomId);
     setCurrentInputAction(null);
     setGameState(newState);
 
@@ -614,6 +692,91 @@ const TruthOrDare: React.FC = () => {
     });
 
     setIsSubmitting(false);
+  };
+
+  // Handle rejection of dare completion
+  const handleRejectCompletion = async (messageId: string, completedByPlayerId: string, completedByPlayerName: string, question: string) => {
+    if (isSubmitting || !roomId) return;
+    haptics.medium();
+    setIsSubmitting(true);
+
+    // Disable the approval message buttons
+    setMessages(prev => prev.map(msg => 
+      msg.id === messageId ? { ...msg, disabled: true, content: { ...msg.content, approvalStatus: 'rejected' as const } } : msg
+    ));
+    await updateMessageDisabled(messageId);
+
+    // Save rejection message
+    const rejectTextMsg: Omit<ChatMessage, 'id' | 'created_at'> = {
+      sender: myPlayerIndex === 0 ? 'player1' : 'player2',
+      sender_name: playerName,
+      message_type: 'text',
+      content: { text: '❌ Rejected! Do it properly! 😤' }
+    };
+
+    // Save result message
+    const resultMsg: Omit<ChatMessage, 'id' | 'created_at'> = {
+      sender: 'system',
+      message_type: 'result',
+      content: {
+        text: '❌ DARE REJECTED',
+        question,
+        answer: `${completedByPlayerName}'s completion was rejected!`,
+        answeredBy: completedByPlayerName,
+        questionType: 'dare'
+      }
+    };
+
+    // Create next turn - deduct points from the player who failed
+    const currentState = gameStateRef.current;
+    const completedPlayerIndex = currentState.players.findIndex(p => p.id === completedByPlayerId);
+    const nextIndex = (currentState.currentPlayerIndex + 1) % currentState.players.length;
+    const nextPlayer = currentState.players[nextIndex];
+    
+    const updatedPlayers = currentState.players.map((p, idx) => 
+      idx === completedPlayerIndex ? { ...p, points: Math.max(0, p.points + POINTS.SKIP_PENALTY) } : p
+    );
+    
+    const newState: GameState = {
+      ...currentState,
+      players: updatedPlayers,
+      currentPlayerIndex: nextIndex,
+      currentType: undefined,
+      roundCount: currentState.roundCount + 1
+    };
+
+    // Save turn message
+    const turnMsg: Omit<ChatMessage, 'id' | 'created_at'> = {
+      sender: 'system',
+      message_type: 'buttons',
+      content: createTurnMessageContent(
+        nextPlayer?.name || '',
+        nextPlayer?.id || '',
+        newState.truthCount,
+        newState.dareCount,
+        true
+      )
+    };
+
+    await saveMessages([rejectTextMsg, resultMsg, turnMsg], roomId);
+    setCurrentInputAction(null);
+    setGameState(newState);
+
+    // Update game state in room
+    await supabase
+      .from('game_rooms')
+      .update({ game_state: JSON.parse(JSON.stringify(newState)) })
+      .eq('id', roomId);
+
+    // Broadcast state change
+    channelRef.current?.send({
+      type: 'broadcast',
+      event: 'game_state',
+      payload: { gameState: newState }
+    });
+
+    setIsSubmitting(false);
+    toast.info("Dare rejected! Turn moves to next player.");
   };
 
   // Handle skip question/dare
@@ -1245,7 +1408,7 @@ const TruthOrDare: React.FC = () => {
                     {msg.content.buttons!.map(btn => (
                       <Button
                         key={btn.value}
-                        onClick={() => handleButtonClick(btn.value, msg.id)}
+                        onClick={() => handleButtonClick(btn.value, msg.id, msg.content)}
                         disabled={isSubmitting}
                         className={`px-6 py-5 text-base transition-all hover:scale-105 ${
                           btn.variant === 'truth' 
@@ -1363,6 +1526,81 @@ const TruthOrDare: React.FC = () => {
                 )}
               </div>
             )}
+
+            {/* Approval message */}
+            {msg.message_type === 'approval' && (
+              <div className="space-y-4">
+                <div className="text-center">
+                  <span className="text-3xl">
+                    {msg.content.approvalStatus === 'approved' ? '✅' : 
+                     msg.content.approvalStatus === 'rejected' ? '❌' : '⏳'}
+                  </span>
+                  <p className={`text-lg font-semibold mt-2 ${
+                    msg.content.approvalStatus === 'approved' ? 'text-green-400' :
+                    msg.content.approvalStatus === 'rejected' ? 'text-red-400' :
+                    'text-yellow-400'
+                  }`}>{msg.content.text}</p>
+                  {msg.content.subtext && (
+                    <p className="text-sm text-muted-foreground">{msg.content.subtext}</p>
+                  )}
+                </div>
+                
+                {/* Show the dare */}
+                {msg.content.question && (
+                  <div className="p-3 rounded-lg bg-orange-500/20 border border-orange-500/30">
+                    <p className="text-xs text-orange-400 mb-1">Dare:</p>
+                    <p>{msg.content.question}</p>
+                  </div>
+                )}
+                
+                {/* Proof photo if any */}
+                {msg.content.proofPhotoUrl && (
+                  <div>
+                    <p className="text-xs text-purple-400 mb-1 text-center">📸 Proof Photo:</p>
+                    <img 
+                      src={msg.content.proofPhotoUrl} 
+                      alt="Dare proof" 
+                      className="w-full max-h-48 object-cover rounded-xl border border-purple-500/50"
+                    />
+                  </div>
+                )}
+                
+                {/* Approve/Reject buttons - only for opponent */}
+                {!msg.disabled && msg.content.forPlayerId === playerId && msg.content.buttons && (
+                  <div className="flex flex-wrap gap-2 justify-center">
+                    {msg.content.buttons.map(btn => (
+                      <Button
+                        key={btn.value}
+                        onClick={() => handleButtonClick(btn.value, msg.id, msg.content)}
+                        disabled={isSubmitting}
+                        className={`px-5 py-4 text-base transition-all hover:scale-105 ${
+                          btn.variant === 'approve' 
+                            ? 'bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600' 
+                            : btn.variant === 'reject'
+                              ? 'bg-gradient-to-r from-red-500 to-rose-500 hover:from-red-600 hover:to-rose-600'
+                              : 'bg-primary hover:bg-primary/90'
+                        }`}
+                      >
+                        {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : btn.label}
+                      </Button>
+                    ))}
+                  </div>
+                )}
+                
+                {/* Status messages */}
+                {msg.disabled && msg.content.approvalStatus === 'approved' && (
+                  <p className="text-center text-sm text-green-400">✅ Approved!</p>
+                )}
+                {msg.disabled && msg.content.approvalStatus === 'rejected' && (
+                  <p className="text-center text-sm text-red-400">❌ Rejected!</p>
+                )}
+                {!msg.disabled && msg.content.forPlayerId !== playerId && (
+                  <p className="text-center text-sm text-muted-foreground animate-pulse">
+                    Waiting for {partnerName} to approve/reject...
+                  </p>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -1370,7 +1608,8 @@ const TruthOrDare: React.FC = () => {
   };
 
   // Should show input bar
-  const shouldShowInput = currentInputAction && (
+  const shouldShowInput = currentInputAction && 
+    currentInputAction !== 'awaiting_approval' && (
     (currentInputAction === 'submit_question' && !isMyTurn) ||
     (currentInputAction === 'submit_answer' && isMyTurn) ||
     (currentInputAction === 'complete_dare' && isMyTurn)
