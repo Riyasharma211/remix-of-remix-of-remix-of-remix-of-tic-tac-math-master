@@ -165,7 +165,9 @@ export const GAME_TYPES = {
   PATTERN_MEMORY: 'pattern-memory',
   COLOR_MATCH: 'color-match',
   DRAWING_GAME: 'drawing-game',
-  TRUTH_OR_DARE: 'truth-or-dare'
+  TRUTH_OR_DARE: 'truth-or-dare',
+  WORD_CHAIN: 'word-chain',
+  QUIZ_BATTLE: 'quiz-battle'
 } as const;
 
 export const GAME_NAMES: Record<string, string> = {
@@ -178,5 +180,7 @@ export const GAME_NAMES: Record<string, string> = {
   [GAME_TYPES.PATTERN_MEMORY]: 'Pattern Memory',
   [GAME_TYPES.COLOR_MATCH]: 'Color Match',
   [GAME_TYPES.DRAWING_GAME]: 'Drawing Game',
-  [GAME_TYPES.TRUTH_OR_DARE]: 'Truth or Dare'
+  [GAME_TYPES.TRUTH_OR_DARE]: 'Truth or Dare',
+  [GAME_TYPES.WORD_CHAIN]: 'Word Chain',
+  [GAME_TYPES.QUIZ_BATTLE]: 'Quiz Battle'
 };
