@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, createContext, useContext } from 'react';
 import { Grid3X3, Zap, Brain, Target, Gamepad2, Volume2, VolumeX, Timer, Sparkles, Palette, Swords, Pencil, Heart, Trophy, Link2, HelpCircle, Maximize, Minimize, BarChart3 } from 'lucide-react';
 import TicTacToeOnline from '@/components/games/TicTacToeOnline';
 import MathChallenge from '@/components/games/MathChallenge';
@@ -18,10 +18,23 @@ import DifficultySelector from '@/components/DifficultySelector';
 import ThemeToggle from '@/components/ThemeToggle';
 import Leaderboard from '@/components/Leaderboard';
 import GameStatsDashboard from '@/components/GameStatsDashboard';
+import { AchievementNotification } from '@/components/AchievementNotification';
 import { Button } from '@/components/ui/button';
 import { soundManager } from '@/utils/soundManager';
 import { haptics } from '@/utils/haptics';
 import { DifficultyProvider } from '@/contexts/DifficultyContext';
+import { Achievement } from '@/hooks/useGameStats';
+
+// Achievement notification context
+interface AchievementContextType {
+  showAchievements: (achievements: Achievement[]) => void;
+}
+const AchievementContext = createContext<AchievementContextType | null>(null);
+export const useAchievementNotification = () => {
+  const context = useContext(AchievementContext);
+  if (!context) throw new Error('useAchievementNotification must be used within AchievementProvider');
+  return context;
+};
 
 type GameType = 'tictactoe' | 'math' | 'memory' | 'numberguess' | 'reaction' | 'pattern' | 'colormatch' | 'mathbattle' | 'drawing' | 'truthordare' | 'wordchain' | 'quizbattle';
 
@@ -130,6 +143,15 @@ const IndexContent: React.FC = () => {
   const [showLeaderboard, setShowLeaderboard] = useState(false);
   const [showStats, setShowStats] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [pendingAchievements, setPendingAchievements] = useState<Achievement[]>([]);
+
+  const showAchievements = useCallback((achievements: Achievement[]) => {
+    if (achievements.length > 0) {
+      setPendingAchievements(achievements);
+      soundManager.playLocalSound('levelup');
+      haptics.success();
+    }
+  }, []);
 
   const toggleFullscreen = useCallback(async () => {
     haptics.light();
@@ -210,7 +232,16 @@ const IndexContent: React.FC = () => {
   const singlePlayerGames = games.filter(g => !g.multiplayer);
 
   return (
+    <AchievementContext.Provider value={{ showAchievements }}>
     <div className="min-h-screen bg-background bg-grid-pattern relative overflow-hidden">
+      {/* Achievement Notification */}
+      {pendingAchievements.length > 0 && (
+        <AchievementNotification 
+          achievements={pendingAchievements} 
+          onDismiss={() => setPendingAchievements([])} 
+        />
+      )}
+
       {/* Background Effects */}
       <div className="absolute inset-0 bg-gradient-to-br from-neon-cyan/5 via-transparent to-neon-purple/5 pointer-events-none" />
       <div className="absolute top-0 left-1/4 w-48 sm:w-96 h-48 sm:h-96 bg-neon-cyan/10 rounded-full blur-3xl pointer-events-none" />
@@ -417,6 +448,7 @@ const IndexContent: React.FC = () => {
       <Leaderboard isOpen={showLeaderboard} onClose={() => setShowLeaderboard(false)} />
       <GameStatsDashboard isOpen={showStats} onClose={() => setShowStats(false)} />
     </div>
+    </AchievementContext.Provider>
   );
 };
 
