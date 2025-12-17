@@ -513,15 +513,23 @@ const TruthOrDare: React.FC = () => {
       return;
     }
 
+    // Search for room (case-insensitive)
     const { data, error } = await supabase
       .from('game_rooms')
       .select('*')
-      .eq('room_code', codeValidation.value!)
+      .ilike('room_code', codeValidation.value!)
       .eq('game_type', 'truthordare')
+      .in('status', ['waiting', 'playing'])
       .maybeSingle();
 
-    if (error || !data) {
-      toast.error('Room not found');
+    if (error) {
+      console.error('Error finding room:', error);
+      toast.error('Error finding room. Try again.');
+      return;
+    }
+
+    if (!data) {
+      toast.error('Room not found! Check the code or ask your partner to create a new room 💔');
       return;
     }
 
