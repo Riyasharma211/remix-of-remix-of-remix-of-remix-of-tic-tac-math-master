@@ -1,15 +1,28 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { RotateCcw, Trophy } from 'lucide-react';
+import { soundManager } from '@/utils/soundManager';
+import { haptics } from '@/utils/haptics';
 
 type Player = 'X' | 'O' | null;
 type Board = Player[];
+
+interface FloatingEmoji {
+  id: string;
+  emoji: string;
+  x: number;
+  y: number;
+  delay: number;
+  scale: number;
+}
 
 const winningCombinations = [
   [0, 1, 2], [3, 4, 5], [6, 7, 8], // Rows
   [0, 3, 6], [1, 4, 7], [2, 5, 8], // Columns
   [0, 4, 8], [2, 4, 6], // Diagonals
 ];
+
+const REACTION_EMOJIS = ['🎉', '🔥', '😂', '😎', '💪', '👏', '✨', '🏆'];
 
 const TicTacToe: React.FC = () => {
   const [board, setBoard] = useState<Board>(Array(9).fill(null));
@@ -18,6 +31,7 @@ const TicTacToe: React.FC = () => {
   const [winningLine, setWinningLine] = useState<number[] | null>(null);
   const [scores, setScores] = useState({ X: 0, O: 0 });
   const [isDraw, setIsDraw] = useState(false);
+  const [floatingEmojis, setFloatingEmojis] = useState<FloatingEmoji[]>([]);
 
   const checkWinner = (board: Board): { winner: Player; line: number[] | null } => {
     for (const combination of winningCombinations) {
@@ -29,8 +43,39 @@ const TicTacToe: React.FC = () => {
     return { winner: null, line: null };
   };
 
+  // Spawn floating emojis
+  const spawnFloatingEmojis = useCallback((emoji: string) => {
+    const newEmojis: FloatingEmoji[] = [];
+    for (let i = 0; i < 8; i++) {
+      newEmojis.push({
+        id: `${Date.now()}-${i}`,
+        emoji,
+        x: 20 + Math.random() * 60,
+        y: 30 + Math.random() * 40,
+        delay: i * 0.08,
+        scale: 0.8 + Math.random() * 0.6,
+      });
+    }
+    setFloatingEmojis(prev => [...prev, ...newEmojis]);
+    
+    // Clear after animation
+    setTimeout(() => {
+      setFloatingEmojis(prev => prev.filter(e => !newEmojis.find(n => n.id === e.id)));
+    }, 2500);
+  }, []);
+
+  // Handle reaction click
+  const handleReaction = (emoji: string) => {
+    haptics.light();
+    soundManager.playEmojiSound(emoji);
+    spawnFloatingEmojis(emoji);
+  };
+
   const handleClick = (index: number) => {
     if (board[index] || winner || isDraw) return;
+
+    haptics.light();
+    soundManager.playLocalSound('click');
 
     const newBoard = [...board];
     newBoard[index] = currentPlayer;
@@ -44,14 +89,22 @@ const TicTacToe: React.FC = () => {
         ...prev,
         [result.winner as 'X' | 'O']: prev[result.winner as 'X' | 'O'] + 1,
       }));
+      soundManager.playWinSound();
+      haptics.success();
+      // Auto celebration
+      setTimeout(() => spawnFloatingEmojis('🎉'), 200);
+      setTimeout(() => spawnFloatingEmojis('🏆'), 500);
     } else if (newBoard.every((cell) => cell !== null)) {
       setIsDraw(true);
+      soundManager.playLocalSound('lose');
     } else {
       setCurrentPlayer(currentPlayer === 'X' ? 'O' : 'X');
     }
   };
 
   const resetGame = () => {
+    haptics.light();
+    soundManager.playLocalSound('click');
     setBoard(Array(9).fill(null));
     setCurrentPlayer('X');
     setWinner(null);
@@ -64,8 +117,40 @@ const TicTacToe: React.FC = () => {
     resetGame();
   };
 
+  // Render floating emojis
+  const renderFloatingEmojis = () => (
+    <div className="fixed inset-0 pointer-events-none overflow-hidden z-50">
+      {floatingEmojis.map((emoji) => (
+        <div
+          key={emoji.id}
+          className="absolute animate-float-up text-4xl"
+          style={{
+            left: `${emoji.x}%`,
+            top: `${emoji.y}%`,
+            animationDelay: `${emoji.delay}s`,
+            transform: `scale(${emoji.scale})`,
+            opacity: 0,
+            animation: `floatUp 2.5s ease-out ${emoji.delay}s forwards`,
+          }}
+        >
+          {emoji.emoji}
+        </div>
+      ))}
+      <style>{`
+        @keyframes floatUp {
+          0% { opacity: 0; transform: translateY(0) scale(0.5) rotate(0deg); }
+          15% { opacity: 1; transform: translateY(-20px) scale(1.2) rotate(-5deg); }
+          85% { opacity: 1; }
+          100% { opacity: 0; transform: translateY(-150px) scale(0.8) rotate(10deg); }
+        }
+      `}</style>
+    </div>
+  );
+
   return (
-    <div className="flex flex-col items-center gap-6">
+    <div className="flex flex-col items-center gap-6 relative">
+      {renderFloatingEmojis()}
+      
       {/* Scoreboard */}
       <div className="flex gap-8 items-center">
         <div className={`flex flex-col items-center p-4 rounded-xl border-2 transition-all duration-300 ${
@@ -130,6 +215,19 @@ const TicTacToe: React.FC = () => {
             {cell && (
               <span className="animate-scale-pop">{cell}</span>
             )}
+          </button>
+        ))}
+      </div>
+
+      {/* Reaction Bar */}
+      <div className="flex flex-wrap gap-2 justify-center max-w-xs">
+        {REACTION_EMOJIS.map((emoji) => (
+          <button
+            key={emoji}
+            onClick={() => handleReaction(emoji)}
+            className="text-2xl p-2 rounded-full bg-muted/50 hover:bg-muted hover:scale-125 active:scale-95 transition-all duration-200"
+          >
+            {emoji}
           </button>
         ))}
       </div>
