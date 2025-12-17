@@ -461,6 +461,99 @@ const TruthOrDare: React.FC = () => {
     setIsSubmitting(false);
   };
 
+  // Handle skip question/dare
+  const handleSkip = async () => {
+    if (isSubmitting || !roomId) return;
+    
+    const currentState = gameStateRef.current;
+    const currentPlayerData = currentState.players[myPlayerIndex];
+    
+    if (!currentPlayerData || currentPlayerData.skipsLeft <= 0) {
+      toast.error("No skips left! You must answer or complete the dare.");
+      return;
+    }
+    
+    haptics.medium();
+    setIsSubmitting(true);
+
+    // Find the question from previous messages
+    const questionMsg = [...messagesRef.current].reverse().find(m => m.content.question);
+    const question = questionMsg?.content.question || '';
+    const questionType = questionMsg?.content.questionType || 'truth';
+
+    // Save skip message
+    const skipMsg: Omit<ChatMessage, 'id' | 'created_at'> = {
+      sender: myPlayerIndex === 0 ? 'player1' : 'player2',
+      sender_name: playerName,
+      message_type: 'text',
+      content: { text: '⏭️ I skip this one!' }
+    };
+
+    // Save result message
+    const resultMsg: Omit<ChatMessage, 'id' | 'created_at'> = {
+      sender: 'system',
+      message_type: 'result',
+      content: {
+        text: '⏭️ SKIPPED',
+        question,
+        answer: `${playerName} used a skip (${currentPlayerData.skipsLeft - 1} left)`,
+        answeredBy: playerName,
+        questionType: questionType
+      }
+    };
+
+    // Create next turn with updated skips
+    const nextIndex = (currentState.currentPlayerIndex + 1) % currentState.players.length;
+    const nextPlayer = currentState.players[nextIndex];
+    
+    // Update current player's skipsLeft
+    const updatedPlayers = currentState.players.map((p, idx) => 
+      idx === myPlayerIndex ? { ...p, skipsLeft: p.skipsLeft - 1 } : p
+    );
+    
+    const newState: GameState = {
+      ...currentState,
+      players: updatedPlayers,
+      currentPlayerIndex: nextIndex,
+      currentType: undefined,
+      roundCount: currentState.roundCount + 1
+    };
+
+    // Save turn message
+    const turnMsg: Omit<ChatMessage, 'id' | 'created_at'> = {
+      sender: 'system',
+      message_type: 'buttons',
+      content: createTurnMessageContent(
+        nextPlayer?.name || '',
+        nextPlayer?.id || '',
+        newState.truthCount,
+        newState.dareCount,
+        true
+      )
+    };
+
+    await saveMessages([skipMsg, resultMsg, turnMsg], roomId);
+    setCurrentInputAction(null);
+    setInputValue('');
+    setGameState(newState);
+
+    // Update game state in room
+    await supabase
+      .from('game_rooms')
+      .update({ game_state: JSON.parse(JSON.stringify(newState)) })
+      .eq('id', roomId);
+
+    // Broadcast state change
+    channelRef.current?.send({
+      type: 'broadcast',
+      event: 'game_state',
+      payload: { gameState: newState }
+    });
+
+    setIsSubmitting(false);
+    toast.success("Skipped! Your turn passes to your partner 💫");
+  };
+
   // Broadcast typing
   const broadcastTyping = useCallback(() => {
     channelRef.current?.send({
@@ -1206,23 +1299,72 @@ const TruthOrDare: React.FC = () => {
       {shouldShowInput && (
         <div className="px-4 py-3 border-t border-pink-500/20 bg-gradient-to-r from-pink-500/5 to-purple-500/5">
           {currentInputAction === 'complete_dare' ? (
-            <Button
-              onClick={handleDareComplete}
-              disabled={isSubmitting}
-              className="w-full bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 py-6 text-lg"
-            >
-              {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : '✅ Mark Dare as Done!'}
-            </Button>
+            <div className="space-y-2">
+              <Button
+                onClick={handleDareComplete}
+                disabled={isSubmitting}
+                className="w-full bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 py-6 text-lg"
+              >
+                {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : '✅ Mark Dare as Done!'}
+              </Button>
+              {/* Skip button for dare */}
+              {gameState.players[myPlayerIndex]?.skipsLeft > 0 && (
+                <Button
+                  onClick={handleSkip}
+                  disabled={isSubmitting}
+                  variant="outline"
+                  className="w-full border-orange-500/30 hover:bg-orange-500/10 text-orange-400"
+                >
+                  ⏭️ Skip ({gameState.players[myPlayerIndex]?.skipsLeft} left)
+                </Button>
+              )}
+            </div>
+          ) : currentInputAction === 'submit_answer' ? (
+            <div className="space-y-2">
+              <div className="flex gap-2">
+                <Input
+                  value={inputValue}
+                  onChange={(e) => handleInputChange(e.target.value)}
+                  placeholder="Type your answer..."
+                  maxLength={300}
+                  className="flex-1 bg-background/50 border-pink-500/30"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      handleInputSubmit();
+                    }
+                  }}
+                />
+                <Button
+                  onClick={handleInputSubmit}
+                  disabled={!inputValue.trim() || isSubmitting}
+                  className="bg-gradient-to-r from-pink-500 to-red-500 hover:from-pink-600 hover:to-red-600 px-4"
+                >
+                  {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
+                </Button>
+              </div>
+              {/* Skip button for truth */}
+              {gameState.players[myPlayerIndex]?.skipsLeft > 0 && (
+                <Button
+                  onClick={handleSkip}
+                  disabled={isSubmitting}
+                  variant="outline"
+                  size="sm"
+                  className="w-full border-orange-500/30 hover:bg-orange-500/10 text-orange-400"
+                >
+                  ⏭️ Skip this question ({gameState.players[myPlayerIndex]?.skipsLeft} left)
+                </Button>
+              )}
+              <p className="text-xs text-muted-foreground text-center">
+                {inputValue.length}/300
+              </p>
+            </div>
           ) : (
             <div className="flex gap-2">
               <Input
                 value={inputValue}
                 onChange={(e) => handleInputChange(e.target.value)}
-                placeholder={
-                  currentInputAction === 'submit_question' 
-                    ? (gameState.currentType === 'truth' ? 'Ask a truth question...' : 'Give a dare...')
-                    : 'Type your answer...'
-                }
+                placeholder={gameState.currentType === 'truth' ? 'Ask a truth question...' : 'Give a dare...'}
                 maxLength={300}
                 className="flex-1 bg-background/50 border-pink-500/30"
                 onKeyDown={(e) => {
@@ -1241,9 +1383,11 @@ const TruthOrDare: React.FC = () => {
               </Button>
             </div>
           )}
-          <p className="text-xs text-muted-foreground text-center mt-2">
-            {inputValue.length}/300
-          </p>
+          {currentInputAction === 'submit_question' && (
+            <p className="text-xs text-muted-foreground text-center mt-2">
+              {inputValue.length}/300
+            </p>
+          )}
         </div>
       )}
     </div>
