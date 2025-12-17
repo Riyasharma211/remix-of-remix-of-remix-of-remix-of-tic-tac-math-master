@@ -626,22 +626,29 @@ const TruthOrDare: React.FC = () => {
     return msgs;
   };
 
-  // Check if buttons should be shown for a message
-  const shouldShowButtonsForMessage = (msg: ChatMessage): boolean => {
+  // Check if buttons should be shown for a message - use current state, not refs
+  const shouldShowButtonsForMessage = (msg: ChatMessage, allMessages: ChatMessage[], currentState: GameState): boolean => {
     if (msg.message_type !== 'buttons' || !msg.content.buttons || msg.disabled) {
       return false;
     }
     
     // Only show buttons for the MOST RECENT non-disabled buttons message
-    const latestButtonsMsg = [...messagesRef.current].reverse().find(
+    const latestButtonsMsg = [...allMessages].reverse().find(
       m => m.message_type === 'buttons' && !m.disabled && m.content.buttons
     );
     if (!latestButtonsMsg || latestButtonsMsg.id !== msg.id) {
       return false;
     }
     
-    // Check if it's this player's turn based on latest game state
-    const currentTurnPlayer = gameStateRef.current.players[gameStateRef.current.currentPlayerIndex];
+    // Check if it's this player's turn based on current game state
+    const currentTurnPlayer = currentState.players[currentState.currentPlayerIndex];
+    console.log('shouldShowButtons check:', { 
+      msgId: msg.id, 
+      currentTurnPlayer: currentTurnPlayer?.name, 
+      currentTurnPlayerId: currentTurnPlayer?.id, 
+      playerId,
+      isMatch: currentTurnPlayer?.id === playerId 
+    });
     return currentTurnPlayer?.id === playerId;
   };
 
@@ -908,7 +915,7 @@ const TruthOrDare: React.FC = () => {
                     <p className="text-sm text-muted-foreground">{msg.content.subtext}</p>
                   )}
                 </div>
-                {shouldShowButtonsForMessage(msg) && (
+                {shouldShowButtonsForMessage(msg, messages, gameState) && (
                   <div className="flex flex-wrap gap-2 justify-center">
                     {msg.content.buttons!.map(btn => (
                       <Button
@@ -933,7 +940,7 @@ const TruthOrDare: React.FC = () => {
                 {msg.disabled && (
                   <p className="text-center text-sm text-muted-foreground">Choice made ✓</p>
                 )}
-                {!shouldShowButtonsForMessage(msg) && !msg.disabled && msg.content.buttons && (
+                {!shouldShowButtonsForMessage(msg, messages, gameState) && !msg.disabled && msg.content.buttons && (
                   <p className="text-center text-sm text-muted-foreground">Waiting for partner's choice...</p>
                 )}
               </div>
