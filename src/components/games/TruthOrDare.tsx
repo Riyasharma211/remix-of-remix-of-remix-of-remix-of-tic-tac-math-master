@@ -209,7 +209,7 @@ const TruthOrDare: React.FC = () => {
         }
       };
 
-      // Save input prompt message for opponent
+      // Save input prompt message for opponent - include questionType for sync
       const inputMsg: Omit<ChatMessage, 'id' | 'created_at'> = {
         sender: 'system',
         message_type: 'input',
@@ -219,7 +219,8 @@ const TruthOrDare: React.FC = () => {
           inputPlaceholder: buttonValue === 'truth' 
             ? 'Ask something romantic or deep...' 
             : 'Give a fun dare (keep it loving!)...',
-          inputAction: 'submit_question'
+          inputAction: 'submit_question',
+          questionType: buttonValue as 'truth' | 'dare'  // Store the type for sync
         }
       };
 
@@ -262,6 +263,12 @@ const TruthOrDare: React.FC = () => {
         return;
       }
 
+      // Get questionType from the last input message (most reliable source)
+      const lastInputMsg = [...messagesRef.current].reverse().find(m => m.message_type === 'input' && m.content.questionType);
+      const questionType = lastInputMsg?.content.questionType || gameStateRef.current.currentType || 'truth';
+      
+      console.log('Submitting question, type:', questionType);
+
       // Save question message
       const questionMsg: Omit<ChatMessage, 'id' | 'created_at'> = {
         sender: myPlayerIndex === 0 ? 'player1' : 'player2',
@@ -270,22 +277,22 @@ const TruthOrDare: React.FC = () => {
         content: { text: validation.value! }
       };
 
-      // Save answer input message for current player
+      // Save answer input message for current player - use questionType from message
       const answerInputMsg: Omit<ChatMessage, 'id' | 'created_at'> = {
         sender: 'system',
         message_type: 'input',
         content: {
-          text: gameState.currentType === 'truth' ? '💬 TRUTH QUESTION' : '🔥 DARE CHALLENGE',
+          text: questionType === 'truth' ? '💬 TRUTH QUESTION' : '🔥 DARE CHALLENGE',
           subtext: `From ${playerName}:`,
           question: validation.value!,
-          inputPlaceholder: gameState.currentType === 'truth' ? 'Type your answer...' : undefined,
-          inputAction: gameState.currentType === 'truth' ? 'submit_answer' : 'complete_dare',
-          questionType: gameState.currentType
+          inputPlaceholder: questionType === 'truth' ? 'Type your answer...' : undefined,
+          inputAction: questionType === 'truth' ? 'submit_answer' : 'complete_dare',
+          questionType: questionType
         }
       };
 
       await saveMessages([questionMsg, answerInputMsg], roomId);
-      setCurrentInputAction(gameState.currentType === 'truth' ? 'submit_answer' : 'complete_dare');
+      setCurrentInputAction(questionType === 'truth' ? 'submit_answer' : 'complete_dare');
       setInputValue('');
       toast.success('Sent! 💕');
 
@@ -299,9 +306,12 @@ const TruthOrDare: React.FC = () => {
 
       celebrateHearts();
 
-      // Find the question from previous messages
-      const questionMsg = [...messages].reverse().find(m => m.content.question);
+      // Find the question from previous messages and get the type
+      const questionMsg = [...messagesRef.current].reverse().find(m => m.content.question);
       const question = questionMsg?.content.question || '';
+      const questionType = questionMsg?.content.questionType || 'truth';
+
+      console.log('Submitting answer, type:', questionType);
 
       // Save answer message
       const answerMsg: Omit<ChatMessage, 'id' | 'created_at'> = {
@@ -311,29 +321,30 @@ const TruthOrDare: React.FC = () => {
         content: { text: validation.value! }
       };
 
-      // Save result message
+      // Save result message - use questionType from message
       const resultMsg: Omit<ChatMessage, 'id' | 'created_at'> = {
         sender: 'system',
         message_type: 'result',
         content: {
-          text: gameState.currentType === 'truth' ? '💬 TRUTH RESULT' : '🔥 DARE COMPLETED',
+          text: questionType === 'truth' ? '💬 TRUTH RESULT' : '🔥 DARE COMPLETED',
           question,
           answer: validation.value!,
           answeredBy: playerName,
-          questionType: gameState.currentType
+          questionType: questionType
         }
       };
 
-      // Create next turn
-      const nextIndex = (gameState.currentPlayerIndex + 1) % gameState.players.length;
-      const nextPlayer = gameState.players[nextIndex];
+      // Create next turn - use refs for latest state
+      const currentState = gameStateRef.current;
+      const nextIndex = (currentState.currentPlayerIndex + 1) % currentState.players.length;
+      const nextPlayer = currentState.players[nextIndex];
       const newState: GameState = {
-        ...gameState,
+        ...currentState,
         currentPlayerIndex: nextIndex,
         currentType: undefined,
-        roundCount: gameState.roundCount + 1,
-        truthCount: gameState.currentType === 'truth' ? gameState.truthCount + 1 : gameState.truthCount,
-        dareCount: gameState.currentType === 'dare' ? gameState.dareCount + 1 : gameState.dareCount
+        roundCount: currentState.roundCount + 1,
+        truthCount: questionType === 'truth' ? currentState.truthCount + 1 : currentState.truthCount,
+        dareCount: questionType === 'dare' ? currentState.dareCount + 1 : currentState.dareCount
       };
 
       // Save turn message - buttons only for next player
@@ -378,7 +389,7 @@ const TruthOrDare: React.FC = () => {
     celebrateHearts();
 
     // Find the question from previous messages
-    const questionMsg = [...messages].reverse().find(m => m.content.question);
+    const questionMsg = [...messagesRef.current].reverse().find(m => m.content.question);
     const question = questionMsg?.content.question || '';
 
     // Save completion message
@@ -402,15 +413,16 @@ const TruthOrDare: React.FC = () => {
       }
     };
 
-    // Create next turn
-    const nextIndex = (gameState.currentPlayerIndex + 1) % gameState.players.length;
-    const nextPlayer = gameState.players[nextIndex];
+    // Create next turn - use refs for latest state
+    const currentState = gameStateRef.current;
+    const nextIndex = (currentState.currentPlayerIndex + 1) % currentState.players.length;
+    const nextPlayer = currentState.players[nextIndex];
     const newState: GameState = {
-      ...gameState,
+      ...currentState,
       currentPlayerIndex: nextIndex,
       currentType: undefined,
-      roundCount: gameState.roundCount + 1,
-      dareCount: gameState.dareCount + 1
+      roundCount: currentState.roundCount + 1,
+      dareCount: currentState.dareCount + 1
     };
 
     // Save turn message
