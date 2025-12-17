@@ -43,17 +43,17 @@ const TicTacToe: React.FC = () => {
     return { winner: null, line: null };
   };
 
-  // Spawn floating emojis
+  // Spawn floating emojis around the board
   const spawnFloatingEmojis = useCallback((emoji: string) => {
     const newEmojis: FloatingEmoji[] = [];
-    for (let i = 0; i < 8; i++) {
+    for (let i = 0; i < 10; i++) {
       newEmojis.push({
         id: `${Date.now()}-${i}`,
         emoji,
-        x: 20 + Math.random() * 60,
-        y: 30 + Math.random() * 40,
-        delay: i * 0.08,
-        scale: 0.8 + Math.random() * 0.6,
+        x: 10 + Math.random() * 80, // Spread across board width
+        y: 70 + Math.random() * 20, // Start from bottom of board
+        delay: i * 0.06,
+        scale: 0.7 + Math.random() * 0.5,
       });
     }
     setFloatingEmojis(prev => [...prev, ...newEmojis]);
@@ -117,39 +117,38 @@ const TicTacToe: React.FC = () => {
     resetGame();
   };
 
-  // Render floating emojis
+  // Render floating emojis (rendered inside board container)
   const renderFloatingEmojis = () => (
-    <div className="fixed inset-0 pointer-events-none overflow-hidden z-50">
+    <div className="absolute inset-0 pointer-events-none overflow-visible z-10">
       {floatingEmojis.map((emoji) => (
         <div
           key={emoji.id}
-          className="absolute animate-float-up text-4xl"
+          className="absolute text-3xl"
           style={{
             left: `${emoji.x}%`,
-            top: `${emoji.y}%`,
+            bottom: `${100 - emoji.y}%`,
             animationDelay: `${emoji.delay}s`,
             transform: `scale(${emoji.scale})`,
             opacity: 0,
-            animation: `floatUp 2.5s ease-out ${emoji.delay}s forwards`,
+            animation: `floatUpBoard 2s ease-out ${emoji.delay}s forwards`,
           }}
         >
           {emoji.emoji}
         </div>
       ))}
       <style>{`
-        @keyframes floatUp {
+        @keyframes floatUpBoard {
           0% { opacity: 0; transform: translateY(0) scale(0.5) rotate(0deg); }
-          15% { opacity: 1; transform: translateY(-20px) scale(1.2) rotate(-5deg); }
-          85% { opacity: 1; }
-          100% { opacity: 0; transform: translateY(-150px) scale(0.8) rotate(10deg); }
+          15% { opacity: 1; transform: translateY(-30px) scale(1.1) rotate(-8deg); }
+          50% { opacity: 1; transform: translateY(-80px) scale(1) rotate(5deg); }
+          100% { opacity: 0; transform: translateY(-180px) scale(0.6) rotate(15deg); }
         }
       `}</style>
     </div>
   );
 
   return (
-    <div className="flex flex-col items-center gap-6 relative">
-      {renderFloatingEmojis()}
+    <div className="flex flex-col items-center gap-6">
       
       {/* Scoreboard */}
       <div className="flex gap-8 items-center">
@@ -192,31 +191,34 @@ const TicTacToe: React.FC = () => {
         )}
       </div>
 
-      {/* Game Board */}
-      <div className="grid grid-cols-3 gap-3 p-4 bg-card rounded-2xl border border-border">
-        {board.map((cell, index) => (
-          <button
-            key={index}
-            onClick={() => handleClick(index)}
-            className={`w-20 h-20 sm:w-24 sm:h-24 rounded-xl border-2 font-orbitron text-4xl font-bold
-              transition-all duration-300 flex items-center justify-center
-              ${cell ? 'cursor-not-allowed' : 'cursor-pointer hover:bg-muted/50'}
-              ${winningLine?.includes(index) ? 'animate-pulse-glow' : ''}
-              ${cell === 'X' 
-                ? 'text-neon-cyan border-neon-cyan/50' 
-                : cell === 'O' 
-                  ? 'text-neon-pink border-neon-pink/50' 
-                  : 'border-border hover:border-primary/50'
-              }
-              ${winningLine?.includes(index) && cell === 'X' ? 'box-glow-cyan bg-neon-cyan/10' : ''}
-              ${winningLine?.includes(index) && cell === 'O' ? 'box-glow-pink bg-neon-pink/10' : ''}
-            `}
-          >
-            {cell && (
-              <span className="animate-scale-pop">{cell}</span>
-            )}
-          </button>
-        ))}
+      {/* Game Board with floating emojis */}
+      <div className="relative">
+        {renderFloatingEmojis()}
+        <div className="grid grid-cols-3 gap-3 p-4 bg-card rounded-2xl border border-border relative z-0">
+          {board.map((cell, index) => (
+            <button
+              key={index}
+              onClick={() => handleClick(index)}
+              className={`w-20 h-20 sm:w-24 sm:h-24 rounded-xl border-2 font-orbitron text-4xl font-bold
+                transition-all duration-300 flex items-center justify-center
+                ${cell ? 'cursor-not-allowed' : 'cursor-pointer hover:bg-muted/50'}
+                ${winningLine?.includes(index) ? 'animate-pulse-glow' : ''}
+                ${cell === 'X' 
+                  ? 'text-neon-cyan border-neon-cyan/50' 
+                  : cell === 'O' 
+                    ? 'text-neon-pink border-neon-pink/50' 
+                    : 'border-border hover:border-primary/50'
+                }
+                ${winningLine?.includes(index) && cell === 'X' ? 'box-glow-cyan bg-neon-cyan/10' : ''}
+                ${winningLine?.includes(index) && cell === 'O' ? 'box-glow-pink bg-neon-pink/10' : ''}
+              `}
+            >
+              {cell && (
+                <span className="animate-scale-pop">{cell}</span>
+              )}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Reaction Bar */}
