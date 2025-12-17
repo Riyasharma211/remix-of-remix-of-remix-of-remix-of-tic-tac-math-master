@@ -145,6 +145,7 @@ const IndexContent: React.FC = () => {
   const [showStats, setShowStats] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [pendingAchievements, setPendingAchievements] = useState<Achievement[]>([]);
+  const [swipeDirection, setSwipeDirection] = useState<'left' | 'right' | null>(null);
 
   const showAchievements = useCallback((achievements: Achievement[]) => {
     if (achievements.length > 0) {
@@ -207,8 +208,10 @@ const IndexContent: React.FC = () => {
     
     if (direction === 'next') {
       newIndex = currentIndex < allGames.length - 1 ? currentIndex + 1 : 0;
+      setSwipeDirection('left');
     } else {
       newIndex = currentIndex > 0 ? currentIndex - 1 : allGames.length - 1;
+      setSwipeDirection('right');
     }
     
     setActiveGame(allGames[newIndex].id);
@@ -342,6 +345,7 @@ const IndexContent: React.FC = () => {
                 <button
                   key={game.id}
                   onClick={() => {
+                    setSwipeDirection(null);
                     setActiveGame(game.id);
                     soundManager.playLocalSound('click');
                     haptics.light();
@@ -372,6 +376,7 @@ const IndexContent: React.FC = () => {
                 <button
                   key={game.id}
                   onClick={() => {
+                    setSwipeDirection(null);
                     setActiveGame(game.id);
                     soundManager.playLocalSound('click');
                     haptics.light();
@@ -416,6 +421,7 @@ const IndexContent: React.FC = () => {
                       color={game.color}
                       isActive={activeGame === game.id}
                       onClick={() => {
+                        setSwipeDirection(null);
                         setActiveGame(game.id);
                         soundManager.playLocalSound('click');
                       }}
@@ -445,6 +451,7 @@ const IndexContent: React.FC = () => {
                       color={game.color}
                       isActive={activeGame === game.id}
                       onClick={() => {
+                        setSwipeDirection(null);
                         setActiveGame(game.id);
                         soundManager.playLocalSound('click');
                       }}
@@ -460,7 +467,7 @@ const IndexContent: React.FC = () => {
             className="bg-card/50 backdrop-blur-sm rounded-2xl sm:rounded-3xl border border-border p-3 sm:p-6 md:p-8 flex items-center justify-center overflow-hidden lg:touch-none"
             {...swipeHandlers}
           >
-            <GameTransition gameKey={activeGame}>
+            <GameTransition gameKey={activeGame} direction={swipeDirection}>
               {renderGame()}
             </GameTransition>
           </main>
