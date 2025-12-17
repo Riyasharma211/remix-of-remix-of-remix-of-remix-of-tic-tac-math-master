@@ -275,6 +275,15 @@
   }
 }
 
+/* Global scrollbar hide for html/body */
+html, body {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+html::-webkit-scrollbar, body::-webkit-scrollbar {
+  display: none;
+}
+
 @keyframes pulse-glow {
   0%, 100% {
     opacity: 1;

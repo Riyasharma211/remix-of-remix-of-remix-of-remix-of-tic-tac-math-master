@@ -233,7 +233,7 @@ const IndexContent: React.FC = () => {
 
   return (
     <AchievementContext.Provider value={{ showAchievements }}>
-    <div className="min-h-screen bg-background bg-grid-pattern relative overflow-hidden">
+    <div className="h-screen bg-background bg-grid-pattern relative overflow-hidden">
       {/* Achievement Notification */}
       {pendingAchievements.length > 0 && (
         <AchievementNotification 
@@ -247,9 +247,9 @@ const IndexContent: React.FC = () => {
       <div className="absolute top-0 left-1/4 w-48 sm:w-96 h-48 sm:h-96 bg-neon-cyan/10 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute bottom-0 right-1/4 w-48 sm:w-96 h-48 sm:h-96 bg-neon-purple/10 rounded-full blur-3xl pointer-events-none" />
 
-      <div className="relative z-10 container mx-auto px-3 sm:px-4 py-4 sm:py-8">
+      <div className="relative z-10 container mx-auto px-3 sm:px-4 py-3 sm:py-6 h-full flex flex-col">
         {/* Header */}
-        <header className="text-center mb-4 sm:mb-8 animate-slide-in">
+        <header className="text-center mb-3 sm:mb-4 animate-slide-in shrink-0">
           <div className="flex items-center justify-center gap-2 sm:gap-3 mb-2 sm:mb-4">
             <Gamepad2 className="w-7 h-7 sm:w-10 sm:h-10 text-neon-cyan animate-float" />
             <h1 className="font-orbitron text-2xl sm:text-4xl md:text-5xl font-bold text-foreground">
@@ -368,9 +368,9 @@ const IndexContent: React.FC = () => {
         </div>
 
         {/* Main Content */}
-        <div className="grid lg:grid-cols-[280px_1fr] gap-4 sm:gap-8 max-w-6xl mx-auto">
+        <div className="grid lg:grid-cols-[280px_1fr] gap-4 sm:gap-6 max-w-6xl mx-auto flex-1 min-h-0">
           {/* Game Selector - Desktop */}
-          <aside className="hidden lg:block space-y-6 max-h-[70vh] overflow-y-auto pr-2">
+          <aside className="hidden lg:block space-y-6 max-h-[calc(100vh-200px)] overflow-y-auto scrollbar-hide pr-2">
             {/* Multiplayer Games */}
             <div>
               <h2 className="font-orbitron text-xs text-neon-cyan uppercase tracking-widest mb-3 flex items-center gap-2">
@@ -431,7 +431,7 @@ const IndexContent: React.FC = () => {
           </aside>
 
           {/* Game Area */}
-          <main className="bg-card/50 backdrop-blur-sm rounded-2xl sm:rounded-3xl border border-border p-3 sm:p-6 md:p-8 min-h-[400px] sm:min-h-[500px] flex items-center justify-center">
+          <main className="bg-card/50 backdrop-blur-sm rounded-2xl sm:rounded-3xl border border-border p-3 sm:p-6 md:p-8 flex items-center justify-center overflow-hidden">
             <GameTransition gameKey={activeGame}>
               {renderGame()}
             </GameTransition>
@@ -439,7 +439,7 @@ const IndexContent: React.FC = () => {
         </div>
 
         {/* Footer */}
-        <footer className="text-center mt-4 sm:mt-8 text-muted-foreground font-rajdhani text-xs sm:text-sm">
+        <footer className="text-center mt-2 sm:mt-4 text-muted-foreground font-rajdhani text-xs sm:text-sm py-2 shrink-0">
           <p>Train your brain • Challenge friends • Have fun! 🎮</p>
         </footer>
       </div>
