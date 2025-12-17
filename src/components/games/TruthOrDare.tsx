@@ -71,6 +71,11 @@ const TruthOrDare: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [partnerIsTyping, setPartnerIsTyping] = useState(false);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // Reactions state: { messageId: { emoji: [playerName1, playerName2] } }
+  const [reactions, setReactions] = useState<Record<string, Record<string, string[]>>>({});
+  
+  const REACTION_EMOJIS = ['😍', '💕', '🔥', '😂', '😤'];
 
   const currentPlayer = gameState.players[gameState.currentPlayerIndex];
   const isMyTurn = currentPlayer?.id === playerId;
@@ -563,6 +568,45 @@ const TruthOrDare: React.FC = () => {
     });
   }, [playerId]);
 
+  // Send reaction
+  const sendReaction = (messageId: string, emoji: string) => {
+    haptics.light();
+    
+    // Update local state immediately
+    setReactions(prev => {
+      const msgReactions = prev[messageId] || {};
+      const emojiReactors = msgReactions[emoji] || [];
+      
+      // Toggle reaction
+      if (emojiReactors.includes(playerName)) {
+        // Remove reaction
+        return {
+          ...prev,
+          [messageId]: {
+            ...msgReactions,
+            [emoji]: emojiReactors.filter(name => name !== playerName)
+          }
+        };
+      } else {
+        // Add reaction
+        return {
+          ...prev,
+          [messageId]: {
+            ...msgReactions,
+            [emoji]: [...emojiReactors, playerName]
+          }
+        };
+      }
+    });
+    
+    // Broadcast to partner
+    channelRef.current?.send({
+      type: 'broadcast',
+      event: 'reaction',
+      payload: { messageId, emoji, playerName }
+    });
+  };
+
   const handleInputChange = (value: string) => {
     if (value.length <= 300) {
       setInputValue(value);
@@ -914,6 +958,33 @@ const TruthOrDare: React.FC = () => {
           }, 2000);
         }
       })
+      .on('broadcast', { event: 'reaction' }, ({ payload }) => {
+        if (payload?.messageId && payload?.emoji && payload?.playerName) {
+          setReactions(prev => {
+            const msgReactions = prev[payload.messageId] || {};
+            const emojiReactors = msgReactions[payload.emoji] || [];
+            
+            // Toggle reaction from partner
+            if (emojiReactors.includes(payload.playerName)) {
+              return {
+                ...prev,
+                [payload.messageId]: {
+                  ...msgReactions,
+                  [payload.emoji]: emojiReactors.filter(name => name !== payload.playerName)
+                }
+              };
+            } else {
+              return {
+                ...prev,
+                [payload.messageId]: {
+                  ...msgReactions,
+                  [payload.emoji]: [...emojiReactors, payload.playerName]
+                }
+              };
+            }
+          });
+        }
+      })
       .subscribe((status) => {
         console.log('Broadcast channel status:', status);
       });
@@ -1085,6 +1156,43 @@ const TruthOrDare: React.FC = () => {
                     <p className="text-lg">{msg.content.answer}</p>
                   </div>
                 </div>
+                
+                {/* Reaction buttons */}
+                <div className="flex flex-wrap gap-2 justify-center pt-2">
+                  {REACTION_EMOJIS.map(emoji => {
+                    const msgReactions = reactions[msg.id] || {};
+                    const emojiReactors = msgReactions[emoji] || [];
+                    const hasReacted = emojiReactors.includes(playerName);
+                    const count = emojiReactors.length;
+                    
+                    return (
+                      <button
+                        key={emoji}
+                        onClick={() => sendReaction(msg.id, emoji)}
+                        className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-lg transition-all hover:scale-110 ${
+                          hasReacted 
+                            ? 'bg-pink-500/30 border-2 border-pink-500' 
+                            : 'bg-muted/50 border border-muted-foreground/20 hover:bg-muted'
+                        }`}
+                      >
+                        <span className={hasReacted ? 'animate-bounce' : ''}>{emoji}</span>
+                        {count > 0 && (
+                          <span className="text-xs font-medium">{count}</span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+                
+                {/* Show who reacted */}
+                {Object.entries(reactions[msg.id] || {}).some(([, reactors]) => reactors.length > 0) && (
+                  <div className="text-center text-xs text-muted-foreground">
+                    {Object.entries(reactions[msg.id] || {})
+                      .filter(([, reactors]) => reactors.length > 0)
+                      .map(([emoji, reactors]) => `${emoji} ${reactors.join(', ')}`)
+                      .join(' • ')}
+                  </div>
+                )}
               </div>
             )}
           </div>
