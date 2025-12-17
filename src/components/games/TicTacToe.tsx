@@ -22,7 +22,7 @@ const winningCombinations = [
   [0, 4, 8], [2, 4, 6], // Diagonals
 ];
 
-const REACTION_EMOJIS = ['🎉', '🔥', '😂', '😎', '💪', '👏', '✨', '🏆'];
+const REACTION_EMOJIS = ['😍', '💕', '🔥', '😂', '😤', '🥵', '💋', '😘', '🙈', '👏', '💯', '✨'];
 
 const TicTacToe: React.FC = () => {
   const [board, setBoard] = useState<Board>(Array(9).fill(null));
