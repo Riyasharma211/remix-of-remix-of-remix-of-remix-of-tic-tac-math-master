@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { supabase } from '@/integrations/supabase/client';
-import { Heart, Copy, Users, ArrowLeft, Sparkles, Send, Loader2 } from 'lucide-react';
+import { Heart, Copy, Users, ArrowLeft, Sparkles, Send, Loader2, Camera, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { haptics } from '@/utils/haptics';
 import { RealtimeChannel } from '@supabase/supabase-js';
@@ -29,6 +29,7 @@ interface ChatMessage {
     answer?: string;
     answeredBy?: string;
     questionType?: 'truth' | 'dare';
+    proofPhotoUrl?: string; // URL of dare proof photo
   };
   disabled?: boolean;
   created_at?: string;
@@ -86,8 +87,15 @@ const TruthOrDare: React.FC = () => {
   const [dareTimer, setDareTimer] = useState<number | null>(null);
   const dareTimerRef = useRef<NodeJS.Timeout | null>(null);
   
+  // Photo upload state
+  const [darePhoto, setDarePhoto] = useState<File | null>(null);
+  const [darePhotoPreview, setDarePhotoPreview] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  
   const REACTION_EMOJIS = ['😍', '💕', '🔥', '😂', '😤'];
   const DARE_TIME_LIMIT = 60; // seconds
+  const MAX_FILE_SIZE = 2 * 1024 * 1024; // 2MB
 
   const currentPlayer = gameState.players[gameState.currentPlayerIndex];
   const isMyTurn = currentPlayer?.id === playerId;
@@ -444,12 +452,81 @@ const TruthOrDare: React.FC = () => {
     setIsSubmitting(false);
   };
 
+  // Handle photo selection
+  const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    // Validate file type
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      toast.error('Only JPG, PNG, or WebP images allowed');
+      return;
+    }
+    
+    // Validate file size
+    if (file.size > MAX_FILE_SIZE) {
+      toast.error('Photo must be less than 2MB');
+      return;
+    }
+    
+    setDarePhoto(file);
+    setDarePhotoPreview(URL.createObjectURL(file));
+    haptics.light();
+  };
+
+  const clearPhoto = () => {
+    setDarePhoto(null);
+    if (darePhotoPreview) {
+      URL.revokeObjectURL(darePhotoPreview);
+    }
+    setDarePhotoPreview(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  // Upload photo to storage
+  const uploadDarePhoto = async (): Promise<string | null> => {
+    if (!darePhoto || !roomId) return null;
+    
+    setIsUploading(true);
+    const fileName = `${roomId}/${Date.now()}-${Math.random().toString(36).substring(7)}.${darePhoto.type.split('/')[1]}`;
+    
+    const { data, error } = await supabase.storage
+      .from('dare-proofs')
+      .upload(fileName, darePhoto, {
+        cacheControl: '3600',
+        upsert: false
+      });
+    
+    setIsUploading(false);
+    
+    if (error) {
+      console.error('Photo upload error:', error);
+      toast.error('Failed to upload photo');
+      return null;
+    }
+    
+    // Get public URL
+    const { data: { publicUrl } } = supabase.storage
+      .from('dare-proofs')
+      .getPublicUrl(data.path);
+    
+    return publicUrl;
+  };
+
   // Handle dare completion
   const handleDareComplete = async () => {
     if (isSubmitting || !roomId) return;
     haptics.success();
     setIsSubmitting(true);
     celebrateHearts();
+
+    // Upload photo if selected
+    let photoUrl: string | null = null;
+    if (darePhoto) {
+      photoUrl = await uploadDarePhoto();
+    }
 
     // Find the question from previous messages
     const questionMsg = [...messagesRef.current].reverse().find(m => m.content.question);
@@ -460,21 +537,25 @@ const TruthOrDare: React.FC = () => {
       sender: myPlayerIndex === 0 ? 'player1' : 'player2',
       sender_name: playerName,
       message_type: 'text',
-      content: { text: '✅ Done! I completed the dare!' }
+      content: { text: photoUrl ? '✅ Done! Check out my proof! 📸' : '✅ Done! I completed the dare!' }
     };
 
-    // Save result message
+    // Save result message with photo URL
     const resultMsg: Omit<ChatMessage, 'id' | 'created_at'> = {
       sender: 'system',
       message_type: 'result',
       content: {
         text: '🔥 DARE COMPLETED',
         question,
-        answer: '✅ Dare completed!',
+        answer: photoUrl ? '✅ Dare completed with photo proof!' : '✅ Dare completed!',
         answeredBy: playerName,
-        questionType: 'dare'
+        questionType: 'dare',
+        proofPhotoUrl: photoUrl || undefined
       }
     };
+
+    // Clear photo state
+    clearPhoto();
 
     // Create next turn - use refs for latest state
     const currentState = gameStateRef.current;
@@ -1231,6 +1312,17 @@ const TruthOrDare: React.FC = () => {
                     <p className="text-xs text-green-400 mb-1">{msg.content.answeredBy}'s Answer:</p>
                     <p className="text-lg">{msg.content.answer}</p>
                   </div>
+                  {/* Proof photo */}
+                  {msg.content.proofPhotoUrl && (
+                    <div className="mt-2">
+                      <p className="text-xs text-purple-400 mb-1 text-center">📸 Proof Photo:</p>
+                      <img 
+                        src={msg.content.proofPhotoUrl} 
+                        alt="Dare proof" 
+                        className="w-full max-h-48 object-cover rounded-xl border border-purple-500/50"
+                      />
+                    </div>
+                  )}
                 </div>
                 
                 {/* Reaction buttons */}
@@ -1508,12 +1600,53 @@ const TruthOrDare: React.FC = () => {
                 </div>
               )}
               
+              {/* Photo upload section */}
+              <div className="space-y-2">
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  accept="image/jpeg,image/png,image/webp"
+                  onChange={handlePhotoSelect}
+                  className="hidden"
+                />
+                
+                {darePhotoPreview ? (
+                  <div className="relative">
+                    <img 
+                      src={darePhotoPreview} 
+                      alt="Dare proof" 
+                      className="w-full h-32 object-cover rounded-xl border border-green-500/50"
+                    />
+                    <button
+                      onClick={clearPhoto}
+                      className="absolute top-2 right-2 p-1 bg-red-500 rounded-full hover:bg-red-600 transition-colors"
+                    >
+                      <X className="w-4 h-4 text-white" />
+                    </button>
+                    <p className="text-xs text-green-400 text-center mt-1">📸 Photo ready!</p>
+                  </div>
+                ) : (
+                  <Button
+                    onClick={() => fileInputRef.current?.click()}
+                    variant="outline"
+                    className="w-full border-dashed border-2 border-purple-500/30 hover:bg-purple-500/10 text-purple-400 py-4"
+                  >
+                    <Camera className="w-5 h-5 mr-2" />
+                    Add Photo Proof (Optional)
+                  </Button>
+                )}
+              </div>
+              
               <Button
                 onClick={handleDareComplete}
-                disabled={isSubmitting}
+                disabled={isSubmitting || isUploading}
                 className="w-full bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 py-6 text-lg"
               >
-                {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : '✅ Mark Dare as Done! (+20 pts)'}
+                {isSubmitting || isUploading ? (
+                  <><Loader2 className="w-5 h-5 animate-spin mr-2" /> {isUploading ? 'Uploading...' : 'Saving...'}</>
+                ) : (
+                  <>✅ Mark Dare as Done! (+20 pts){darePhoto && ' 📸'}</>
+                )}
               </Button>
               {/* Skip button for dare */}
               {gameState.players[myPlayerIndex]?.skipsLeft > 0 && (
