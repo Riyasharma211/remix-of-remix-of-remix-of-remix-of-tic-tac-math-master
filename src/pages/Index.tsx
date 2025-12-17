@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Grid3X3, Zap, Brain, Target, Gamepad2, Volume2, VolumeX, Timer, Sparkles, Palette, Swords, Pencil, Heart, Trophy, Link2, HelpCircle } from 'lucide-react';
+import React, { useState, useCallback } from 'react';
+import { Grid3X3, Zap, Brain, Target, Gamepad2, Volume2, VolumeX, Timer, Sparkles, Palette, Swords, Pencil, Heart, Trophy, Link2, HelpCircle, Maximize, Minimize } from 'lucide-react';
 import TicTacToeOnline from '@/components/games/TicTacToeOnline';
 import MathChallenge from '@/components/games/MathChallenge';
 import MemoryMatch from '@/components/games/MemoryMatch';
@@ -127,6 +127,31 @@ const IndexContent: React.FC = () => {
   const [activeGame, setActiveGame] = useState<GameType>('tictactoe');
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  const toggleFullscreen = useCallback(async () => {
+    haptics.light();
+    try {
+      if (!document.fullscreenElement) {
+        await document.documentElement.requestFullscreen();
+        setIsFullscreen(true);
+      } else {
+        await document.exitFullscreen();
+        setIsFullscreen(false);
+      }
+    } catch (error) {
+      console.error('Fullscreen error:', error);
+    }
+  }, []);
+
+  // Listen for fullscreen changes (e.g., user presses Escape)
+  React.useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
 
   const toggleSound = () => {
     haptics.light();
@@ -212,6 +237,18 @@ const IndexContent: React.FC = () => {
               className="h-8 w-8 sm:h-10 sm:w-10"
             >
               <Trophy className="w-4 h-4 sm:w-5 sm:h-5 text-neon-orange" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={toggleFullscreen}
+              className="h-8 w-8 sm:h-10 sm:w-10"
+            >
+              {isFullscreen ? (
+                <Minimize className="w-4 h-4 sm:w-5 sm:h-5 text-neon-purple" />
+              ) : (
+                <Maximize className="w-4 h-4 sm:w-5 sm:h-5 text-neon-purple" />
+              )}
             </Button>
             <ThemeToggle />
           </div>
