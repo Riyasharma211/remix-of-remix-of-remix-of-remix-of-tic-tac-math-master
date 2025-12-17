@@ -2,10 +2,14 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { supabase } from '@/integrations/supabase/client';
-import { Pencil, Eraser, Trash2, Copy, Users, ArrowLeft, Palette } from 'lucide-react';
+import { Pencil, Eraser, Trash2, Copy, Users, ArrowLeft, Check, Trophy } from 'lucide-react';
 import { toast } from 'sonner';
+import { soundManager } from '@/utils/soundManager';
+import { haptics } from '@/utils/haptics';
+import { celebrateFireworks } from '@/utils/confetti';
+import { RealtimeChannel } from '@supabase/supabase-js';
 
-type GameMode = 'menu' | 'create' | 'join' | 'waiting' | 'playing';
+type GameMode = 'menu' | 'create' | 'join' | 'waiting' | 'playing' | 'ended';
 
 interface DrawingPoint {
   x: number;
@@ -20,26 +24,30 @@ interface GameState {
   currentDrawer: string;
   word: string;
   scores: Record<string, number>;
-  guesses: { player: string; text: string; correct: boolean }[];
+  guesses: { player: string; playerName: string; text: string; correct: boolean }[];
   round: number;
-  players: string[];
+  maxRounds: number;
+  players: { id: string; name: string }[];
+  winner: string | null;
 }
 
 const WORDS = [
   'cat', 'dog', 'house', 'tree', 'car', 'sun', 'moon', 'star', 'fish', 'bird',
-  'apple', 'banana', 'pizza', 'cake', 'ice cream', 'flower', 'rainbow', 'heart',
-  'book', 'phone', 'computer', 'guitar', 'ball', 'hat', 'shoe', 'glasses'
+  'apple', 'banana', 'pizza', 'cake', 'flower', 'rainbow', 'heart', 'cloud',
+  'book', 'phone', 'guitar', 'ball', 'hat', 'shoe', 'glasses', 'chair',
+  'mountain', 'ocean', 'butterfly', 'rocket', 'robot', 'dragon', 'unicorn'
 ];
 
-const COLORS = ['#000000', '#FF0000', '#00FF00', '#0000FF', '#FFFF00', '#FF00FF', '#00FFFF', '#FFFFFF'];
+const COLORS = ['#000000', '#FF0000', '#00FF00', '#0000FF', '#FFFF00', '#FF00FF', '#00FFFF', '#FF6B00'];
 
 const DrawingGame: React.FC = () => {
   const [mode, setMode] = useState<GameMode>('menu');
   const [roomCode, setRoomCode] = useState('');
   const [inputCode, setInputCode] = useState('');
   const [roomId, setRoomId] = useState<string | null>(null);
-  const [playerId] = useState(() => Math.random().toString(36).substring(2, 8));
+  const [playerId] = useState(() => Math.random().toString(36).substring(2, 10));
   const [playerName, setPlayerName] = useState('');
+  const [copied, setCopied] = useState(false);
   const [gameState, setGameState] = useState<GameState>({
     lines: [],
     currentDrawer: '',
@@ -47,7 +55,9 @@ const DrawingGame: React.FC = () => {
     scores: {},
     guesses: [],
     round: 1,
-    players: []
+    maxRounds: 5,
+    players: [],
+    winner: null
   });
   const [guess, setGuess] = useState('');
   const [currentColor, setCurrentColor] = useState('#000000');
@@ -57,16 +67,22 @@ const DrawingGame: React.FC = () => {
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const currentLineRef = useRef<DrawingPoint[]>([]);
+  const channelRef = useRef<RealtimeChannel | null>(null);
 
   const isDrawer = gameState.currentDrawer === playerId;
 
-  const generateRoomCode = () => {
-    return Math.random().toString(36).substring(2, 6).toUpperCase();
-  };
+  const generateRoomCode = () => Math.random().toString(36).substring(2, 6).toUpperCase();
+  const getRandomWord = () => WORDS[Math.floor(Math.random() * WORDS.length)];
 
-  const getRandomWord = () => {
-    return WORDS[Math.floor(Math.random() * WORDS.length)];
-  };
+  // Initialize canvas
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  }, [mode]);
 
   const createRoom = async () => {
     if (!playerName.trim()) {
@@ -83,7 +99,9 @@ const DrawingGame: React.FC = () => {
       scores: { [playerId]: 0 },
       guesses: [],
       round: 1,
-      players: [playerId]
+      maxRounds: 5,
+      players: [{ id: playerId, name: playerName }],
+      winner: null
     };
 
     const { data, error } = await supabase
@@ -107,6 +125,7 @@ const DrawingGame: React.FC = () => {
     setRoomId(data.id);
     setGameState(initialState);
     setMode('waiting');
+    haptics.success();
     toast.success(`Room created! Code: ${code}`);
   };
 
@@ -129,7 +148,7 @@ const DrawingGame: React.FC = () => {
     }
 
     const currentState = JSON.parse(JSON.stringify(data.game_state)) as GameState;
-    currentState.players.push(playerId);
+    currentState.players.push({ id: playerId, name: playerName });
     currentState.scores[playerId] = 0;
 
     await supabase
@@ -145,42 +164,94 @@ const DrawingGame: React.FC = () => {
     setRoomId(data.id);
     setGameState(currentState);
     setMode('playing');
+    
+    // Broadcast join
+    const channel = supabase.channel(`drawing-${data.id}`);
+    await channel.subscribe();
+    await channel.send({
+      type: 'broadcast',
+      event: 'game_update',
+      payload: { type: 'player_joined', gameState: currentState }
+    });
+    
+    haptics.success();
+    soundManager.playLocalSound('correct');
     toast.success('Joined room!');
   };
 
-  // Subscribe to realtime updates
+  // Subscribe to realtime updates using broadcast
   useEffect(() => {
     if (!roomId) return;
 
     const channel = supabase
-      .channel(`drawing-${roomId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'game_rooms',
-          filter: `id=eq.${roomId}`
-        },
-        (payload) => {
-          const newState = JSON.parse(JSON.stringify(payload.new.game_state)) as GameState;
-          setGameState(newState);
-          
-          if (payload.new.status === 'playing' && mode === 'waiting') {
-            setMode('playing');
-            toast.success('Game started!');
-          }
+      .channel(`drawing-${roomId}`, {
+        config: { broadcast: { self: true } }
+      })
+      .on('broadcast', { event: 'game_update' }, ({ payload }) => {
+        if (!payload) return;
 
-          // Redraw canvas
-          redrawCanvas(newState.lines);
+        if (payload.type === 'player_joined' && mode === 'waiting') {
+          setGameState(payload.gameState);
+          setMode('playing');
+          haptics.success();
+          soundManager.playLocalSound('correct');
+          toast.success('Player joined! Game started!');
         }
-      )
+
+        if (payload.type === 'draw_update') {
+          setGameState(prev => ({ ...prev, lines: payload.lines }));
+          redrawCanvas(payload.lines);
+        }
+
+        if (payload.type === 'clear_canvas') {
+          setGameState(prev => ({ ...prev, lines: [] }));
+          const canvas = canvasRef.current;
+          const ctx = canvas?.getContext('2d');
+          if (ctx && canvas) {
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+          }
+        }
+
+        if (payload.type === 'guess_submitted') {
+          setGameState(payload.gameState);
+          if (payload.correct) {
+            soundManager.playLocalSound('correct');
+            haptics.success();
+          }
+        }
+
+        if (payload.type === 'new_round') {
+          setGameState(payload.gameState);
+          // Clear canvas for new round
+          const canvas = canvasRef.current;
+          const ctx = canvas?.getContext('2d');
+          if (ctx && canvas) {
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+          }
+          toast.info(`Round ${payload.gameState.round}!`);
+        }
+
+        if (payload.type === 'game_ended') {
+          setGameState(payload.gameState);
+          setMode('ended');
+          const isWinner = payload.gameState.winner === playerName;
+          soundManager.playLocalSound(isWinner ? 'win' : 'lose');
+          if (isWinner) {
+            haptics.success();
+            celebrateFireworks();
+          }
+        }
+      })
       .subscribe();
+
+    channelRef.current = channel;
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [roomId, mode]);
+  }, [roomId, mode, playerName]);
 
   const redrawCanvas = useCallback((lines: DrawingPoint[][]) => {
     const canvas = canvasRef.current;
@@ -284,10 +355,19 @@ const DrawingGame: React.FC = () => {
       const newLines = [...gameState.lines, currentLineRef.current];
       const newState = { ...gameState, lines: newLines };
 
-      await supabase
+      // Broadcast drawing update
+      channelRef.current?.send({
+        type: 'broadcast',
+        event: 'game_update',
+        payload: { type: 'draw_update', lines: newLines }
+      });
+
+      // Update DB in background
+      supabase
         .from('game_rooms')
         .update({ game_state: JSON.parse(JSON.stringify(newState)) })
-        .eq('id', roomId);
+        .eq('id', roomId)
+        .then();
 
       setGameState(newState);
     }
@@ -298,10 +378,18 @@ const DrawingGame: React.FC = () => {
     if (!isDrawer || !roomId) return;
     
     const newState = { ...gameState, lines: [] };
-    await supabase
+    
+    channelRef.current?.send({
+      type: 'broadcast',
+      event: 'game_update',
+      payload: { type: 'clear_canvas' }
+    });
+    
+    supabase
       .from('game_rooms')
       .update({ game_state: JSON.parse(JSON.stringify(newState)) })
-      .eq('id', roomId);
+      .eq('id', roomId)
+      .then();
 
     setGameState(newState);
     
@@ -317,28 +405,59 @@ const DrawingGame: React.FC = () => {
     if (!guess.trim() || isDrawer || !roomId) return;
 
     const isCorrect = guess.toLowerCase().trim() === gameState.word.toLowerCase();
-    const newGuess = { player: playerName, text: guess, correct: isCorrect };
+    const newGuess = { player: playerId, playerName, text: guess, correct: isCorrect };
     
-    const newState = { ...gameState };
+    let newState = { ...gameState };
     newState.guesses = [...newState.guesses, newGuess];
     
     if (isCorrect) {
       newState.scores[playerId] = (newState.scores[playerId] || 0) + 10;
+      // Also give drawer points
+      newState.scores[newState.currentDrawer] = (newState.scores[newState.currentDrawer] || 0) + 5;
+      
       toast.success('Correct! +10 points');
       
-      // Start new round
-      const nextDrawerIndex = (newState.players.indexOf(newState.currentDrawer) + 1) % newState.players.length;
-      newState.currentDrawer = newState.players[nextDrawerIndex];
-      newState.word = getRandomWord();
-      newState.lines = [];
-      newState.guesses = [];
-      newState.round += 1;
+      // Check if game should end
+      if (newState.round >= newState.maxRounds) {
+        // Find winner
+        const sortedScores = Object.entries(newState.scores).sort((a, b) => b[1] - a[1]);
+        const winnerId = sortedScores[0][0];
+        const winnerPlayer = newState.players.find(p => p.id === winnerId);
+        newState.winner = winnerPlayer?.name || 'Unknown';
+        
+        channelRef.current?.send({
+          type: 'broadcast',
+          event: 'game_update',
+          payload: { type: 'game_ended', gameState: newState }
+        });
+      } else {
+        // Start new round
+        const nextDrawerIndex = (newState.players.findIndex(p => p.id === newState.currentDrawer) + 1) % newState.players.length;
+        newState.currentDrawer = newState.players[nextDrawerIndex].id;
+        newState.word = getRandomWord();
+        newState.lines = [];
+        newState.guesses = [];
+        newState.round += 1;
+        
+        channelRef.current?.send({
+          type: 'broadcast',
+          event: 'game_update',
+          payload: { type: 'new_round', gameState: newState }
+        });
+      }
+    } else {
+      channelRef.current?.send({
+        type: 'broadcast',
+        event: 'game_update',
+        payload: { type: 'guess_submitted', gameState: newState, correct: false }
+      });
     }
 
-    await supabase
+    supabase
       .from('game_rooms')
       .update({ game_state: JSON.parse(JSON.stringify(newState)) })
-      .eq('id', roomId);
+      .eq('id', roomId)
+      .then();
 
     setGameState(newState);
     setGuess('');
@@ -351,27 +470,50 @@ const DrawingGame: React.FC = () => {
     setMode('menu');
     setRoomId(null);
     setRoomCode('');
+    setGameState({
+      lines: [],
+      currentDrawer: '',
+      word: '',
+      scores: {},
+      guesses: [],
+      round: 1,
+      maxRounds: 5,
+      players: [],
+      winner: null
+    });
   };
 
   const copyRoomCode = () => {
     navigator.clipboard.writeText(roomCode);
-    toast.success('Room code copied!');
+    setCopied(true);
+    haptics.light();
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const getPlayerName = (id: string) => {
+    const player = gameState.players.find(p => p.id === id);
+    return player?.name || 'Unknown';
   };
 
   // Menu
   if (mode === 'menu') {
     return (
-      <div className="text-center space-y-6">
+      <div className="text-center space-y-6 animate-slide-in">
         <div className="flex items-center justify-center gap-3 mb-6">
-          <Pencil className="w-8 h-8 text-neon-pink" />
+          <Pencil className="w-8 h-8 text-neon-pink animate-float" />
           <h2 className="font-orbitron text-2xl text-foreground">Drawing Game</h2>
         </div>
+
+        <p className="text-muted-foreground font-rajdhani">
+          Draw and guess with friends!
+        </p>
 
         <Input
           value={playerName}
           onChange={(e) => setPlayerName(e.target.value)}
-          placeholder="Your name..."
-          className="max-w-xs mx-auto bg-background/50 border-border"
+          placeholder="Enter your name..."
+          className="max-w-xs mx-auto text-center font-rajdhani"
+          maxLength={15}
         />
 
         <div className="flex flex-col sm:flex-row gap-4 justify-center">
@@ -398,11 +540,12 @@ const DrawingGame: React.FC = () => {
   // Create room
   if (mode === 'create') {
     return (
-      <div className="text-center space-y-6">
+      <div className="text-center space-y-6 animate-slide-in">
         <Button variant="ghost" onClick={() => setMode('menu')} className="mb-4">
           <ArrowLeft className="w-4 h-4 mr-2" /> Back
         </Button>
         <h3 className="font-orbitron text-xl text-foreground">Create Drawing Room</h3>
+        <p className="text-muted-foreground text-sm">Playing as: {playerName || 'Anonymous'}</p>
         <Button
           onClick={createRoom}
           className="bg-neon-pink/20 border border-neon-pink text-neon-pink hover:bg-neon-pink/30"
@@ -416,17 +559,18 @@ const DrawingGame: React.FC = () => {
   // Join room
   if (mode === 'join') {
     return (
-      <div className="text-center space-y-6">
+      <div className="text-center space-y-6 animate-slide-in">
         <Button variant="ghost" onClick={() => setMode('menu')} className="mb-4">
           <ArrowLeft className="w-4 h-4 mr-2" /> Back
         </Button>
         <h3 className="font-orbitron text-xl text-foreground">Join Drawing Room</h3>
+        <p className="text-muted-foreground text-sm">Playing as: {playerName || 'Anonymous'}</p>
         <Input
           value={inputCode}
           onChange={(e) => setInputCode(e.target.value.toUpperCase())}
           placeholder="Enter room code..."
           maxLength={4}
-          className="max-w-xs mx-auto text-center text-2xl tracking-widest bg-background/50 border-border"
+          className="max-w-xs mx-auto text-center text-2xl tracking-widest font-orbitron"
         />
         <Button
           onClick={joinRoom}
@@ -442,15 +586,19 @@ const DrawingGame: React.FC = () => {
   // Waiting
   if (mode === 'waiting') {
     return (
-      <div className="text-center space-y-6">
+      <div className="text-center space-y-6 animate-slide-in">
+        <Pencil className="w-12 h-12 text-neon-pink animate-pulse mx-auto" />
         <h3 className="font-orbitron text-xl text-foreground">Waiting for players...</h3>
-        <div className="flex items-center justify-center gap-2">
-          <span className="text-4xl font-mono tracking-widest text-neon-pink">{roomCode}</span>
+        <p className="text-muted-foreground text-sm">You: {playerName}</p>
+        
+        <div className="flex items-center justify-center gap-2 p-4 bg-card rounded-xl border border-border">
+          <span className="text-3xl font-orbitron tracking-widest text-neon-pink">{roomCode}</span>
           <Button variant="ghost" size="icon" onClick={copyRoomCode}>
-            <Copy className="w-4 h-4" />
+            {copied ? <Check className="w-4 h-4 text-neon-green" /> : <Copy className="w-4 h-4" />}
           </Button>
         </div>
-        <p className="text-muted-foreground">Share this code with friends</p>
+        <p className="text-xs text-muted-foreground">Share this code with friends</p>
+        
         <Button variant="outline" onClick={leaveGame}>
           <ArrowLeft className="w-4 h-4 mr-2" /> Leave
         </Button>
@@ -458,23 +606,58 @@ const DrawingGame: React.FC = () => {
     );
   }
 
+  // Game ended
+  if (mode === 'ended') {
+    const sortedScores = Object.entries(gameState.scores)
+      .map(([id, score]) => ({ id, name: getPlayerName(id), score }))
+      .sort((a, b) => b.score - a.score);
+
+    return (
+      <div className="text-center space-y-6 animate-slide-in">
+        <Trophy className="w-16 h-16 text-neon-orange mx-auto" />
+        <h2 className="font-orbitron text-2xl text-foreground">
+          {gameState.winner} Wins!
+        </h2>
+        
+        <div className="space-y-2">
+          {sortedScores.map((player, index) => (
+            <div 
+              key={player.id}
+              className={`p-3 rounded-lg ${index === 0 ? 'bg-neon-orange/20 border border-neon-orange' : 'bg-card border border-border'}`}
+            >
+              <span className="font-rajdhani">
+                {index + 1}. {player.name}: <span className="font-orbitron text-neon-cyan">{player.score}</span>
+              </span>
+            </div>
+          ))}
+        </div>
+        
+        <Button variant="game" size="lg" onClick={leaveGame}>
+          Play Again
+        </Button>
+      </div>
+    );
+  }
+
   // Playing
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 animate-slide-in">
       <div className="flex items-center justify-between">
         <Button variant="ghost" size="sm" onClick={leaveGame}>
           <ArrowLeft className="w-4 h-4 mr-2" /> Leave
         </Button>
         <div className="text-center">
-          <span className="font-orbitron text-sm text-muted-foreground">Round {gameState.round}</span>
+          <span className="font-orbitron text-sm text-muted-foreground">Round {gameState.round}/{gameState.maxRounds}</span>
           {isDrawer && (
-            <p className="text-neon-pink font-bold">Draw: {gameState.word}</p>
+            <p className="text-neon-pink font-bold font-orbitron">Draw: {gameState.word}</p>
           )}
           {!isDrawer && (
-            <p className="text-muted-foreground">Guess the drawing!</p>
+            <p className="text-muted-foreground font-rajdhani">
+              {getPlayerName(gameState.currentDrawer)} is drawing...
+            </p>
           )}
         </div>
-        <span className="font-mono text-sm text-neon-cyan">{roomCode}</span>
+        <span className="font-orbitron text-sm text-neon-cyan">{roomCode}</span>
       </div>
 
       {/* Canvas */}
@@ -483,7 +666,7 @@ const DrawingGame: React.FC = () => {
           ref={canvasRef}
           width={400}
           height={300}
-          className="w-full bg-white rounded-lg border border-border touch-none"
+          className="w-full bg-white rounded-lg border-2 border-border touch-none"
           style={{ maxWidth: '400px', margin: '0 auto', display: 'block' }}
           onMouseDown={startDrawing}
           onMouseMove={draw}
@@ -502,9 +685,9 @@ const DrawingGame: React.FC = () => {
             {COLORS.map(color => (
               <button
                 key={color}
-                onClick={() => { setCurrentColor(color); setIsEraser(false); }}
-                className={`w-6 h-6 rounded-full border-2 ${
-                  currentColor === color && !isEraser ? 'border-neon-cyan' : 'border-border'
+                onClick={() => { setCurrentColor(color); setIsEraser(false); haptics.light(); }}
+                className={`w-7 h-7 rounded-full border-2 transition-transform hover:scale-110 ${
+                  currentColor === color && !isEraser ? 'border-neon-cyan scale-110' : 'border-border'
                 }`}
                 style={{ backgroundColor: color }}
               />
@@ -513,7 +696,7 @@ const DrawingGame: React.FC = () => {
           <Button
             size="sm"
             variant={isEraser ? 'default' : 'outline'}
-            onClick={() => setIsEraser(!isEraser)}
+            onClick={() => { setIsEraser(!isEraser); haptics.light(); }}
           >
             <Eraser className="w-4 h-4" />
           </Button>
@@ -531,30 +714,45 @@ const DrawingGame: React.FC = () => {
             onChange={(e) => setGuess(e.target.value)}
             placeholder="Type your guess..."
             onKeyDown={(e) => e.key === 'Enter' && submitGuess()}
-            className="bg-background/50 border-border"
+            className="font-rajdhani"
           />
-          <Button onClick={submitGuess} className="bg-neon-green/20 border border-neon-green text-neon-green">
+          <Button 
+            onClick={submitGuess} 
+            className="bg-neon-green/20 border border-neon-green text-neon-green hover:bg-neon-green/30"
+          >
             Guess
           </Button>
         </div>
       )}
 
-      {/* Guesses */}
-      <div className="max-h-24 overflow-y-auto space-y-1">
+      {/* Recent Guesses */}
+      <div className="max-h-20 overflow-y-auto space-y-1 px-2">
         {gameState.guesses.slice(-5).map((g, i) => (
-          <p key={i} className={`text-sm ${g.correct ? 'text-neon-green' : 'text-muted-foreground'}`}>
-            <span className="font-bold">{g.player}:</span> {g.text}
+          <p key={i} className={`text-sm font-rajdhani ${g.correct ? 'text-neon-green font-bold' : 'text-muted-foreground'}`}>
+            <span className="font-semibold">{g.playerName}:</span> {g.text}
             {g.correct && ' ✓'}
           </p>
         ))}
       </div>
 
       {/* Scores */}
-      <div className="flex justify-center gap-4 text-sm">
-        {Object.entries(gameState.scores).map(([id, score]) => (
-          <span key={id} className={id === playerId ? 'text-neon-cyan' : 'text-muted-foreground'}>
-            {id === playerId ? 'You' : 'Player'}: {score}
-          </span>
+      <div className="flex flex-wrap justify-center gap-3 text-sm">
+        {gameState.players.map(player => (
+          <div 
+            key={player.id} 
+            className={`px-3 py-1 rounded-full ${
+              player.id === playerId 
+                ? 'bg-neon-cyan/20 border border-neon-cyan' 
+                : player.id === gameState.currentDrawer 
+                ? 'bg-neon-pink/20 border border-neon-pink'
+                : 'bg-card border border-border'
+            }`}
+          >
+            <span className="font-rajdhani">
+              {player.name}{player.id === playerId && ' (You)'}: 
+              <span className="font-orbitron ml-1">{gameState.scores[player.id] || 0}</span>
+            </span>
+          </div>
         ))}
       </div>
     </div>

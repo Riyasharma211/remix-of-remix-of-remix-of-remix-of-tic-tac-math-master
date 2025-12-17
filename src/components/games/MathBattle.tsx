@@ -1,12 +1,13 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Swords, Users, Copy, Check, Play, Trophy, Clock, Zap } from 'lucide-react';
+import { Swords, Users, Copy, Check, Play, Trophy, Clock, Zap, ArrowLeft } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { soundManager } from '@/utils/soundManager';
 import { haptics } from '@/utils/haptics';
 import { celebrateFireworks } from '@/utils/confetti';
 import { useToast } from '@/hooks/use-toast';
+import { RealtimeChannel } from '@supabase/supabase-js';
 
 type GameMode = 'menu' | 'create' | 'join' | 'waiting' | 'playing' | 'ended';
 type Operator = '+' | '-' | '×';
@@ -20,11 +21,14 @@ interface Problem {
 
 interface GameState {
   problem: Problem | null;
+  options: number[];
   scores: { player1: number; player2: number };
   round: number;
   maxRounds: number;
   status: 'waiting' | 'playing' | 'ended';
+  answered: { player1: boolean; player2: boolean };
   winner: string | null;
+  playerNames: { player1: string; player2: string };
 }
 
 const generateProblem = (): Problem => {
@@ -72,44 +76,65 @@ const MathBattle: React.FC = () => {
   const { toast } = useToast();
   const [mode, setMode] = useState<GameMode>('menu');
   const [roomCode, setRoomCode] = useState('');
+  const [roomId, setRoomId] = useState<string | null>(null);
   const [joinCode, setJoinCode] = useState('');
+  const [playerName, setPlayerName] = useState('');
   const [copied, setCopied] = useState(false);
   const [playerNumber, setPlayerNumber] = useState<1 | 2>(1);
   const [problem, setProblem] = useState<Problem | null>(null);
   const [options, setOptions] = useState<number[]>([]);
   const [scores, setScores] = useState({ player1: 0, player2: 0 });
-  const [round, setRound] = useState(0);
+  const [round, setRound] = useState(1);
   const [maxRounds] = useState(10);
   const [hasAnswered, setHasAnswered] = useState(false);
   const [winner, setWinner] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<'correct' | 'wrong' | null>(null);
+  const [playerNames, setPlayerNames] = useState({ player1: '', player2: '' });
+  const channelRef = useRef<RealtimeChannel | null>(null);
 
   const generateRoomCode = () => Math.random().toString(36).substring(2, 8).toUpperCase();
 
   const createRoom = async () => {
+    if (!playerName.trim()) {
+      toast({ variant: 'destructive', title: 'Error', description: 'Please enter your name' });
+      return;
+    }
+    
     const code = generateRoomCode();
     setRoomCode(code);
     setPlayerNumber(1);
     
     const initialProblem = generateProblem();
+    const initialOptions = generateOptions(initialProblem.answer);
+    
+    const initialState: GameState = {
+      problem: initialProblem,
+      options: initialOptions,
+      scores: { player1: 0, player2: 0 },
+      round: 1,
+      maxRounds: 10,
+      status: 'waiting',
+      answered: { player1: false, player2: false },
+      winner: null,
+      playerNames: { player1: playerName, player2: '' }
+    };
     
     try {
-      await supabase.from('game_rooms').insert([{
+      const { data, error } = await supabase.from('game_rooms').insert([{
         room_code: code,
         game_type: 'mathbattle',
-        game_state: JSON.parse(JSON.stringify({
-          problem: initialProblem,
-          options: generateOptions(initialProblem.answer),
-          scores: { player1: 0, player2: 0 },
-          round: 1,
-          maxRounds: 10,
-          status: 'waiting',
-          answered: { player1: false, player2: false }
-        })),
+        game_state: JSON.parse(JSON.stringify(initialState)),
         status: 'waiting'
-      }]);
+      }]).select().single();
       
+      if (error) throw error;
+      
+      setRoomId(data.id);
+      setProblem(initialProblem);
+      setOptions(initialOptions);
+      setPlayerNames({ player1: playerName, player2: '' });
       setMode('waiting');
+      haptics.success();
       toast({ title: 'Room Created!', description: 'Share the code with a friend' });
     } catch (error) {
       toast({ variant: 'destructive', title: 'Error', description: 'Failed to create room' });
@@ -118,12 +143,17 @@ const MathBattle: React.FC = () => {
 
   const joinRoom = async () => {
     if (!joinCode.trim()) return;
+    if (!playerName.trim()) {
+      toast({ variant: 'destructive', title: 'Error', description: 'Please enter your name' });
+      return;
+    }
     
     try {
       const { data, error } = await supabase
         .from('game_rooms')
         .select('*')
         .eq('room_code', joinCode.toUpperCase())
+        .eq('game_type', 'mathbattle')
         .single();
       
       if (error || !data) {
@@ -132,35 +162,48 @@ const MathBattle: React.FC = () => {
       }
       
       const code = joinCode.toUpperCase();
-      const currentState = data.game_state as unknown as GameState & { options?: number[]; answered?: { player1: boolean; player2: boolean } };
+      const currentState = data.game_state as unknown as GameState;
+      
+      // Update state with player 2 info
+      const updatedState: GameState = {
+        ...currentState,
+        status: 'playing',
+        playerNames: { ...currentState.playerNames, player2: playerName }
+      };
+      
+      await supabase.from('game_rooms')
+        .update({ 
+          player_count: 2, 
+          status: 'playing', 
+          game_state: JSON.parse(JSON.stringify(updatedState)) 
+        })
+        .eq('id', data.id);
       
       setRoomCode(code);
+      setRoomId(data.id);
       setPlayerNumber(2);
-      setMode('playing');
       setProblem(currentState.problem);
       setOptions(currentState.options || []);
       setScores(currentState.scores);
       setRound(currentState.round);
+      setPlayerNames({ ...currentState.playerNames, player2: playerName });
+      setMode('playing');
       
-      // Instant broadcast to host
-      const channel = supabase.channel(`mb-${code}`);
-      channel.subscribe(async (status) => {
-        if (status === 'SUBSCRIBED') {
-          await channel.send({
-            type: 'broadcast',
-            event: 'game_update',
-            payload: { player_joined: true, status: 'playing' }
-          });
+      // Broadcast join to host
+      const channel = supabase.channel(`mathbattle-${data.id}`);
+      await channel.subscribe();
+      await channel.send({
+        type: 'broadcast',
+        event: 'game_update',
+        payload: { 
+          type: 'player_joined',
+          playerNames: updatedState.playerNames,
+          status: 'playing'
         }
       });
-
-      // DB update in background
-      supabase.from('game_rooms')
-        .update({ player_count: 2, status: 'playing', game_state: JSON.parse(JSON.stringify({ ...currentState, status: 'playing' })) })
-        .eq('room_code', code)
-        .then();
-
+      
       haptics.success();
+      soundManager.playLocalSound('correct');
       toast({ title: 'Joined!', description: 'Game starting!' });
     } catch (error) {
       toast({ variant: 'destructive', title: 'Error', description: 'Failed to join room' });
@@ -170,61 +213,73 @@ const MathBattle: React.FC = () => {
   const copyRoomCode = () => {
     navigator.clipboard.writeText(roomCode);
     setCopied(true);
+    haptics.light();
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // Subscribe to room changes - using broadcast for instant updates
+  // Subscribe to room changes using broadcast
   useEffect(() => {
-    if (!roomCode || (mode !== 'waiting' && mode !== 'playing')) return;
+    if (!roomId || (mode !== 'waiting' && mode !== 'playing')) return;
 
     const channel = supabase
-      .channel(`mb-${roomCode}`, {
+      .channel(`mathbattle-${roomId}`, {
         config: { broadcast: { self: true } }
       })
       .on('broadcast', { event: 'game_update' }, ({ payload }) => {
-        if (payload) {
-          // Instant player join detection
-          if (payload.player_joined && mode === 'waiting') {
-            setMode('playing');
-            haptics.success();
-            toast({ title: 'Player Joined!', description: 'Game starting!' });
-          }
-          
-          // Instant game state updates
-          if (payload.problem) setProblem(payload.problem);
-          if (payload.options) setOptions(payload.options);
+        if (!payload) return;
+        
+        // Player joined
+        if (payload.type === 'player_joined' && mode === 'waiting') {
+          setMode('playing');
+          if (payload.playerNames) setPlayerNames(payload.playerNames);
+          haptics.success();
+          soundManager.playLocalSound('correct');
+          toast({ title: 'Player Joined!', description: 'Game starting!' });
+        }
+        
+        // Answer submitted
+        if (payload.type === 'answer_submitted') {
           if (payload.scores) setScores(payload.scores);
-          if (payload.round) setRound(payload.round);
-          
-          // Reset answered state for new round
-          if (payload.newRound) {
-            setHasAnswered(false);
-            setFeedback(null);
-          }
-          
-          if (payload.status === 'ended') {
-            setMode('ended');
-            setWinner(payload.winner);
-            const isWinner = payload.winner === `Player ${playerNumber}`;
-            soundManager.playLocalSound(isWinner ? 'win' : 'lose');
-            if (isWinner) {
-              haptics.success();
-              celebrateFireworks();
-            } else {
-              haptics.error();
-            }
+        }
+        
+        // New round
+        if (payload.type === 'new_round') {
+          setProblem(payload.problem);
+          setOptions(payload.options);
+          setScores(payload.scores);
+          setRound(payload.round);
+          setHasAnswered(false);
+          setFeedback(null);
+          soundManager.playLocalSound('click');
+        }
+        
+        // Game ended
+        if (payload.type === 'game_ended') {
+          setMode('ended');
+          setScores(payload.scores);
+          setWinner(payload.winner);
+          const isWinner = payload.winner === `Player ${playerNumber}` || 
+                          payload.winner === playerNames[playerNumber === 1 ? 'player1' : 'player2'];
+          soundManager.playLocalSound(isWinner ? 'win' : 'lose');
+          if (isWinner) {
+            haptics.success();
+            celebrateFireworks();
+          } else {
+            haptics.error();
           }
         }
       })
       .subscribe();
 
+    channelRef.current = channel;
+
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [roomCode, mode, playerNumber]);
+  }, [roomId, mode, playerNumber, playerNames]);
 
   const handleAnswer = async (answer: number) => {
-    if (!problem || hasAnswered) return;
+    if (!problem || hasAnswered || !roomId) return;
     
     setHasAnswered(true);
     const isCorrect = answer === problem.answer;
@@ -235,12 +290,12 @@ const MathBattle: React.FC = () => {
     const { data } = await supabase
       .from('game_rooms')
       .select('game_state')
-      .eq('room_code', roomCode)
+      .eq('id', roomId)
       .single();
     
     if (!data) return;
     
-    const currentState = data.game_state as any;
+    const currentState = data.game_state as unknown as GameState;
     const playerKey = playerNumber === 1 ? 'player1' : 'player2';
     
     const newScores = { ...currentState.scores };
@@ -251,60 +306,82 @@ const MathBattle: React.FC = () => {
     const newAnswered = { ...currentState.answered, [playerKey]: true };
     const bothAnswered = newAnswered.player1 && newAnswered.player2;
     
-    let broadcastPayload: any = { scores: newScores };
-    let newState: any = { ...currentState, scores: newScores, answered: newAnswered };
+    let newState: GameState = { ...currentState, scores: newScores, answered: newAnswered };
+    
+    // Broadcast score update
+    channelRef.current?.send({
+      type: 'broadcast',
+      event: 'game_update',
+      payload: { type: 'answer_submitted', scores: newScores }
+    });
     
     if (bothAnswered) {
       if (currentState.round >= currentState.maxRounds) {
-        const winner = newScores.player1 > newScores.player2 ? 'Player 1' :
-                       newScores.player2 > newScores.player1 ? 'Player 2' : 'Tie';
-        newState.status = 'ended';
-        newState.winner = winner;
-        broadcastPayload = { ...broadcastPayload, status: 'ended', winner };
+        // Game ended
+        const winnerName = newScores.player1 > newScores.player2 
+          ? currentState.playerNames.player1 || 'Player 1'
+          : newScores.player2 > newScores.player1 
+          ? currentState.playerNames.player2 || 'Player 2' 
+          : 'Tie';
+        
+        newState = { ...newState, status: 'ended', winner: winnerName };
+        
+        channelRef.current?.send({
+          type: 'broadcast',
+          event: 'game_update',
+          payload: { type: 'game_ended', scores: newScores, winner: winnerName }
+        });
       } else {
+        // New round
         const newProblem = generateProblem();
-        newState.round = currentState.round + 1;
-        newState.problem = newProblem;
-        newState.options = generateOptions(newProblem.answer);
-        newState.answered = { player1: false, player2: false };
-        broadcastPayload = { 
-          ...broadcastPayload, 
-          problem: newProblem, 
-          options: newState.options, 
-          round: newState.round,
-          newRound: true
+        const newOptions = generateOptions(newProblem.answer);
+        
+        newState = {
+          ...newState,
+          round: currentState.round + 1,
+          problem: newProblem,
+          options: newOptions,
+          answered: { player1: false, player2: false }
         };
+        
+        channelRef.current?.send({
+          type: 'broadcast',
+          event: 'game_update',
+          payload: { 
+            type: 'new_round',
+            problem: newProblem,
+            options: newOptions,
+            scores: newScores,
+            round: newState.round
+          }
+        });
       }
     }
     
-    // Instant broadcast
-    const channel = supabase.channel(`mb-${roomCode}`);
-    channel.send({
-      type: 'broadcast',
-      event: 'game_update',
-      payload: broadcastPayload
-    });
-
-    // DB update in background
+    // Update DB in background
     supabase.from('game_rooms')
       .update({ game_state: JSON.parse(JSON.stringify(newState)) })
-      .eq('room_code', roomCode)
+      .eq('id', roomId)
       .then();
   };
 
   const leaveGame = async () => {
-    if (roomCode) {
-      await supabase.from('game_rooms').delete().eq('room_code', roomCode);
+    if (roomId) {
+      await supabase.from('game_rooms').delete().eq('id', roomId);
     }
     setMode('menu');
     setRoomCode('');
+    setRoomId(null);
     setProblem(null);
+    setOptions([]);
     setScores({ player1: 0, player2: 0 });
-    setRound(0);
+    setRound(1);
     setHasAnswered(false);
     setWinner(null);
+    setFeedback(null);
   };
 
+  // Menu
   if (mode === 'menu') {
     return (
       <div className="flex flex-col items-center gap-6 animate-slide-in">
@@ -313,6 +390,14 @@ const MathBattle: React.FC = () => {
         <p className="text-muted-foreground font-rajdhani text-center max-w-xs">
           Race against a friend to solve math problems!
         </p>
+        
+        <Input
+          value={playerName}
+          onChange={(e) => setPlayerName(e.target.value)}
+          placeholder="Enter your name..."
+          className="max-w-xs text-center font-rajdhani"
+          maxLength={15}
+        />
         
         <div className="flex flex-col gap-4 w-full max-w-xs">
           <Button variant="game" size="lg" onClick={() => setMode('create')}>
@@ -330,11 +415,14 @@ const MathBattle: React.FC = () => {
   if (mode === 'create') {
     return (
       <div className="flex flex-col items-center gap-6 animate-slide-in">
+        <Button variant="ghost" onClick={() => setMode('menu')} className="self-start">
+          <ArrowLeft className="w-4 h-4 mr-2" /> Back
+        </Button>
         <h2 className="font-orbitron text-xl">Create Math Battle</h2>
+        <p className="text-muted-foreground text-sm">Playing as: {playerName || 'Anonymous'}</p>
         <Button variant="game" size="lg" onClick={createRoom}>
           Create Room
         </Button>
-        <Button variant="ghost" onClick={() => setMode('menu')}>Back</Button>
       </div>
     );
   }
@@ -342,7 +430,11 @@ const MathBattle: React.FC = () => {
   if (mode === 'join') {
     return (
       <div className="flex flex-col items-center gap-6 animate-slide-in">
+        <Button variant="ghost" onClick={() => setMode('menu')} className="self-start">
+          <ArrowLeft className="w-4 h-4 mr-2" /> Back
+        </Button>
         <h2 className="font-orbitron text-xl">Join Math Battle</h2>
+        <p className="text-muted-foreground text-sm">Playing as: {playerName || 'Anonymous'}</p>
         <div className="flex gap-3 w-full max-w-xs">
           <Input
             value={joinCode}
@@ -353,7 +445,6 @@ const MathBattle: React.FC = () => {
           />
           <Button variant="neon" onClick={joinRoom}>Join</Button>
         </div>
-        <Button variant="ghost" onClick={() => setMode('menu')}>Back</Button>
       </div>
     );
   }
@@ -363,6 +454,7 @@ const MathBattle: React.FC = () => {
       <div className="flex flex-col items-center gap-6 animate-slide-in">
         <Swords className="w-12 h-12 text-neon-orange animate-pulse" />
         <h2 className="font-orbitron text-xl">Waiting for Opponent...</h2>
+        <p className="text-muted-foreground text-sm">You: {playerName}</p>
         
         <div className="flex items-center gap-2 p-4 bg-card rounded-xl border border-border">
           <span className="font-orbitron text-2xl tracking-widest text-neon-cyan">{roomCode}</span>
@@ -370,6 +462,7 @@ const MathBattle: React.FC = () => {
             {copied ? <Check className="w-4 h-4 text-neon-green" /> : <Copy className="w-4 h-4" />}
           </Button>
         </div>
+        <p className="text-xs text-muted-foreground">Share this code with a friend</p>
         
         <Button variant="ghost" onClick={leaveGame}>Cancel</Button>
       </div>
@@ -380,9 +473,11 @@ const MathBattle: React.FC = () => {
     return (
       <div className="flex flex-col items-center gap-6 w-full animate-slide-in">
         {/* Scores */}
-        <div className="flex justify-between w-full px-4">
+        <div className="flex justify-between w-full px-2">
           <div className={`text-center p-3 rounded-xl border-2 ${playerNumber === 1 ? 'border-neon-cyan bg-neon-cyan/10' : 'border-border'}`}>
-            <span className="text-xs text-muted-foreground font-rajdhani">P1 {playerNumber === 1 && '(You)'}</span>
+            <span className="text-xs text-muted-foreground font-rajdhani">
+              {playerNames.player1 || 'P1'} {playerNumber === 1 && '(You)'}
+            </span>
             <p className="font-orbitron text-2xl text-neon-cyan">{scores.player1}</p>
           </div>
           
@@ -392,7 +487,9 @@ const MathBattle: React.FC = () => {
           </div>
           
           <div className={`text-center p-3 rounded-xl border-2 ${playerNumber === 2 ? 'border-neon-pink bg-neon-pink/10' : 'border-border'}`}>
-            <span className="text-xs text-muted-foreground font-rajdhani">P2 {playerNumber === 2 && '(You)'}</span>
+            <span className="text-xs text-muted-foreground font-rajdhani">
+              {playerNames.player2 || 'P2'} {playerNumber === 2 && '(You)'}
+            </span>
             <p className="font-orbitron text-2xl text-neon-pink">{scores.player2}</p>
           </div>
         </div>
@@ -427,7 +524,7 @@ const MathBattle: React.FC = () => {
                   ? option === problem.answer 
                     ? 'border-neon-green bg-neon-green/20' 
                     : 'border-border bg-card opacity-50'
-                  : 'border-border bg-card hover:border-primary cursor-pointer'
+                  : 'border-border bg-card hover:border-primary active:scale-95 cursor-pointer'
                 }`}
             >
               {option}
@@ -441,20 +538,20 @@ const MathBattle: React.FC = () => {
   }
 
   if (mode === 'ended') {
+    const winnerDisplay = winner === 'Tie' ? "It's a Tie!" : `${winner} Wins!`;
+    
     return (
       <div className="flex flex-col items-center gap-6 animate-slide-in">
         <Trophy className="w-16 h-16 text-neon-orange" />
-        <h2 className="font-orbitron text-3xl text-foreground">
-          {winner === 'Tie' ? "It's a Tie!" : `${winner} Wins!`}
-        </h2>
+        <h2 className="font-orbitron text-3xl text-foreground">{winnerDisplay}</h2>
         
         <div className="flex gap-8">
           <div className="text-center">
-            <span className="text-muted-foreground font-rajdhani">Player 1</span>
+            <span className="text-muted-foreground font-rajdhani">{playerNames.player1 || 'Player 1'}</span>
             <p className="font-orbitron text-3xl text-neon-cyan">{scores.player1}</p>
           </div>
           <div className="text-center">
-            <span className="text-muted-foreground font-rajdhani">Player 2</span>
+            <span className="text-muted-foreground font-rajdhani">{playerNames.player2 || 'Player 2'}</span>
             <p className="font-orbitron text-3xl text-neon-pink">{scores.player2}</p>
           </div>
         </div>
