@@ -8,6 +8,7 @@ import { haptics } from '@/utils/haptics';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { celebrateHearts } from '@/utils/confetti';
 import { validatePlayerName, validateRoomCode, validateQuestion, validateAnswer } from '@/utils/gameValidation';
+import { soundManager } from '@/utils/soundManager';
 
 type GameMode = 'menu' | 'create' | 'join' | 'waiting' | 'playing';
 
@@ -79,7 +80,7 @@ const TruthOrDare: React.FC = () => {
   });
   
   const [floatingHearts, setFloatingHearts] = useState<{ id: number; x: number }[]>([]);
-  const [floatingReactions, setFloatingReactions] = useState<{ id: number; x: number; emoji: string }[]>([]);
+  const [floatingReactions, setFloatingReactions] = useState<{ id: number; x: number; y?: number; emoji: string; delay?: number; scale?: number }[]>([]);
   const channelRef = useRef<RealtimeChannel | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [partnerIsTyping, setPartnerIsTyping] = useState(false);
@@ -98,7 +99,7 @@ const TruthOrDare: React.FC = () => {
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
-  const REACTION_EMOJIS = ['😍', '💕', '🔥', '😂', '😤'];
+  const REACTION_EMOJIS = ['😍', '💕', '🔥', '😂', '😤', '🥵', '💋', '😘', '🙈', '👏', '💯', '✨'];
   const DARE_TIME_LIMIT = 60; // seconds
   const MAX_FILE_SIZE = 2 * 1024 * 1024; // 2MB
 
@@ -166,13 +167,23 @@ const TruthOrDare: React.FC = () => {
     }, 3000);
   }, []);
 
-  // Floating emoji reaction animation
-  const spawnFloatingEmoji = useCallback((emoji: string) => {
-    const newEmoji = { id: Date.now() + Math.random(), x: Math.random() * 80 + 10, emoji };
-    setFloatingReactions(prev => [...prev, newEmoji]);
+  // Floating emoji reaction animation - shower effect with multiple emojis
+  const spawnFloatingEmoji = useCallback((emoji: string, count: number = 8) => {
+    const emojis = [];
+    for (let i = 0; i < count; i++) {
+      emojis.push({
+        id: Date.now() + Math.random() + i,
+        x: Math.random() * 90 + 5, // Random x position 5-95%
+        y: Math.random() * 30, // Random start y offset 0-30%
+        emoji,
+        delay: Math.random() * 300, // Staggered spawn
+        scale: 0.8 + Math.random() * 0.6, // Random size 0.8-1.4
+      });
+    }
+    setFloatingReactions(prev => [...prev, ...emojis]);
     setTimeout(() => {
-      setFloatingReactions(prev => prev.filter(e => e.id !== newEmoji.id));
-    }, 2500);
+      setFloatingReactions(prev => prev.filter(e => !emojis.find(ne => ne.id === e.id)));
+    }, 3000);
   }, []);
 
   // Save message to database
@@ -902,8 +913,11 @@ const TruthOrDare: React.FC = () => {
   const sendReaction = (messageId: string, emoji: string) => {
     haptics.light();
     
-    // Spawn floating emoji for visual feedback
-    spawnFloatingEmoji(emoji);
+    // Play reaction sound effect via ElevenLabs
+    soundManager.generateAndPlaySFX('cute magical sparkle pop sound effect', 0.5);
+    
+    // Spawn floating emoji shower for visual feedback
+    spawnFloatingEmoji(emoji, 10);
     
     // Update local state immediately
     setReactions(prev => {
@@ -1311,8 +1325,9 @@ const TruthOrDare: React.FC = () => {
       })
       .on('broadcast', { event: 'reaction' }, ({ payload }) => {
         if (payload?.messageId && payload?.emoji && payload?.playerName) {
-          // Spawn floating emoji when partner reacts
-          spawnFloatingEmoji(payload.emoji);
+          // Spawn floating emoji shower and play sound when partner reacts
+          spawnFloatingEmoji(payload.emoji, 10);
+          soundManager.generateAndPlaySFX('cute magical sparkle pop sound effect', 0.5);
           
           setReactions(prev => {
             const msgReactions = prev[payload.messageId] || {};
@@ -1390,8 +1405,13 @@ const TruthOrDare: React.FC = () => {
       {floatingReactions.map(reaction => (
         <div
           key={reaction.id}
-          className="absolute animate-float-up text-5xl drop-shadow-lg"
-          style={{ left: `${reaction.x}%`, bottom: '20%' }}
+          className="absolute text-5xl drop-shadow-lg animate-float-up"
+          style={{ 
+            left: `${reaction.x}%`, 
+            bottom: `${20 + (reaction.y || 0)}%`,
+            animationDelay: `${reaction.delay || 0}ms`,
+            transform: `scale(${reaction.scale || 1})`,
+          }}
         >
           {reaction.emoji}
         </div>
