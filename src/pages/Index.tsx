@@ -305,14 +305,14 @@ const IndexContent: React.FC = () => {
         </header>
 
         {/* Mobile Game Selector - Horizontal Scroll */}
-        <div className="lg:hidden mb-4">
+        <div className="lg:hidden mb-2 shrink-0">
           {/* Multiplayer Games */}
-          <div className="mb-3">
-            <h2 className="font-orbitron text-xs text-neon-cyan uppercase tracking-widest mb-2 flex items-center gap-2 px-1">
-              <Swords className="w-3 h-3" />
+          <div className="mb-2">
+            <h2 className="font-orbitron text-[10px] text-neon-cyan uppercase tracking-widest mb-1 flex items-center gap-1 px-1">
+              <Swords className="w-2.5 h-2.5" />
               Multiplayer
             </h2>
-            <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+            <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-hide">
               {multiplayerGames.map((game) => (
                 <button
                   key={game.id}
@@ -321,14 +321,14 @@ const IndexContent: React.FC = () => {
                     soundManager.playLocalSound('click');
                     haptics.light();
                   }}
-                  className={`flex-shrink-0 px-3 py-2 rounded-xl border-2 transition-all duration-300 flex items-center gap-2 active:scale-95
+                  className={`flex-shrink-0 px-2 py-1.5 rounded-lg border transition-all duration-300 flex items-center gap-1.5 active:scale-95
                     ${activeGame === game.id 
                       ? `border-neon-${game.color} bg-neon-${game.color}/10` 
                       : 'border-border bg-card/50'
                     }`}
                 >
-                  <game.icon className={`w-4 h-4 text-neon-${game.color}`} />
-                  <span className={`font-orbitron text-xs whitespace-nowrap ${activeGame === game.id ? `text-neon-${game.color}` : 'text-foreground'}`}>
+                  <game.icon className={`w-3 h-3 text-neon-${game.color}`} />
+                  <span className={`font-orbitron text-[10px] whitespace-nowrap ${activeGame === game.id ? `text-neon-${game.color}` : 'text-foreground'}`}>
                     {game.title}
                   </span>
                 </button>
@@ -338,11 +338,11 @@ const IndexContent: React.FC = () => {
           
           {/* Solo Games */}
           <div>
-            <h2 className="font-orbitron text-xs text-muted-foreground uppercase tracking-widest mb-2 flex items-center gap-2 px-1">
-              <Brain className="w-3 h-3" />
+            <h2 className="font-orbitron text-[10px] text-muted-foreground uppercase tracking-widest mb-1 flex items-center gap-1 px-1">
+              <Brain className="w-2.5 h-2.5" />
               Solo
             </h2>
-            <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+            <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-hide">
               {singlePlayerGames.map((game) => (
                 <button
                   key={game.id}
@@ -351,14 +351,14 @@ const IndexContent: React.FC = () => {
                     soundManager.playLocalSound('click');
                     haptics.light();
                   }}
-                  className={`flex-shrink-0 px-3 py-2 rounded-xl border-2 transition-all duration-300 flex items-center gap-2 active:scale-95
+                  className={`flex-shrink-0 px-2 py-1.5 rounded-lg border transition-all duration-300 flex items-center gap-1.5 active:scale-95
                     ${activeGame === game.id 
                       ? `border-neon-${game.color} bg-neon-${game.color}/10` 
                       : 'border-border bg-card/50'
                     }`}
                 >
-                  <game.icon className={`w-4 h-4 text-neon-${game.color}`} />
-                  <span className={`font-orbitron text-xs whitespace-nowrap ${activeGame === game.id ? `text-neon-${game.color}` : 'text-foreground'}`}>
+                  <game.icon className={`w-3 h-3 text-neon-${game.color}`} />
+                  <span className={`font-orbitron text-[10px] whitespace-nowrap ${activeGame === game.id ? `text-neon-${game.color}` : 'text-foreground'}`}>
                     {game.title}
                   </span>
                 </button>
