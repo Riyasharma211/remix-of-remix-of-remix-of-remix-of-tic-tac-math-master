@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { supabase } from '@/integrations/supabase/client';
-import { Heart, Copy, Users, ArrowLeft, Sparkles, Send, Loader2, Camera, X } from 'lucide-react';
+import { Heart, Copy, Users, ArrowLeft, Sparkles, Send, Loader2, Camera, X, Check, CheckCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import { haptics } from '@/utils/haptics';
 import { RealtimeChannel } from '@supabase/supabase-js';
@@ -86,6 +86,10 @@ const TruthOrDare: React.FC = () => {
   // Reactions state: { messageId: { emoji: [playerName1, playerName2] } }
   const [reactions, setReactions] = useState<Record<string, Record<string, string[]>>>({});
   
+  // Read receipts state: { messageId: 'sent' | 'delivered' | 'read' }
+  const [readReceipts, setReadReceipts] = useState<Record<string, 'sent' | 'delivered' | 'read'>>({});
+  const lastReadMessageIdRef = useRef<string | null>(null);
+  
   // Dare timer state
   const [dareTimer, setDareTimer] = useState<number | null>(null);
   const dareTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -118,6 +122,52 @@ const TruthOrDare: React.FC = () => {
     }, 100);
     return () => clearTimeout(timer);
   }, [messages]);
+
+  // Send read receipts when viewing messages from partner
+  useEffect(() => {
+    if (mode !== 'playing' || messages.length === 0) return;
+    
+    // Find last message from partner
+    const partnerMessages = messages.filter(m => 
+      m.sender !== 'system' && 
+      !((m.sender === 'player1' && myPlayerIndex === 0) || (m.sender === 'player2' && myPlayerIndex === 1))
+    );
+    
+    if (partnerMessages.length === 0) return;
+    
+    const lastPartnerMsg = partnerMessages[partnerMessages.length - 1];
+    
+    // Only send if we haven't already sent for this message
+    if (lastPartnerMsg.id !== lastReadMessageIdRef.current) {
+      lastReadMessageIdRef.current = lastPartnerMsg.id;
+      
+      // Broadcast read receipt
+      channelRef.current?.send({
+        type: 'broadcast',
+        event: 'read_receipt',
+        payload: { lastReadMessageId: lastPartnerMsg.id, playerId }
+      });
+    }
+  }, [messages, mode, myPlayerIndex, playerId]);
+
+  // Mark my sent messages with initial 'sent' status
+  useEffect(() => {
+    const myMessages = messages.filter(m => 
+      m.sender !== 'system' && 
+      ((m.sender === 'player1' && myPlayerIndex === 0) || (m.sender === 'player2' && myPlayerIndex === 1))
+    );
+    
+    setReadReceipts(prev => {
+      const updated = { ...prev };
+      myMessages.forEach(msg => {
+        if (!updated[msg.id]) {
+          // If partner is connected (partnerName exists), mark as delivered
+          updated[msg.id] = partnerName ? 'delivered' : 'sent';
+        }
+      });
+      return updated;
+    });
+  }, [messages, myPlayerIndex, partnerName]);
 
   // Dare timer - starts when player needs to complete a dare
   useEffect(() => {
@@ -1205,8 +1255,45 @@ const TruthOrDare: React.FC = () => {
           });
         }
       })
+      .on('broadcast', { event: 'read_receipt' }, ({ payload }) => {
+        // Partner has read messages up to this ID
+        if (payload?.lastReadMessageId && payload?.playerId !== playerId) {
+          setReadReceipts(prev => {
+            const updated = { ...prev };
+            // Mark all messages up to this one as read
+            messages.forEach(msg => {
+              if (msg.sender !== 'system') {
+                updated[msg.id] = 'read';
+              }
+            });
+            return updated;
+          });
+        }
+      })
+      .on('broadcast', { event: 'partner_online' }, ({ payload }) => {
+        // Partner is online, mark messages as delivered
+        if (payload?.playerId !== playerId) {
+          setReadReceipts(prev => {
+            const updated = { ...prev };
+            messages.forEach(msg => {
+              if (msg.sender !== 'system' && prev[msg.id] === 'sent') {
+                updated[msg.id] = 'delivered';
+              }
+            });
+            return updated;
+          });
+        }
+      })
       .subscribe((status) => {
         console.log('Broadcast channel status:', status);
+        // When connected, broadcast that we're online
+        if (status === 'SUBSCRIBED') {
+          broadcastChannel.send({
+            type: 'broadcast',
+            event: 'partner_online',
+            payload: { playerId }
+          });
+        }
       });
 
     channelRef.current = broadcastChannel;
@@ -1476,14 +1563,28 @@ const TruthOrDare: React.FC = () => {
                 </div>
               )}
               
-              {/* Timestamp */}
-              {msg.created_at && (
-                <p className={`text-[10px] mt-0.5 text-right ${
-                  isMe ? 'text-white/50' : 'text-muted-foreground/60'
-                }`}>
-                  {formatTime(msg.created_at)}
-                </p>
-              )}
+              {/* Timestamp & Read receipts */}
+              <div className={`flex items-center gap-1 mt-0.5 ${isMe ? 'justify-end' : 'justify-start'}`}>
+                {msg.created_at && (
+                  <span className={`text-[10px] ${
+                    isMe ? 'text-white/50' : 'text-muted-foreground/60'
+                  }`}>
+                    {formatTime(msg.created_at)}
+                  </span>
+                )}
+                {/* Read receipt ticks for sent messages */}
+                {isMe && (
+                  <span className="flex items-center">
+                    {readReceipts[msg.id] === 'read' ? (
+                      <CheckCheck className="w-3.5 h-3.5 text-blue-400" />
+                    ) : readReceipts[msg.id] === 'delivered' ? (
+                      <CheckCheck className="w-3.5 h-3.5 text-white/50" />
+                    ) : (
+                      <Check className="w-3 h-3 text-white/50" />
+                    )}
+                  </span>
+                )}
+              </div>
             </div>
           </div>
         </div>
