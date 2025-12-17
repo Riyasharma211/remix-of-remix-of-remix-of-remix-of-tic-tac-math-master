@@ -1,11 +1,17 @@
 import React from 'react';
 import { useDifficulty, Difficulty, difficultyConfigs } from '@/contexts/DifficultyContext';
 import { Gauge } from 'lucide-react';
+import { haptics } from '@/utils/haptics';
 
 const DifficultySelector: React.FC = () => {
   const { difficulty, setDifficulty } = useDifficulty();
 
   const levels: Difficulty[] = ['easy', 'medium', 'hard'];
+
+  const handleSelect = (level: Difficulty) => {
+    haptics.light();
+    setDifficulty(level);
+  };
 
   return (
     <div className="flex items-center gap-3 p-3 bg-card/50 rounded-xl border border-border">
@@ -18,7 +24,7 @@ const DifficultySelector: React.FC = () => {
           return (
             <button
               key={level}
-              onClick={() => setDifficulty(level)}
+              onClick={() => handleSelect(level)}
               className={`px-3 py-1 rounded-lg font-rajdhani text-sm font-medium transition-all duration-200
                 ${isActive 
                   ? `${config.color} bg-current/10 border border-current` 
