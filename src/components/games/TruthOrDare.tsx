@@ -239,6 +239,14 @@ const TruthOrDare: React.FC = () => {
       .eq('id', messageId);
   };
 
+  // Update message with new content and disabled state
+  const updateMessageWithContent = async (messageId: string, content: ChatMessage['content']) => {
+    await supabase
+      .from('chat_messages')
+      .update({ disabled: true, content })
+      .eq('id', messageId);
+  };
+
   // Load messages for a room
   const loadMessages = async (currentRoomId: string): Promise<ChatMessage[]> => {
     const { data, error } = await supabase
@@ -579,14 +587,31 @@ const TruthOrDare: React.FC = () => {
     const questionMsg = [...messagesRef.current].reverse().find(m => m.content.question);
     const question = questionMsg?.content.question || '';
 
-    // Get opponent info
+    // Get opponent info - use gameStateRef for latest state
     const currentState = gameStateRef.current;
-    const opponentIndex = myPlayerIndex === 0 ? 1 : 0;
+    const myIdx = currentState.players.findIndex(p => p.id === playerId);
+    const opponentIndex = myIdx === 0 ? 1 : 0;
     const opponent = currentState.players[opponentIndex];
+
+    console.log('handleDareComplete - creating approval:', {
+      myIdx,
+      opponentIndex,
+      opponent,
+      playerId,
+      players: currentState.players
+    });
+
+    // Validate opponent exists
+    if (!opponent || !opponent.id) {
+      console.error('Cannot find opponent for approval!', { players: currentState.players });
+      toast.error('Cannot find opponent. Please try again.');
+      setIsSubmitting(false);
+      return;
+    }
 
     // Save completion claim message
     const completionMsg: Omit<ChatMessage, 'id' | 'created_at'> = {
-      sender: myPlayerIndex === 0 ? 'player1' : 'player2',
+      sender: myIdx === 0 ? 'player1' : 'player2',
       sender_name: playerName,
       message_type: 'text',
       content: { text: photoUrl ? '✅ I completed the dare! Check my proof! 📸' : '✅ I completed the dare!' }
@@ -601,7 +626,7 @@ const TruthOrDare: React.FC = () => {
         subtext: `${playerName} claims to have completed the dare`,
         question,
         proofPhotoUrl: photoUrl || undefined,
-        forPlayerId: opponent?.id, // Only opponent sees buttons
+        forPlayerId: opponent.id, // MUST be defined - validated above
         approvalStatus: 'pending',
         completedByPlayerId: playerId,
         completedByPlayerName: playerName,
@@ -611,6 +636,8 @@ const TruthOrDare: React.FC = () => {
         ]
       }
     };
+
+    console.log('Approval message to save:', approvalMsg);
 
     // Clear photo state
     clearPhoto();
@@ -622,9 +649,10 @@ const TruthOrDare: React.FC = () => {
     }
     setDareTimer(null);
 
-    await saveMessages([completionMsg, approvalMsg], roomId);
+    const savedMsgs = await saveMessages([completionMsg, approvalMsg], roomId);
+    console.log('Saved approval messages:', savedMsgs);
+    
     setCurrentInputAction('awaiting_approval');
-
     setIsSubmitting(false);
   };
 
@@ -635,11 +663,15 @@ const TruthOrDare: React.FC = () => {
     setIsSubmitting(true);
     celebrateHearts();
 
+    // Get the original message to preserve its content
+    const originalMsg = messagesRef.current.find(m => m.id === messageId);
+    const updatedContent = { ...originalMsg?.content, approvalStatus: 'approved' as const };
+    
     // Disable the approval message buttons
     setMessages(prev => prev.map(msg => 
-      msg.id === messageId ? { ...msg, disabled: true, content: { ...msg.content, approvalStatus: 'approved' as const } } : msg
+      msg.id === messageId ? { ...msg, disabled: true, content: updatedContent } : msg
     ));
-    await updateMessageDisabled(messageId);
+    await updateMessageWithContent(messageId, updatedContent);
 
     // Save approval message
     const approvalTextMsg: Omit<ChatMessage, 'id' | 'created_at'> = {
@@ -721,11 +753,15 @@ const TruthOrDare: React.FC = () => {
     haptics.medium();
     setIsSubmitting(true);
 
+    // Get the original message to preserve its content
+    const originalMsg = messagesRef.current.find(m => m.id === messageId);
+    const updatedContent = { ...originalMsg?.content, approvalStatus: 'rejected' as const };
+    
     // Disable the approval message buttons
     setMessages(prev => prev.map(msg => 
-      msg.id === messageId ? { ...msg, disabled: true, content: { ...msg.content, approvalStatus: 'rejected' as const } } : msg
+      msg.id === messageId ? { ...msg, disabled: true, content: updatedContent } : msg
     ));
-    await updateMessageDisabled(messageId);
+    await updateMessageWithContent(messageId, updatedContent);
 
     // Save rejection message
     const rejectTextMsg: Omit<ChatMessage, 'id' | 'created_at'> = {
@@ -1259,8 +1295,13 @@ const TruthOrDare: React.FC = () => {
         },
         (payload) => {
           const updatedMsg = payload.new as unknown as ChatMessage;
-          console.log('Message updated:', updatedMsg.id);
-          setMessages(prev => prev.map(m => m.id === updatedMsg.id ? { ...m, disabled: updatedMsg.disabled } : m));
+          console.log('Message updated:', updatedMsg.id, updatedMsg);
+          // Sync full message content including approvalStatus
+          setMessages(prev => prev.map(m => 
+            m.id === updatedMsg.id 
+              ? { ...m, disabled: updatedMsg.disabled, content: updatedMsg.content } 
+              : m
+          ));
         }
       )
       .subscribe((status) => {
@@ -1630,47 +1671,52 @@ const TruthOrDare: React.FC = () => {
                 
                 {/* Approve/Reject buttons - only for opponent */}
                 {(() => {
-                  console.log('Approval message render:', { 
+                  const shouldShow = !msg.disabled && msg.content.forPlayerId === playerId && msg.content.buttons;
+                  console.log('🔍 Approval buttons check:', { 
                     msgId: msg.id, 
                     disabled: msg.disabled, 
                     forPlayerId: msg.content.forPlayerId, 
-                    playerId, 
-                    buttons: msg.content.buttons,
-                    shouldShowButtons: !msg.disabled && msg.content.forPlayerId === playerId && msg.content.buttons
+                    currentPlayerId: playerId,
+                    hasButtons: !!msg.content.buttons,
+                    buttonsCount: msg.content.buttons?.length,
+                    shouldShowButtons: shouldShow
                   });
+                  
+                  if (shouldShow) {
+                    return (
+                      <div className="flex flex-wrap gap-2 justify-center mt-4">
+                        {msg.content.buttons!.map(btn => (
+                          <Button
+                            key={btn.value}
+                            onClick={() => handleButtonClick(btn.value, msg.id, msg.content)}
+                            disabled={isSubmitting}
+                            className={`px-5 py-4 text-base transition-all hover:scale-105 ${
+                              btn.variant === 'approve' 
+                                ? 'bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white' 
+                                : btn.variant === 'reject'
+                                  ? 'bg-gradient-to-r from-red-500 to-rose-500 hover:from-red-600 hover:to-rose-600 text-white'
+                                  : 'bg-primary hover:bg-primary/90'
+                            }`}
+                          >
+                            {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : btn.label}
+                          </Button>
+                        ))}
+                      </div>
+                    );
+                  }
                   return null;
                 })()}
-                {!msg.disabled && msg.content.forPlayerId === playerId && msg.content.buttons && (
-                  <div className="flex flex-wrap gap-2 justify-center">
-                    {msg.content.buttons.map(btn => (
-                      <Button
-                        key={btn.value}
-                        onClick={() => handleButtonClick(btn.value, msg.id, msg.content)}
-                        disabled={isSubmitting}
-                        className={`px-5 py-4 text-base transition-all hover:scale-105 ${
-                          btn.variant === 'approve' 
-                            ? 'bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600' 
-                            : btn.variant === 'reject'
-                              ? 'bg-gradient-to-r from-red-500 to-rose-500 hover:from-red-600 hover:to-rose-600'
-                              : 'bg-primary hover:bg-primary/90'
-                        }`}
-                      >
-                        {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : btn.label}
-                      </Button>
-                    ))}
-                  </div>
-                )}
                 
                 {/* Status messages */}
                 {msg.disabled && msg.content.approvalStatus === 'approved' && (
-                  <p className="text-center text-sm text-green-400">✅ Approved!</p>
+                  <p className="text-center text-sm text-green-400 mt-2">✅ Approved!</p>
                 )}
                 {msg.disabled && msg.content.approvalStatus === 'rejected' && (
-                  <p className="text-center text-sm text-red-400">❌ Rejected!</p>
+                  <p className="text-center text-sm text-red-400 mt-2">❌ Rejected!</p>
                 )}
-                {!msg.disabled && msg.content.forPlayerId !== playerId && (
-                  <p className="text-center text-sm text-muted-foreground animate-pulse">
-                    Waiting for {partnerName} to approve/reject...
+                {!msg.disabled && msg.content.forPlayerId && msg.content.forPlayerId !== playerId && (
+                  <p className="text-center text-sm text-muted-foreground animate-pulse mt-2">
+                    Waiting for {partnerName || 'partner'} to approve/reject...
                   </p>
                 )}
               </div>
