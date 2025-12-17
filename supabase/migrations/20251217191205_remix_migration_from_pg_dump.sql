@@ -48,6 +48,26 @@ $$;
 SET default_table_access_method = heap;
 
 --
+-- Name: chat_messages; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.chat_messages (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    room_id uuid NOT NULL,
+    sender text NOT NULL,
+    sender_name text,
+    message_type text NOT NULL,
+    content jsonb DEFAULT '{}'::jsonb NOT NULL,
+    disabled boolean DEFAULT false,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT chat_messages_message_type_check CHECK ((message_type = ANY (ARRAY['text'::text, 'buttons'::text, 'input'::text, 'result'::text]))),
+    CONSTRAINT chat_messages_sender_check CHECK ((sender = ANY (ARRAY['system'::text, 'player1'::text, 'player2'::text])))
+);
+
+ALTER TABLE ONLY public.chat_messages REPLICA IDENTITY FULL;
+
+
+--
 -- Name: game_rooms; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -62,6 +82,14 @@ CREATE TABLE public.game_rooms (
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL
 );
+
+
+--
+-- Name: chat_messages chat_messages_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.chat_messages
+    ADD CONSTRAINT chat_messages_pkey PRIMARY KEY (id);
 
 
 --
@@ -81,10 +109,32 @@ ALTER TABLE ONLY public.game_rooms
 
 
 --
+-- Name: idx_chat_messages_created_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_chat_messages_created_at ON public.chat_messages USING btree (created_at);
+
+
+--
+-- Name: idx_chat_messages_room_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_chat_messages_room_id ON public.chat_messages USING btree (room_id);
+
+
+--
 -- Name: game_rooms update_game_rooms_updated_at; Type: TRIGGER; Schema: public; Owner: -
 --
 
 CREATE TRIGGER update_game_rooms_updated_at BEFORE UPDATE ON public.game_rooms FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+
+
+--
+-- Name: chat_messages chat_messages_room_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.chat_messages
+    ADD CONSTRAINT chat_messages_room_id_fkey FOREIGN KEY (room_id) REFERENCES public.game_rooms(id) ON DELETE CASCADE;
 
 
 --
@@ -102,6 +152,27 @@ CREATE POLICY "Anyone can delete game rooms" ON public.game_rooms FOR DELETE USI
 
 
 --
+-- Name: chat_messages Anyone can insert chat messages; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY "Anyone can insert chat messages" ON public.chat_messages FOR INSERT WITH CHECK (true);
+
+
+--
+-- Name: chat_messages Anyone can read chat messages; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY "Anyone can read chat messages" ON public.chat_messages FOR SELECT USING (true);
+
+
+--
+-- Name: chat_messages Anyone can update chat messages; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY "Anyone can update chat messages" ON public.chat_messages FOR UPDATE USING (true);
+
+
+--
 -- Name: game_rooms Anyone can update game rooms; Type: POLICY; Schema: public; Owner: -
 --
 
@@ -114,6 +185,12 @@ CREATE POLICY "Anyone can update game rooms" ON public.game_rooms FOR UPDATE USI
 
 CREATE POLICY "Anyone can view game rooms" ON public.game_rooms FOR SELECT USING (true);
 
+
+--
+-- Name: chat_messages; Type: ROW SECURITY; Schema: public; Owner: -
+--
+
+ALTER TABLE public.chat_messages ENABLE ROW LEVEL SECURITY;
 
 --
 -- Name: game_rooms; Type: ROW SECURITY; Schema: public; Owner: -
