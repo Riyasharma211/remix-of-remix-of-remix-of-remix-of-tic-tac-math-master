@@ -21,6 +21,7 @@ interface ChatMessage {
   content: {
     text?: string;
     subtext?: string;
+    forPlayerId?: string; // Who should see the buttons
     buttons?: { label: string; value: string; icon?: string; variant?: 'truth' | 'dare' | 'end' | 'default' }[];
     inputPlaceholder?: string;
     inputAction?: string;
@@ -168,10 +169,11 @@ const TruthOrDare: React.FC = () => {
     return (data || []) as unknown as ChatMessage[];
   };
 
-  // Create turn message content
-  const createTurnMessageContent = (targetPlayerName: string, truthCount: number, dareCount: number, showButtons: boolean) => ({
+  // Create turn message content - now includes forPlayerId for reliable button display
+  const createTurnMessageContent = (targetPlayerName: string, targetPlayerId: string, truthCount: number, dareCount: number, showButtons: boolean) => ({
     text: `🎭 ${targetPlayerName}'s Turn`,
     subtext: `Truths: ${truthCount} | Dares: ${dareCount}`,
+    forPlayerId: targetPlayerId, // Explicitly specify who should see the buttons
     buttons: showButtons ? [
       { label: '💬 Truth', value: 'truth', variant: 'truth' as const },
       { label: '🔥 Dare', value: 'dare', variant: 'dare' as const },
@@ -353,9 +355,10 @@ const TruthOrDare: React.FC = () => {
         message_type: 'buttons',
         content: createTurnMessageContent(
           nextPlayer?.name || '',
+          nextPlayer?.id || '',
           newState.truthCount,
           newState.dareCount,
-          true // Will be adjusted on load based on player
+          true
         )
       };
 
@@ -431,6 +434,7 @@ const TruthOrDare: React.FC = () => {
       message_type: 'buttons',
       content: createTurnMessageContent(
         nextPlayer?.name || '',
+        nextPlayer?.id || '',
         newState.truthCount,
         newState.dareCount,
         true
@@ -587,6 +591,7 @@ const TruthOrDare: React.FC = () => {
       message_type: 'buttons',
       content: createTurnMessageContent(
         currentState.players[0]?.name || '',
+        currentState.players[0]?.id || '',
         0,
         0,
         true
@@ -626,8 +631,8 @@ const TruthOrDare: React.FC = () => {
     return msgs;
   };
 
-  // Check if buttons should be shown for a message - use current state, not refs
-  const shouldShowButtonsForMessage = (msg: ChatMessage, allMessages: ChatMessage[], currentState: GameState): boolean => {
+  // Check if buttons should be shown for a message - use forPlayerId from the message itself
+  const shouldShowButtonsForMessage = (msg: ChatMessage, allMessages: ChatMessage[]): boolean => {
     if (msg.message_type !== 'buttons' || !msg.content.buttons || msg.disabled) {
       return false;
     }
@@ -640,16 +645,15 @@ const TruthOrDare: React.FC = () => {
       return false;
     }
     
-    // Check if it's this player's turn based on current game state
-    const currentTurnPlayer = currentState.players[currentState.currentPlayerIndex];
+    // Use forPlayerId from the message itself - no race condition!
+    const forPlayerId = msg.content.forPlayerId;
     console.log('shouldShowButtons check:', { 
       msgId: msg.id, 
-      currentTurnPlayer: currentTurnPlayer?.name, 
-      currentTurnPlayerId: currentTurnPlayer?.id, 
+      forPlayerId,
       playerId,
-      isMatch: currentTurnPlayer?.id === playerId 
+      isMatch: forPlayerId === playerId 
     });
-    return currentTurnPlayer?.id === playerId;
+    return forPlayerId === playerId;
   };
 
   // Determine input action from messages
@@ -915,7 +919,7 @@ const TruthOrDare: React.FC = () => {
                     <p className="text-sm text-muted-foreground">{msg.content.subtext}</p>
                   )}
                 </div>
-                {shouldShowButtonsForMessage(msg, messages, gameState) && (
+                {shouldShowButtonsForMessage(msg, messages) && (
                   <div className="flex flex-wrap gap-2 justify-center">
                     {msg.content.buttons!.map(btn => (
                       <Button
@@ -940,7 +944,7 @@ const TruthOrDare: React.FC = () => {
                 {msg.disabled && (
                   <p className="text-center text-sm text-muted-foreground">Choice made ✓</p>
                 )}
-                {!shouldShowButtonsForMessage(msg, messages, gameState) && !msg.disabled && msg.content.buttons && (
+                {!shouldShowButtonsForMessage(msg, messages) && !msg.disabled && msg.content.buttons && (
                   <p className="text-center text-sm text-muted-foreground">Waiting for partner's choice...</p>
                 )}
               </div>
