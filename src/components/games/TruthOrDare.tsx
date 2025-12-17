@@ -9,6 +9,7 @@ import { RealtimeChannel } from '@supabase/supabase-js';
 import { celebrateHearts } from '@/utils/confetti';
 import { validatePlayerName, validateRoomCode, validateQuestion, validateAnswer } from '@/utils/gameValidation';
 import { soundManager } from '@/utils/soundManager';
+import { IOSNotificationContainer, showIOSNotification } from '@/components/ui/ios-notification';
 
 type GameMode = 'menu' | 'create' | 'join' | 'waiting' | 'playing';
 
@@ -390,6 +391,13 @@ const TruthOrDare: React.FC = () => {
       }
 
       celebrateHearts();
+      soundManager.playLocalSound('win');
+      showIOSNotification({
+        title: 'Truth Answered! 💬',
+        message: '+10 points! Well done!',
+        icon: '💬',
+        variant: 'success',
+      });
 
       // Find the question from previous messages and get the type
       const questionMsg = [...messagesRef.current].reverse().find(m => m.content.question);
@@ -543,6 +551,13 @@ const TruthOrDare: React.FC = () => {
     haptics.light();
     setIsSubmitting(true);
     celebrateHearts();
+    soundManager.playLocalSound('win');
+    showIOSNotification({
+      title: 'Dare Completed! 🔥',
+      message: '+20 points! Amazing!',
+      icon: '🔥',
+      variant: 'success',
+    });
 
     // Upload photo if selected
     let photoUrl: string | null = null;
@@ -750,8 +765,8 @@ const TruthOrDare: React.FC = () => {
   const sendReaction = (messageId: string, emoji: string) => {
     haptics.light();
     
-    // Play reaction sound effect via ElevenLabs
-    soundManager.generateAndPlaySFX('cute magical sparkle pop sound effect', 0.5);
+    // Play emoji-specific sound effect
+    soundManager.playEmojiSound(emoji);
     
     // Spawn floating emoji shower for visual feedback
     spawnFloatingEmoji(emoji, 10);
@@ -943,7 +958,13 @@ const TruthOrDare: React.FC = () => {
 
     celebrateHearts();
     haptics.success();
-    toast.success(`Joined ${currentState.players[0]?.name}'s room! Let's play 💕`);
+    soundManager.playLocalSound('start');
+    showIOSNotification({
+      title: 'Game Started!',
+      message: `Joined ${currentState.players[0]?.name}'s room! Let's play 💕`,
+      icon: '💕',
+      variant: 'love',
+    });
   };
 
   // Adjust messages for current player - no longer remove buttons, just return as is
@@ -1117,7 +1138,13 @@ const TruthOrDare: React.FC = () => {
           setMode('playing');
           celebrateHearts();
           haptics.success();
-          toast.success(`${payload.playerName} joined! Let the love begin! 💕`);
+          soundManager.playLocalSound('start');
+          showIOSNotification({
+            title: `${payload.playerName} joined!`,
+            message: "Let the love game begin! 💕",
+            icon: '💕',
+            variant: 'love',
+          });
         }
       })
       .on('broadcast', { event: 'game_state' }, ({ payload }) => {
@@ -1149,9 +1176,9 @@ const TruthOrDare: React.FC = () => {
       })
       .on('broadcast', { event: 'reaction' }, ({ payload }) => {
         if (payload?.messageId && payload?.emoji && payload?.playerName) {
-          // Spawn floating emoji shower and play sound when partner reacts
+          // Spawn floating emoji shower and play emoji-specific sound when partner reacts
           spawnFloatingEmoji(payload.emoji, 10);
-          soundManager.generateAndPlaySFX('cute magical sparkle pop sound effect', 0.5);
+          soundManager.playEmojiSound(payload.emoji);
           
           setReactions(prev => {
             const msgReactions = prev[payload.messageId] || {};
@@ -1214,9 +1241,11 @@ const TruthOrDare: React.FC = () => {
     toast.success('Room code copied! Share with your love 💕');
   };
 
-  // Floating hearts and reactions render
+  // Floating hearts, reactions render, and iOS notifications
   const renderFloatingHearts = () => (
-    <div className="fixed inset-0 pointer-events-none overflow-hidden z-50">
+    <>
+      <IOSNotificationContainer />
+      <div className="fixed inset-0 pointer-events-none overflow-hidden z-50">
       {floatingHearts.map(heart => (
         <div
           key={heart.id}
@@ -1240,7 +1269,8 @@ const TruthOrDare: React.FC = () => {
           {reaction.emoji}
         </div>
       ))}
-    </div>
+      </div>
+    </>
   );
 
   // Render a single chat message
