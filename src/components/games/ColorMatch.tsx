@@ -72,13 +72,23 @@ const ColorMatch: React.FC = () => {
 
     if (colorIndex === challenge.correctColor) {
       setFeedback('correct');
-      soundManager.playLocalSound('correct');
+      const newStreak = streak + 1;
+      
+      // Play different sounds based on streak
+      if (newStreak >= 5 && newStreak % 5 === 0) {
+        soundManager.playLocalSound('combo');
+      } else {
+        soundManager.playLocalSound('correct');
+      }
+      
+      haptics.light();
       const points = 10 + streak * 2;
       setScore(prev => prev + points);
-      setStreak(prev => prev + 1);
+      setStreak(newStreak);
     } else {
       setFeedback('wrong');
       soundManager.playLocalSound('wrong');
+      haptics.error();
       setStreak(0);
     }
 

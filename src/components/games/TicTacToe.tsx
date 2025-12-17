@@ -75,7 +75,7 @@ const TicTacToe: React.FC = () => {
     if (board[index] || winner || isDraw) return;
 
     haptics.light();
-    soundManager.playLocalSound('click');
+    soundManager.playLocalSound('pop');
 
     const newBoard = [...board];
     newBoard[index] = currentPlayer;

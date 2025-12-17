@@ -1,5 +1,5 @@
 // Sound effect cache and audio manager
-type SoundType = 'click' | 'win' | 'lose' | 'correct' | 'wrong' | 'tick' | 'notification' | 'start' | 'reaction';
+type SoundType = 'click' | 'win' | 'lose' | 'correct' | 'wrong' | 'tick' | 'notification' | 'start' | 'reaction' | 'flip' | 'match' | 'combo' | 'levelup' | 'countdown' | 'whoosh' | 'pop' | 'ding';
 type EmojiSound = 'laugh' | 'cry' | 'love' | 'fire' | 'angry' | 'kiss' | 'clap' | 'sparkle' | 'shy';
 
 // Map emojis to sound types
@@ -378,7 +378,145 @@ class SoundManager {
         oscillator.start();
         oscillator.stop(ctx.currentTime + 0.05);
         break;
+
+      case 'flip':
+        // Card flip whoosh sound
+        oscillator.frequency.setValueAtTime(300, ctx.currentTime);
+        oscillator.frequency.exponentialRampToValueAtTime(600, ctx.currentTime + 0.08);
+        oscillator.type = 'sine';
+        gainNode.gain.setValueAtTime(0.2, ctx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.1);
+        oscillator.start();
+        oscillator.stop(ctx.currentTime + 0.1);
+        break;
+
+      case 'match':
+        // Satisfying match chime
+        this.playMatchSound();
+        return;
+
+      case 'combo':
+        // Combo/streak sound
+        this.playComboSound();
+        return;
+
+      case 'levelup':
+        // Level up fanfare
+        this.playLevelUpSound();
+        return;
+
+      case 'countdown':
+        // Countdown beep
+        oscillator.frequency.value = 440;
+        oscillator.type = 'square';
+        gainNode.gain.setValueAtTime(0.15, ctx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.15);
+        oscillator.start();
+        oscillator.stop(ctx.currentTime + 0.15);
+        break;
+
+      case 'whoosh':
+        // Quick whoosh for transitions
+        oscillator.frequency.setValueAtTime(200, ctx.currentTime);
+        oscillator.frequency.exponentialRampToValueAtTime(800, ctx.currentTime + 0.15);
+        oscillator.type = 'sawtooth';
+        gainNode.gain.setValueAtTime(0.15, ctx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.15);
+        oscillator.start();
+        oscillator.stop(ctx.currentTime + 0.15);
+        break;
+
+      case 'pop':
+        // Bubble pop sound
+        oscillator.frequency.setValueAtTime(600, ctx.currentTime);
+        oscillator.frequency.exponentialRampToValueAtTime(200, ctx.currentTime + 0.08);
+        oscillator.type = 'sine';
+        gainNode.gain.setValueAtTime(0.3, ctx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.1);
+        oscillator.start();
+        oscillator.stop(ctx.currentTime + 0.1);
+        break;
+
+      case 'ding':
+        // Simple ding notification
+        oscillator.frequency.value = 1200;
+        oscillator.type = 'sine';
+        gainNode.gain.setValueAtTime(0.25, ctx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.2);
+        oscillator.start();
+        oscillator.stop(ctx.currentTime + 0.2);
+        break;
     }
+  }
+
+  // Play satisfying match sound
+  private playMatchSound() {
+    if (!this.isEnabled) return;
+    const ctx = this.getAudioContext();
+    
+    const notes = [523.25, 659.25, 783.99]; // C5, E5, G5
+    notes.forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.frequency.value = freq;
+      osc.type = 'sine';
+      const t = ctx.currentTime + i * 0.08;
+      gain.gain.setValueAtTime(0.25, t);
+      gain.gain.exponentialRampToValueAtTime(0.01, t + 0.2);
+      osc.start(t);
+      osc.stop(t + 0.2);
+    });
+  }
+
+  // Play combo/streak sound (ascending)
+  private playComboSound() {
+    if (!this.isEnabled) return;
+    const ctx = this.getAudioContext();
+    
+    const notes = [440, 554.37, 659.25, 880]; // A4, C#5, E5, A5
+    notes.forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.frequency.value = freq;
+      osc.type = 'triangle';
+      const t = ctx.currentTime + i * 0.06;
+      gain.gain.setValueAtTime(0.2, t);
+      gain.gain.exponentialRampToValueAtTime(0.01, t + 0.15);
+      osc.start(t);
+      osc.stop(t + 0.15);
+    });
+  }
+
+  // Play level up fanfare
+  private playLevelUpSound() {
+    if (!this.isEnabled) return;
+    const ctx = this.getAudioContext();
+    
+    const melody = [
+      { note: 392, time: 0, dur: 0.1 },      // G4
+      { note: 523.25, time: 0.1, dur: 0.1 }, // C5
+      { note: 659.25, time: 0.2, dur: 0.1 }, // E5
+      { note: 783.99, time: 0.3, dur: 0.15 }, // G5
+      { note: 1046.50, time: 0.45, dur: 0.3 }, // C6
+    ];
+    
+    melody.forEach(({ note, time, dur }) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.frequency.value = note;
+      osc.type = 'triangle';
+      const t = ctx.currentTime + time;
+      gain.gain.setValueAtTime(0.3, t);
+      gain.gain.exponentialRampToValueAtTime(0.01, t + dur);
+      osc.start(t);
+      osc.stop(t + dur);
+    });
   }
 
   async generateAndPlaySFX(prompt: string, duration: number = 1): Promise<void> {

@@ -80,7 +80,7 @@ const MemoryMatch: React.FC = () => {
     if (isLocked || flippedCards.includes(id) || cards[id].isMatched) return;
     
     if (!isPlaying) setIsPlaying(true);
-    soundManager.playLocalSound('click');
+    soundManager.playLocalSound('flip');
     haptics.light();
 
     const newFlippedCards = [...flippedCards, id];
@@ -99,7 +99,8 @@ const MemoryMatch: React.FC = () => {
       const [first, second] = newFlippedCards;
       
       if (cards[first].emoji === cards[second].emoji) {
-        soundManager.playLocalSound('correct');
+        soundManager.playLocalSound('match');
+        haptics.success();
         setCards((prev) =>
           prev.map((card) =>
             card.id === first || card.id === second
@@ -112,6 +113,7 @@ const MemoryMatch: React.FC = () => {
         setIsLocked(false);
       } else {
         soundManager.playLocalSound('wrong');
+        haptics.error();
         setTimeout(() => {
           setCards((prev) =>
             prev.map((card) =>

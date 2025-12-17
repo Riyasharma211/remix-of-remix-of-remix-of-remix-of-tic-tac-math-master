@@ -115,7 +115,19 @@ const PatternMemory: React.FC = () => {
       setGameState('success');
       const points = pattern.length * 10;
       setScore(prev => prev + points);
-      soundManager.playLocalSound('correct');
+      haptics.success();
+      
+      // Play combo sound for longer patterns
+      if (pattern.length >= 5) {
+        soundManager.playLocalSound('combo');
+      } else {
+        soundManager.playLocalSound('match');
+      }
+      
+      // Level up sound every 3 rounds
+      if (pattern.length % 3 === 0) {
+        setTimeout(() => soundManager.playLocalSound('levelup'), 300);
+      }
       
       // Next round
       setTimeout(() => {
