@@ -1,9 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
 import { supabase } from '@/integrations/supabase/client';
-import { Heart, Copy, Users, ArrowLeft, Clock, SkipForward, Check, Sparkles, Send, Loader2 } from 'lucide-react';
+import { Heart, Copy, Users, ArrowLeft, Sparkles, Send, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { haptics } from '@/utils/haptics';
 import { RealtimeChannel } from '@supabase/supabase-js';
@@ -11,29 +10,42 @@ import { celebrateHearts } from '@/utils/confetti';
 import { validatePlayerName, validateRoomCode, validateQuestion, validateAnswer } from '@/utils/gameValidation';
 
 type GameMode = 'menu' | 'create' | 'join' | 'waiting' | 'playing';
-type TurnPhase = 
-  | 'choosing'         // Current player chooses Truth or Dare
-  | 'opponent_writing' // Opponent writes the question/dare
-  | 'answering'        // Current player answers/does the task
-  | 'showing_answer';  // Show answer to both players before next turn
+
+// Chat message types
+interface ChatMessage {
+  id: string;
+  sender: 'system' | 'player1' | 'player2';
+  senderName?: string;
+  type: 'text' | 'buttons' | 'input' | 'result';
+  content: {
+    text?: string;
+    subtext?: string;
+    buttons?: { label: string; value: string; icon?: string; variant?: 'truth' | 'dare' | 'end' | 'default' }[];
+    inputPlaceholder?: string;
+    inputAction?: string;
+    question?: string;
+    answer?: string;
+    answeredBy?: string;
+    questionType?: 'truth' | 'dare';
+  };
+  disabled?: boolean;
+  timestamp: number;
+}
 
 interface GameState {
   players: { id: string; name: string; skipsLeft: number }[];
   currentPlayerIndex: number;
-  turnPhase: TurnPhase;
   currentType?: 'truth' | 'dare';
-  currentQuestion?: string;
-  currentAnswer?: string;
-  answeredBy?: string;
   roundCount: number;
+  truthCount: number;
+  dareCount: number;
 }
 
 // Real-time event types
 type GameEvent = 
-  | { type: 'game_update'; gameState: GameState }
+  | { type: 'chat_message'; message: ChatMessage; gameState: GameState }
   | { type: 'player_joined'; playerId: string; playerName: string; gameState: GameState }
-  | { type: 'typing'; playerId: string }
-  | { type: 'type_chosen'; chosenType: 'truth' | 'dare'; chooserName: string };
+  | { type: 'typing'; playerId: string };
 
 const TruthOrDare: React.FC = () => {
   const [mode, setMode] = useState<GameMode>('menu');
@@ -44,19 +56,18 @@ const TruthOrDare: React.FC = () => {
   const [playerName, setPlayerName] = useState('');
   const [partnerName, setPartnerName] = useState('');
   
-  // Input states
-  const [questionInput, setQuestionInput] = useState('');
-  const [answerInput, setAnswerInput] = useState('');
-  
-  // Timer
-  const [timeLeft, setTimeLeft] = useState(60);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  // Chat state
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [inputValue, setInputValue] = useState('');
+  const [currentInputAction, setCurrentInputAction] = useState<string | null>(null);
+  const chatContainerRef = useRef<HTMLDivElement>(null);
   
   const [gameState, setGameState] = useState<GameState>({
     players: [],
     currentPlayerIndex: 0,
-    turnPhase: 'choosing',
-    roundCount: 0
+    roundCount: 0,
+    truthCount: 0,
+    dareCount: 0
   });
   
   const [floatingHearts, setFloatingHearts] = useState<{ id: number; x: number }[]>([]);
@@ -64,15 +75,23 @@ const TruthOrDare: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [partnerIsTyping, setPartnerIsTyping] = useState(false);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const [showTypeNotification, setShowTypeNotification] = useState<'truth' | 'dare' | null>(null);
 
   const currentPlayer = gameState.players[gameState.currentPlayerIndex];
   const isMyTurn = currentPlayer?.id === playerId;
-  const myPlayer = gameState.players.find(p => p.id === playerId);
-  const partner = gameState.players.find(p => p.id !== playerId);
-  const isOpponent = !isMyTurn;
+  const myPlayerIndex = gameState.players.findIndex(p => p.id === playerId);
 
   const generateRoomCode = () => Math.random().toString(36).substring(2, 6).toUpperCase();
+  const generateMessageId = () => `msg_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+
+  // Auto-scroll to bottom
+  useEffect(() => {
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTo({
+        top: chatContainerRef.current.scrollHeight,
+        behavior: 'smooth'
+      });
+    }
+  }, [messages]);
 
   // Floating hearts animation
   const spawnHeart = useCallback(() => {
@@ -83,30 +102,308 @@ const TruthOrDare: React.FC = () => {
     }, 3000);
   }, []);
 
-  // Timer logic - for answering/dare phase
-  useEffect(() => {
-    if (mode === 'playing' && gameState.turnPhase === 'answering' && isMyTurn) {
-      setTimeLeft(60);
-      timerRef.current = setInterval(() => {
-        setTimeLeft(prev => {
-          if (prev <= 1) {
-            clearInterval(timerRef.current!);
-            handleAutoSkip();
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    }
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
-  }, [mode, gameState.turnPhase, isMyTurn, gameState.currentPlayerIndex]);
+  // Create initial turn message
+  const createTurnMessage = (playerName: string, truthCount: number, dareCount: number, isCurrentPlayer: boolean): ChatMessage => ({
+    id: generateMessageId(),
+    sender: 'system',
+    type: 'buttons',
+    content: {
+      text: `🎭 ${playerName}'s Turn`,
+      subtext: `Truths: ${truthCount} | Dares: ${dareCount}`,
+      buttons: isCurrentPlayer ? [
+        { label: '💬 Truth', value: 'truth', variant: 'truth' },
+        { label: '🔥 Dare', value: 'dare', variant: 'dare' },
+        { label: '🏁 End Game', value: 'end', variant: 'end' }
+      ] : undefined
+    },
+    timestamp: Date.now()
+  });
 
-  const handleAutoSkip = async () => {
-    if (!roomId || !myPlayer) return;
-    toast.info('Time\'s up! Moving to next turn 💭');
-    await moveToNextTurn();
+  // Create input request message
+  const createInputMessage = (questionType: 'truth' | 'dare', targetPlayerName: string): ChatMessage => ({
+    id: generateMessageId(),
+    sender: 'system',
+    type: 'input',
+    content: {
+      text: questionType === 'truth' ? '💬 TRUTH' : '🔥 DARE',
+      subtext: `Type your ${questionType} ${questionType === 'truth' ? 'question' : 'challenge'} for ${targetPlayerName}:`,
+      inputPlaceholder: questionType === 'truth' 
+        ? 'Ask something romantic or deep...' 
+        : 'Give a fun dare (keep it loving!)...',
+      inputAction: 'submit_question'
+    },
+    timestamp: Date.now()
+  });
+
+  // Create question display message
+  const createQuestionMessage = (questionType: 'truth' | 'dare', question: string, askerName: string): ChatMessage => ({
+    id: generateMessageId(),
+    sender: 'system',
+    type: 'input',
+    content: {
+      text: questionType === 'truth' ? '💬 TRUTH QUESTION' : '🔥 DARE CHALLENGE',
+      subtext: `From ${askerName}:`,
+      question: question,
+      inputPlaceholder: questionType === 'truth' ? 'Type your answer...' : undefined,
+      inputAction: questionType === 'truth' ? 'submit_answer' : 'complete_dare',
+      questionType
+    },
+    timestamp: Date.now()
+  });
+
+  // Create result message
+  const createResultMessage = (questionType: 'truth' | 'dare', question: string, answer: string, answeredBy: string): ChatMessage => ({
+    id: generateMessageId(),
+    sender: 'system',
+    type: 'result',
+    content: {
+      text: questionType === 'truth' ? '💬 TRUTH RESULT' : '🔥 DARE COMPLETED',
+      question,
+      answer,
+      answeredBy,
+      questionType
+    },
+    timestamp: Date.now()
+  });
+
+  // Handle button click
+  const handleButtonClick = async (buttonValue: string, messageId: string) => {
+    if (isSubmitting) return;
+    haptics.light();
+    setIsSubmitting(true);
+
+    // Disable the clicked message's buttons
+    setMessages(prev => prev.map(msg => 
+      msg.id === messageId ? { ...msg, disabled: true } : msg
+    ));
+
+    if (buttonValue === 'truth' || buttonValue === 'dare') {
+      const newState: GameState = {
+        ...gameState,
+        currentType: buttonValue as 'truth' | 'dare'
+      };
+
+      // Add player's choice message
+      const choiceMessage: ChatMessage = {
+        id: generateMessageId(),
+        sender: myPlayerIndex === 0 ? 'player1' : 'player2',
+        senderName: playerName,
+        type: 'text',
+        content: {
+          text: buttonValue === 'truth' ? '💬 I choose TRUTH!' : '🔥 I choose DARE!'
+        },
+        timestamp: Date.now()
+      };
+
+      // Create input message for opponent
+      const partner = gameState.players.find(p => p.id !== playerId);
+      const inputMessage = createInputMessage(buttonValue as 'truth' | 'dare', currentPlayer?.name || '');
+
+      const newMessages = [choiceMessage, inputMessage];
+      setMessages(prev => [...prev, ...newMessages]);
+      setCurrentInputAction('submit_question');
+      setGameState(newState);
+
+      await broadcastChatUpdate(newMessages, newState);
+    } else if (buttonValue === 'end') {
+      await leaveGame();
+    }
+
+    setIsSubmitting(false);
+  };
+
+  // Handle input submit
+  const handleInputSubmit = async () => {
+    if (!inputValue.trim() || isSubmitting) return;
+    
+    haptics.light();
+    setIsSubmitting(true);
+
+    if (currentInputAction === 'submit_question') {
+      const validation = validateQuestion(inputValue);
+      if (!validation.success) {
+        toast.error(validation.error || 'Invalid question');
+        setIsSubmitting(false);
+        return;
+      }
+
+      // Add opponent's question message
+      const questionMessage: ChatMessage = {
+        id: generateMessageId(),
+        sender: myPlayerIndex === 0 ? 'player1' : 'player2',
+        senderName: playerName,
+        type: 'text',
+        content: {
+          text: validation.value!
+        },
+        timestamp: Date.now()
+      };
+
+      // Create answer input for current player
+      const answerInputMessage = createQuestionMessage(
+        gameState.currentType!,
+        validation.value!,
+        playerName
+      );
+
+      const newMessages = [questionMessage, answerInputMessage];
+      setMessages(prev => [...prev, ...newMessages]);
+      setCurrentInputAction(gameState.currentType === 'truth' ? 'submit_answer' : 'complete_dare');
+      setInputValue('');
+
+      await broadcastChatUpdate(newMessages, gameState);
+      toast.success('Sent! 💕');
+    } else if (currentInputAction === 'submit_answer') {
+      const validation = validateAnswer(inputValue);
+      if (!validation.success) {
+        toast.error(validation.error || 'Invalid answer');
+        setIsSubmitting(false);
+        return;
+      }
+
+      celebrateHearts();
+
+      // Find the question from previous messages
+      const questionMsg = [...messages].reverse().find(m => m.content.question);
+      const question = questionMsg?.content.question || '';
+
+      // Add answer message
+      const answerMessage: ChatMessage = {
+        id: generateMessageId(),
+        sender: myPlayerIndex === 0 ? 'player1' : 'player2',
+        senderName: playerName,
+        type: 'text',
+        content: {
+          text: validation.value!
+        },
+        timestamp: Date.now()
+      };
+
+      // Create result message
+      const resultMessage = createResultMessage(
+        gameState.currentType!,
+        question,
+        validation.value!,
+        playerName
+      );
+
+      // Create next turn message
+      const nextIndex = (gameState.currentPlayerIndex + 1) % gameState.players.length;
+      const nextPlayer = gameState.players[nextIndex];
+      const newState: GameState = {
+        ...gameState,
+        currentPlayerIndex: nextIndex,
+        currentType: undefined,
+        roundCount: gameState.roundCount + 1,
+        truthCount: gameState.currentType === 'truth' ? gameState.truthCount + 1 : gameState.truthCount,
+        dareCount: gameState.currentType === 'dare' ? gameState.dareCount + 1 : gameState.dareCount
+      };
+
+      const turnMessage = createTurnMessage(
+        nextPlayer?.name || '',
+        newState.truthCount,
+        newState.dareCount,
+        nextPlayer?.id === playerId
+      );
+
+      const newMessages = [answerMessage, resultMessage, turnMessage];
+      setMessages(prev => [...prev, ...newMessages]);
+      setCurrentInputAction(null);
+      setInputValue('');
+      setGameState(newState);
+
+      await broadcastChatUpdate(newMessages, newState);
+    }
+
+    setIsSubmitting(false);
+  };
+
+  // Handle dare completion
+  const handleDareComplete = async () => {
+    if (isSubmitting) return;
+    haptics.success();
+    setIsSubmitting(true);
+    celebrateHearts();
+
+    // Find the question from previous messages
+    const questionMsg = [...messages].reverse().find(m => m.content.question);
+    const question = questionMsg?.content.question || '';
+
+    // Add completion message
+    const completionMessage: ChatMessage = {
+      id: generateMessageId(),
+      sender: myPlayerIndex === 0 ? 'player1' : 'player2',
+      senderName: playerName,
+      type: 'text',
+      content: {
+        text: '✅ Done! I completed the dare!'
+      },
+      timestamp: Date.now()
+    };
+
+    // Create result message
+    const resultMessage = createResultMessage(
+      'dare',
+      question,
+      '✅ Dare completed!',
+      playerName
+    );
+
+    // Create next turn message
+    const nextIndex = (gameState.currentPlayerIndex + 1) % gameState.players.length;
+    const nextPlayer = gameState.players[nextIndex];
+    const newState: GameState = {
+      ...gameState,
+      currentPlayerIndex: nextIndex,
+      currentType: undefined,
+      roundCount: gameState.roundCount + 1,
+      dareCount: gameState.dareCount + 1
+    };
+
+    const turnMessage = createTurnMessage(
+      nextPlayer?.name || '',
+      newState.truthCount,
+      newState.dareCount,
+      nextPlayer?.id === playerId
+    );
+
+    const newMessages = [completionMessage, resultMessage, turnMessage];
+    setMessages(prev => [...prev, ...newMessages]);
+    setCurrentInputAction(null);
+    setGameState(newState);
+
+    await broadcastChatUpdate(newMessages, newState);
+    setIsSubmitting(false);
+  };
+
+  // Broadcast chat update
+  const broadcastChatUpdate = async (newMessages: ChatMessage[], newState: GameState) => {
+    channelRef.current?.send({
+      type: 'broadcast',
+      event: 'chat_message',
+      payload: { messages: newMessages, gameState: newState }
+    });
+
+    await supabase
+      .from('game_rooms')
+      .update({ game_state: JSON.parse(JSON.stringify(newState)) })
+      .eq('id', roomId);
+  };
+
+  // Broadcast typing
+  const broadcastTyping = useCallback(() => {
+    channelRef.current?.send({
+      type: 'broadcast',
+      event: 'typing',
+      payload: { playerId }
+    });
+  }, [playerId]);
+
+  const handleInputChange = (value: string) => {
+    if (value.length <= 300) {
+      setInputValue(value);
+      broadcastTyping();
+    }
   };
 
   const createRoom = async () => {
@@ -120,8 +417,9 @@ const TruthOrDare: React.FC = () => {
     const initialState: GameState = {
       players: [{ id: playerId, name: validation.value!, skipsLeft: 2 }],
       currentPlayerIndex: 0,
-      turnPhase: 'choosing',
-      roundCount: 0
+      roundCount: 0,
+      truthCount: 0,
+      dareCount: 0
     };
 
     const { data, error } = await supabase
@@ -147,7 +445,7 @@ const TruthOrDare: React.FC = () => {
     setGameState(initialState);
     setMode('waiting');
     haptics.success();
-    toast.success(`Room created! Share code with your love 💖`);
+    toast.success('Room created! Share code with your love 💖');
   };
 
   const joinRoom = async () => {
@@ -198,198 +496,47 @@ const TruthOrDare: React.FC = () => {
     setRoomId(data.id);
     setGameState(currentState);
     setPartnerName(currentState.players[0]?.name || '');
+
+    // Create initial messages
+    const welcomeMessage: ChatMessage = {
+      id: generateMessageId(),
+      sender: 'system',
+      type: 'text',
+      content: {
+        text: `💕 Welcome to Couples Truth & Dare!`,
+        subtext: `${currentState.players[0]?.name} ❤️ ${nameValidation.value!}`
+      },
+      timestamp: Date.now()
+    };
+
+    const turnMessage = createTurnMessage(
+      currentState.players[0]?.name || '',
+      0,
+      0,
+      currentState.players[0]?.id === playerId
+    );
+
+    setMessages([welcomeMessage, turnMessage]);
     setMode('playing');
 
-    // Broadcast join event via realtime channel
+    // Broadcast join event
     const channel = supabase.channel(`tod-${codeValidation.value!}`);
     await channel.subscribe();
     await channel.send({
       type: 'broadcast',
       event: 'player_joined',
-      payload: { playerId, playerName: nameValidation.value!, gameState: currentState }
+      payload: { 
+        playerId, 
+        playerName: nameValidation.value!, 
+        gameState: currentState,
+        initialMessages: [welcomeMessage, turnMessage]
+      }
     });
     supabase.removeChannel(channel);
 
     celebrateHearts();
     haptics.success();
     toast.success(`Joined ${currentState.players[0]?.name}'s room! Let's play 💕`);
-  };
-
-  // Broadcast typing status
-  const broadcastTyping = useCallback(() => {
-    channelRef.current?.send({
-      type: 'broadcast',
-      event: 'typing',
-      payload: { playerId }
-    });
-  }, [playerId]);
-
-  // Handle input change with typing indicator
-  const handleQuestionInputChange = (value: string) => {
-    if (value.length <= 300) {
-      setQuestionInput(value);
-      broadcastTyping();
-    }
-  };
-
-  // Choose Truth or Dare
-  const chooseType = async (type: 'truth' | 'dare') => {
-    if (!roomId || !isMyTurn) return;
-    haptics.light();
-    setIsSubmitting(true);
-    
-    const newState: GameState = {
-      ...gameState,
-      currentType: type,
-      turnPhase: 'opponent_writing',
-      currentQuestion: undefined
-    };
-    
-    // Broadcast the choice immediately for instant feedback
-    channelRef.current?.send({
-      type: 'broadcast',
-      event: 'type_chosen',
-      payload: { chosenType: type, chooserName: myPlayer?.name }
-    });
-    
-    await updateAndBroadcast(newState);
-    setIsSubmitting(false);
-  };
-
-  // Opponent submits question
-  const submitQuestion = async () => {
-    if (!roomId || isMyTurn) return;
-    
-    const validation = validateQuestion(questionInput);
-    if (!validation.success) {
-      toast.error(validation.error || 'Invalid question');
-      return;
-    }
-    
-    haptics.light();
-    setIsSubmitting(true);
-    
-    const newState: GameState = {
-      ...gameState,
-      currentQuestion: validation.value!,
-      turnPhase: 'answering'
-    };
-    
-    await updateAndBroadcast(newState);
-    setQuestionInput('');
-    setIsSubmitting(false);
-    toast.success('Sent! 💕');
-  };
-
-  // Player submits answer - show to both before switching
-  const submitAnswer = async () => {
-    if (!roomId || !isMyTurn) return;
-    
-    const validation = validateAnswer(answerInput);
-    if (!validation.success) {
-      toast.error(validation.error || 'Invalid answer');
-      return;
-    }
-    
-    haptics.success();
-    setIsSubmitting(true);
-    celebrateHearts();
-    
-    const newState: GameState = {
-      ...gameState,
-      turnPhase: 'showing_answer',
-      currentAnswer: validation.value!,
-      answeredBy: myPlayer?.name
-    };
-    
-    await updateAndBroadcast(newState);
-    setAnswerInput('');
-    setIsSubmitting(false);
-  };
-
-  // Mark dare as done - show to both before switching
-  const markDone = async () => {
-    if (!roomId || !isMyTurn) return;
-    haptics.success();
-    setIsSubmitting(true);
-    celebrateHearts();
-    
-    const newState: GameState = {
-      ...gameState,
-      turnPhase: 'showing_answer',
-      currentAnswer: '✅ Dare completed!',
-      answeredBy: myPlayer?.name
-    };
-    
-    await updateAndBroadcast(newState);
-    setIsSubmitting(false);
-  };
-
-  // Proceed to next turn after showing answer
-  const proceedToNextTurn = async () => {
-    if (!roomId) return;
-    haptics.light();
-    setIsSubmitting(true);
-    
-    const nextIndex = (gameState.currentPlayerIndex + 1) % gameState.players.length;
-    const newState: GameState = {
-      ...gameState,
-      currentPlayerIndex: nextIndex,
-      turnPhase: 'choosing',
-      currentType: undefined,
-      currentQuestion: undefined,
-      currentAnswer: undefined,
-      answeredBy: undefined,
-      roundCount: gameState.roundCount + 1
-    };
-    
-    await updateAndBroadcast(newState);
-    setIsSubmitting(false);
-    toast.success('Next turn! 💕');
-  };
-
-  // Skip question
-  const skipQuestion = async () => {
-    if (!roomId || !myPlayer || myPlayer.skipsLeft <= 0) return;
-    haptics.medium();
-    setIsSubmitting(true);
-    
-    const updatedPlayers = gameState.players.map(p => 
-      p.id === playerId ? { ...p, skipsLeft: p.skipsLeft - 1 } : p
-    );
-    
-    const nextIndex = (gameState.currentPlayerIndex + 1) % gameState.players.length;
-    
-    const newState: GameState = {
-      ...gameState,
-      players: updatedPlayers,
-      currentPlayerIndex: nextIndex,
-      turnPhase: 'choosing',
-      currentType: undefined,
-      currentQuestion: undefined,
-      roundCount: gameState.roundCount + 1
-    };
-    
-    await updateAndBroadcast(newState);
-    setIsSubmitting(false);
-    toast.info(`Skipped! ${myPlayer.skipsLeft - 1} skips left 💭`);
-  };
-
-  const moveToNextTurn = async () => {
-    if (!roomId) return;
-    
-    const nextIndex = (gameState.currentPlayerIndex + 1) % gameState.players.length;
-    
-    const newState: GameState = {
-      ...gameState,
-      currentPlayerIndex: nextIndex,
-      turnPhase: 'choosing',
-      currentType: undefined,
-      currentQuestion: undefined,
-      roundCount: gameState.roundCount + 1
-    };
-    
-    await updateAndBroadcast(newState);
   };
 
   // Realtime subscription
@@ -400,19 +547,47 @@ const TruthOrDare: React.FC = () => {
       .channel(`tod-${roomCode}`, {
         config: { broadcast: { self: false } }
       })
-      .on('broadcast', { event: 'game_update' }, ({ payload }) => {
-        if (payload?.gameState) {
-          const newState = payload.gameState as GameState;
-          setGameState(newState);
+      .on('broadcast', { event: 'chat_message' }, ({ payload }) => {
+        if (payload?.messages) {
+          const newMessages = payload.messages as ChatMessage[];
+          // Adjust sender perspective and check for buttons
+          const adjustedMessages = newMessages.map(msg => {
+            // If it's a turn message with buttons, only show buttons to current player
+            if (msg.type === 'buttons' && msg.content.buttons) {
+              const newState = payload.gameState as GameState;
+              const nextPlayer = newState.players[newState.currentPlayerIndex];
+              const isMyTurnNow = nextPlayer?.id === playerId;
+              return {
+                ...msg,
+                content: {
+                  ...msg.content,
+                  buttons: isMyTurnNow ? msg.content.buttons : undefined
+                }
+              };
+            }
+            return msg;
+          });
+          
+          setMessages(prev => [...prev, ...adjustedMessages]);
           setPartnerIsTyping(false);
-          // Only clear notification when moving past opponent_writing phase
-          if (newState.turnPhase !== 'opponent_writing') {
-            setShowTypeNotification(null);
+
+          // Update input action based on last input message
+          const lastInputMsg = [...adjustedMessages].reverse().find(m => m.type === 'input');
+          if (lastInputMsg?.content.inputAction) {
+            const newState = payload.gameState as GameState;
+            const currentP = newState.players[newState.currentPlayerIndex];
+            // Only set input action if it's relevant to current player
+            if (lastInputMsg.content.inputAction === 'submit_question' && currentP?.id !== playerId) {
+              setCurrentInputAction('submit_question');
+            } else if ((lastInputMsg.content.inputAction === 'submit_answer' || lastInputMsg.content.inputAction === 'complete_dare') && currentP?.id === playerId) {
+              setCurrentInputAction(lastInputMsg.content.inputAction);
+            } else {
+              setCurrentInputAction(null);
+            }
           }
-          const partnerPlayer = newState.players.find(p => p.id !== playerId);
-          if (partnerPlayer) {
-            setPartnerName(partnerPlayer.name);
-          }
+        }
+        if (payload?.gameState) {
+          setGameState(payload.gameState);
         }
       })
       .on('broadcast', { event: 'player_joined' }, ({ payload }) => {
@@ -420,6 +595,9 @@ const TruthOrDare: React.FC = () => {
           setPartnerName(payload.playerName);
           if (payload.gameState) {
             setGameState(payload.gameState);
+          }
+          if (payload.initialMessages) {
+            setMessages(payload.initialMessages);
           }
           setMode('playing');
           celebrateHearts();
@@ -438,14 +616,6 @@ const TruthOrDare: React.FC = () => {
           }, 2000);
         }
       })
-      .on('broadcast', { event: 'type_chosen' }, ({ payload }) => {
-        if (payload?.chosenType) {
-          setShowTypeNotification(payload.chosenType);
-          haptics.medium();
-          // Auto-clear notification after 3 seconds
-          setTimeout(() => setShowTypeNotification(null), 3000);
-        }
-      })
       .subscribe();
 
     channelRef.current = channel;
@@ -459,24 +629,6 @@ const TruthOrDare: React.FC = () => {
     };
   }, [roomCode, mode, playerId]);
 
-  const updateAndBroadcast = async (newState: GameState) => {
-    // Update local state immediately for instant feedback
-    setGameState(newState);
-    
-    // Broadcast first for faster real-time sync
-    channelRef.current?.send({
-      type: 'broadcast',
-      event: 'game_update',
-      payload: { gameState: newState }
-    });
-
-    // Then persist to database
-    await supabase
-      .from('game_rooms')
-      .update({ game_state: JSON.parse(JSON.stringify(newState)) })
-      .eq('id', roomId);
-  };
-
   const leaveGame = async () => {
     if (roomId) {
       await supabase.from('game_rooms').delete().eq('id', roomId);
@@ -486,8 +638,9 @@ const TruthOrDare: React.FC = () => {
     setRoomCode('');
     setPlayerName('');
     setPartnerName('');
-    setQuestionInput('');
-    setAnswerInput('');
+    setMessages([]);
+    setInputValue('');
+    setCurrentInputAction(null);
   };
 
   const copyRoomCode = () => {
@@ -511,30 +664,137 @@ const TruthOrDare: React.FC = () => {
     </div>
   );
 
-  // Type notification overlay
-  const renderTypeNotification = () => {
-    if (!showTypeNotification || isMyTurn) return null;
+  // Render a single chat message
+  const renderMessage = (msg: ChatMessage) => {
+    const isSystem = msg.sender === 'system';
+    const isMe = (msg.sender === 'player1' && myPlayerIndex === 0) || (msg.sender === 'player2' && myPlayerIndex === 1);
     
     return (
-      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40 flex items-center justify-center animate-fade-in">
-        <div className={`text-center p-8 rounded-3xl animate-scale-in ${
-          showTypeNotification === 'truth' 
-            ? 'bg-gradient-to-br from-pink-500/90 to-purple-500/90' 
-            : 'bg-gradient-to-br from-red-500/90 to-orange-500/90'
-        }`}>
-          <span className="text-6xl block mb-4 animate-bounce">
-            {showTypeNotification === 'truth' ? '💭' : '🔥'}
-          </span>
-          <h2 className="text-3xl font-orbitron text-white font-bold">
-            {showTypeNotification.toUpperCase()}!
-          </h2>
-          <p className="text-white/80 mt-2">
-            {currentPlayer?.name} chose {showTypeNotification}
-          </p>
+      <div
+        key={msg.id}
+        className={`animate-slide-up ${isSystem ? 'flex justify-center' : isMe ? 'flex justify-end' : 'flex justify-start'}`}
+      >
+        <div className={`max-w-[85%] ${isSystem ? 'w-full' : ''}`}>
+          {/* Sender name for player messages */}
+          {!isSystem && msg.senderName && (
+            <p className={`text-xs text-muted-foreground mb-1 ${isMe ? 'text-right' : 'text-left'}`}>
+              {msg.senderName}
+            </p>
+          )}
+          
+          {/* Message bubble */}
+          <div className={`rounded-2xl p-4 ${
+            isSystem 
+              ? 'bg-gradient-to-br from-pink-500/10 to-purple-500/10 border border-pink-500/20' 
+              : isMe 
+                ? 'bg-gradient-to-br from-pink-500 to-red-500 text-white' 
+                : 'bg-muted'
+          }`}>
+            {/* Text message */}
+            {msg.type === 'text' && (
+              <div>
+                <p className="text-base">{msg.content.text}</p>
+                {msg.content.subtext && (
+                  <p className={`text-sm mt-1 ${isMe ? 'text-white/70' : 'text-muted-foreground'}`}>
+                    {msg.content.subtext}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Buttons message */}
+            {msg.type === 'buttons' && (
+              <div className="space-y-3">
+                <div className="text-center">
+                  <p className="text-lg font-semibold">{msg.content.text}</p>
+                  {msg.content.subtext && (
+                    <p className="text-sm text-muted-foreground">{msg.content.subtext}</p>
+                  )}
+                </div>
+                {msg.content.buttons && !msg.disabled && (
+                  <div className="flex flex-wrap gap-2 justify-center">
+                    {msg.content.buttons.map(btn => (
+                      <Button
+                        key={btn.value}
+                        onClick={() => handleButtonClick(btn.value, msg.id)}
+                        disabled={isSubmitting}
+                        className={`px-6 py-5 text-base transition-all hover:scale-105 ${
+                          btn.variant === 'truth' 
+                            ? 'bg-gradient-to-r from-pink-500 to-purple-500 hover:from-pink-600 hover:to-purple-600' 
+                            : btn.variant === 'dare'
+                              ? 'bg-gradient-to-r from-red-500 to-orange-500 hover:from-red-600 hover:to-orange-600'
+                              : btn.variant === 'end'
+                                ? 'bg-muted hover:bg-muted/80 text-muted-foreground'
+                                : 'bg-primary hover:bg-primary/90'
+                        }`}
+                      >
+                        {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : btn.label}
+                      </Button>
+                    ))}
+                  </div>
+                )}
+                {msg.disabled && (
+                  <p className="text-center text-sm text-muted-foreground">Choice made ✓</p>
+                )}
+              </div>
+            )}
+
+            {/* Input message */}
+            {msg.type === 'input' && (
+              <div className="space-y-3">
+                <div className="text-center">
+                  <p className={`text-lg font-semibold ${
+                    msg.content.text?.includes('TRUTH') ? 'text-pink-400' : 'text-orange-400'
+                  }`}>{msg.content.text}</p>
+                  {msg.content.subtext && (
+                    <p className="text-sm text-muted-foreground">{msg.content.subtext}</p>
+                  )}
+                </div>
+                {msg.content.question && (
+                  <div className={`p-4 rounded-xl ${
+                    msg.content.questionType === 'truth' 
+                      ? 'bg-pink-500/20 border border-pink-500/30' 
+                      : 'bg-orange-500/20 border border-orange-500/30'
+                  }`}>
+                    <p className="text-center text-lg">{msg.content.question}</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Result message */}
+            {msg.type === 'result' && (
+              <div className="space-y-4">
+                <div className="text-center">
+                  <span className="text-3xl">💕</span>
+                  <p className={`text-lg font-semibold mt-2 ${
+                    msg.content.questionType === 'truth' ? 'text-pink-400' : 'text-orange-400'
+                  }`}>{msg.content.text}</p>
+                </div>
+                <div className="space-y-2">
+                  <div className="p-3 rounded-lg bg-background/50">
+                    <p className="text-xs text-muted-foreground mb-1">Question:</p>
+                    <p>{msg.content.question}</p>
+                  </div>
+                  <div className="p-3 rounded-lg bg-green-500/20 border border-green-500/30">
+                    <p className="text-xs text-green-400 mb-1">{msg.content.answeredBy}'s Answer:</p>
+                    <p className="text-lg">{msg.content.answer}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     );
   };
+
+  // Should show input bar
+  const shouldShowInput = currentInputAction && (
+    (currentInputAction === 'submit_question' && !isMyTurn) ||
+    (currentInputAction === 'submit_answer' && isMyTurn) ||
+    (currentInputAction === 'complete_dare' && isMyTurn)
+  );
 
   // Menu
   if (mode === 'menu') {
@@ -556,7 +816,7 @@ const TruthOrDare: React.FC = () => {
         <div className="bg-gradient-to-br from-pink-500/10 to-red-500/10 rounded-2xl p-6 border border-pink-500/20">
           <Sparkles className="w-6 h-6 text-pink-400 mx-auto mb-3" />
           <p className="text-sm text-muted-foreground">
-            Write custom questions for each other in real-time! No pre-set questions - make it personal 💖
+            Chat-style gameplay! Write questions for each other in real-time 💖
           </p>
         </div>
 
@@ -691,250 +951,87 @@ const TruthOrDare: React.FC = () => {
     );
   }
 
-  // Playing
+  // Chat-style gameplay
   return (
-    <div className="space-y-4 px-4 py-4 max-w-md mx-auto min-h-[80vh] flex flex-col">
+    <div className="flex flex-col h-[calc(100dvh-120px)] max-w-md mx-auto">
       {renderFloatingHearts()}
-      {renderTypeNotification()}
       
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-background/50 backdrop-blur-sm">
         <Button variant="ghost" size="sm" onClick={leaveGame}>
           <ArrowLeft className="w-4 h-4" />
         </Button>
         <div className="text-center">
-          <p className="text-xs text-muted-foreground">Round {gameState.roundCount + 1}</p>
           <div className="flex items-center gap-2">
             <span className={isMyTurn ? 'text-pink-400 font-bold' : 'text-muted-foreground'}>{playerName}</span>
             <Heart className="w-4 h-4 text-pink-500" fill="currentColor" />
             <span className={!isMyTurn ? 'text-pink-400 font-bold' : 'text-muted-foreground'}>{partnerName || '...'}</span>
           </div>
+          <p className="text-xs text-muted-foreground">Round {gameState.roundCount + 1}</p>
         </div>
         <div className="w-8" />
       </div>
 
-      {/* Turn indicator */}
-      <div className={`text-center p-4 rounded-2xl transition-all ${
-        isMyTurn 
-          ? 'bg-gradient-to-r from-pink-500/20 to-red-500/20 border border-pink-500/30' 
-          : 'bg-background/50 border border-border'
-      }`}>
-        <p className="text-lg font-medium">
-          {isMyTurn ? "Your turn, love! 💕" : `${currentPlayer?.name}'s turn 💭`}
-        </p>
+      {/* Chat messages */}
+      <div 
+        ref={chatContainerRef}
+        className="flex-1 overflow-y-auto p-4 space-y-4"
+      >
+        {messages.map(msg => renderMessage(msg))}
+        
+        {/* Typing indicator */}
+        {partnerIsTyping && (
+          <div className="flex justify-start animate-slide-up">
+            <div className="bg-muted rounded-2xl px-4 py-3">
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground">{partnerName} is typing</span>
+                <span className="flex gap-1">
+                  <span className="w-2 h-2 bg-pink-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                  <span className="w-2 h-2 bg-pink-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                  <span className="w-2 h-2 bg-pink-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* PHASE: Choosing Truth or Dare */}
-      {gameState.turnPhase === 'choosing' && (
-        <div className="flex-1 flex flex-col items-center justify-center space-y-6 animate-fade-in">
-          {isMyTurn ? (
-            <>
-              <p className="text-lg text-center">Choose your fate! ❤️</p>
-              <div className="flex gap-4 w-full">
-                <Button
-                  onClick={() => chooseType('truth')}
-                  disabled={isSubmitting}
-                  className="flex-1 py-8 text-xl bg-gradient-to-br from-pink-500 to-purple-500 hover:from-pink-600 hover:to-purple-600 transition-all hover:scale-105"
-                >
-                  {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : '💭 Truth'}
-                </Button>
-                <Button
-                  onClick={() => chooseType('dare')}
-                  disabled={isSubmitting}
-                  className="flex-1 py-8 text-xl bg-gradient-to-br from-red-500 to-orange-500 hover:from-red-600 hover:to-orange-600 transition-all hover:scale-105"
-                >
-                  {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : '🔥 Dare'}
-                </Button>
-              </div>
-            </>
+      {/* Input bar */}
+      {shouldShowInput && (
+        <div className="p-4 border-t border-border bg-background/50 backdrop-blur-sm animate-slide-up">
+          {currentInputAction === 'complete_dare' ? (
+            <Button
+              onClick={handleDareComplete}
+              disabled={isSubmitting}
+              className="w-full bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 py-6 text-lg"
+            >
+              {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : '✅'} 
+              Mark Dare as Done!
+            </Button>
           ) : (
-            <div className="text-center space-y-4 animate-pulse">
-              <div className="w-20 h-20 mx-auto rounded-full bg-pink-500/20 flex items-center justify-center">
-                <Heart className="w-10 h-10 text-pink-500" />
-              </div>
-              <p className="text-lg">{currentPlayer?.name} is choosing...</p>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* PHASE: Opponent Writing Question */}
-      {gameState.turnPhase === 'opponent_writing' && (
-        <div className="flex-1 flex flex-col items-center justify-center space-y-6 animate-fade-in">
-          {/* Selection Badge */}
-          <div className={`w-full p-6 rounded-3xl text-center animate-scale-in ${
-            gameState.currentType === 'truth' 
-              ? 'bg-gradient-to-br from-pink-500/20 to-purple-500/20 border-2 border-pink-500/30' 
-              : 'bg-gradient-to-br from-red-500/20 to-orange-500/20 border-2 border-red-500/30'
-          }`}>
-            <span className="text-5xl block mb-2">{gameState.currentType === 'truth' ? '💭' : '🔥'}</span>
-            <h3 className={`font-orbitron text-2xl ${gameState.currentType === 'truth' ? 'text-pink-400' : 'text-red-400'}`}>
-              {currentPlayer?.name} chose {gameState.currentType?.toUpperCase()}!
-            </h3>
-          </div>
-
-          {isOpponent ? (
-            <div className="w-full space-y-4 animate-fade-in" style={{ animationDelay: '200ms' }}>
-              <p className="text-center text-muted-foreground text-lg">
-                {gameState.currentType === 'truth' 
-                  ? `Ask ${currentPlayer?.name} a question! 💕` 
-                  : `Give ${currentPlayer?.name} a dare! 🔥`}
-              </p>
-              <Textarea
-                value={questionInput}
-                onChange={(e) => handleQuestionInputChange(e.target.value)}
-                placeholder={gameState.currentType === 'truth'
-                  ? "Ask something romantic or cute..." 
-                  : "Give a fun dare (keep it loving!)..."}
-                className="w-full min-h-[100px] bg-background/50 border-pink-500/30 text-base"
+            <div className="flex gap-2">
+              <Input
+                value={inputValue}
+                onChange={(e) => handleInputChange(e.target.value)}
+                placeholder={
+                  currentInputAction === 'submit_question' 
+                    ? `Ask ${currentPlayer?.name} a ${gameState.currentType}...` 
+                    : 'Type your answer...'
+                }
+                className="flex-1 bg-background border-pink-500/30"
                 maxLength={300}
-                autoFocus
+                onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleInputSubmit()}
               />
-              <p className="text-xs text-muted-foreground text-right">{questionInput.length}/300</p>
               <Button
-                onClick={submitQuestion}
-                disabled={!questionInput.trim() || questionInput.length < 3 || isSubmitting}
-                className="w-full bg-gradient-to-r from-pink-500 to-red-500 text-white py-6 text-lg transition-all hover:scale-[1.02]"
+                onClick={handleInputSubmit}
+                disabled={!inputValue.trim() || isSubmitting}
+                className="bg-gradient-to-r from-pink-500 to-red-500 hover:from-pink-600 hover:to-red-600 px-6"
               >
-                {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Send className="w-5 h-5 mr-2" />}
-                Send {gameState.currentType === 'truth' ? 'Question' : 'Dare'} 💕
+                {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
               </Button>
             </div>
-          ) : (
-            <div className="text-center space-y-4 p-6 bg-background/50 rounded-2xl border border-border">
-              <div className="flex items-center justify-center gap-2">
-                <p className="text-lg">{partner?.name} is writing your {gameState.currentType}</p>
-                {partnerIsTyping && (
-                  <span className="flex gap-1 ml-1">
-                    <span className="w-2 h-2 bg-pink-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                    <span className="w-2 h-2 bg-pink-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                    <span className="w-2 h-2 bg-pink-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-                  </span>
-                )}
-              </div>
-              <p className="text-muted-foreground text-sm">
-                {partnerIsTyping ? '✍️ Typing...' : 'Get ready! 😊'}
-              </p>
-            </div>
           )}
-        </div>
-      )}
-
-      {/* PHASE: Answering */}
-      {gameState.turnPhase === 'answering' && gameState.currentQuestion && (
-        <div className="flex-1 flex flex-col items-center justify-center space-y-4 animate-fade-in">
-          {/* Question Card */}
-          <div className={`w-full p-6 rounded-3xl ${
-            gameState.currentType === 'truth' 
-              ? 'bg-gradient-to-br from-pink-500/20 to-purple-500/20 border-2 border-pink-500/30' 
-              : 'bg-gradient-to-br from-red-500/20 to-orange-500/20 border-2 border-red-500/30'
-          }`}>
-            <div className="text-center mb-4">
-              <span className="text-4xl">{gameState.currentType === 'truth' ? '💭' : '🔥'}</span>
-              <h3 className={`font-orbitron text-xl mt-2 ${gameState.currentType === 'truth' ? 'text-pink-400' : 'text-red-400'}`}>
-                {gameState.currentType?.toUpperCase()}
-              </h3>
-            </div>
-            <p className="text-lg text-center leading-relaxed">{gameState.currentQuestion}</p>
-          </div>
-
-          {isMyTurn ? (
-            <div className="w-full space-y-4">
-              {/* Timer */}
-              <div className="flex items-center justify-center gap-2 text-muted-foreground">
-                <Clock className="w-4 h-4" />
-                <span className={timeLeft <= 10 ? 'text-red-400 animate-pulse font-bold' : ''}>{timeLeft}s</span>
-              </div>
-
-              {gameState.currentType === 'truth' ? (
-                <>
-                  <Textarea
-                    value={answerInput}
-                    onChange={(e) => setAnswerInput(e.target.value.slice(0, 500))}
-                    placeholder="Type your answer..."
-                    className="w-full min-h-[80px] bg-background/50 border-pink-500/30"
-                    maxLength={500}
-                    autoFocus
-                  />
-                  <p className="text-xs text-muted-foreground text-right">{answerInput.length}/500</p>
-                  <Button
-                    onClick={submitAnswer}
-                    disabled={!answerInput.trim() || isSubmitting}
-                    className="w-full bg-gradient-to-r from-pink-500 to-red-500 text-white py-6 transition-all hover:scale-[1.02]"
-                  >
-                    {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <Check className="w-5 h-5 mr-2" />}
-                    Submit Answer 💕
-                  </Button>
-                </>
-              ) : (
-                <Button
-                  onClick={markDone}
-                  disabled={isSubmitting}
-                  className="w-full bg-gradient-to-r from-pink-500 to-red-500 text-white py-6 transition-all hover:scale-[1.02]"
-                >
-                  {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <Check className="w-5 h-5 mr-2" />}
-                  Done! ✅
-                </Button>
-              )}
-
-              {myPlayer && myPlayer.skipsLeft > 0 && (
-                <Button
-                  onClick={skipQuestion}
-                  disabled={isSubmitting}
-                  variant="outline"
-                  className="w-full border-muted-foreground/30 text-muted-foreground py-4"
-                >
-                  <SkipForward className="w-4 h-4 mr-2" />
-                  Skip ({myPlayer.skipsLeft} left)
-                </Button>
-              )}
-            </div>
-          ) : (
-            <div className="text-center p-4 bg-background/50 rounded-xl border border-border animate-pulse">
-              <p className="text-muted-foreground">
-                Waiting for {currentPlayer?.name} to {gameState.currentType === 'truth' ? 'answer' : 'complete the dare'}... 💕
-              </p>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* PHASE: Showing Answer to Both Players */}
-      {gameState.turnPhase === 'showing_answer' && gameState.currentAnswer && (
-        <div className="flex-1 flex flex-col items-center justify-center space-y-6 animate-fade-in">
-          {/* Question/Dare Card */}
-          <div className={`w-full p-5 rounded-2xl ${
-            gameState.currentType === 'truth' 
-              ? 'bg-gradient-to-br from-pink-500/10 to-purple-500/10 border border-pink-500/20' 
-              : 'bg-gradient-to-br from-red-500/10 to-orange-500/10 border border-red-500/20'
-          }`}>
-            <div className="text-center mb-2">
-              <span className="text-2xl">{gameState.currentType === 'truth' ? '💭' : '🔥'}</span>
-              <p className="text-sm text-muted-foreground mt-1">{gameState.currentType?.toUpperCase()}</p>
-            </div>
-            <p className="text-center text-muted-foreground">{gameState.currentQuestion}</p>
-          </div>
-
-          {/* Answer Card */}
-          <div className="w-full p-6 rounded-3xl bg-gradient-to-br from-green-500/20 to-emerald-500/20 border-2 border-green-500/30 animate-scale-in">
-            <div className="text-center mb-3">
-              <span className="text-4xl">💕</span>
-              <h3 className="font-orbitron text-lg text-green-400 mt-2">
-                {gameState.answeredBy}'s {gameState.currentType === 'truth' ? 'Answer' : 'Response'}
-              </h3>
-            </div>
-            <p className="text-lg text-center leading-relaxed">{gameState.currentAnswer}</p>
-          </div>
-
-          {/* Next Turn Button - either player can click */}
-          <Button
-            onClick={proceedToNextTurn}
-            disabled={isSubmitting}
-            className="w-full bg-gradient-to-r from-pink-500 to-red-500 text-white py-6 text-lg transition-all hover:scale-[1.02]"
-          >
-            {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Sparkles className="w-5 h-5 mr-2" />}
-            Next Turn 💕
-          </Button>
+          <p className="text-xs text-muted-foreground text-right mt-1">{inputValue.length}/300</p>
         </div>
       )}
     </div>
