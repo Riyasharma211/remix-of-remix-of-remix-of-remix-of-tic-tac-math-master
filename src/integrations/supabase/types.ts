@@ -14,6 +14,47 @@ export type Database = {
   }
   public: {
     Tables: {
+      chat_messages: {
+        Row: {
+          content: Json
+          created_at: string
+          disabled: boolean | null
+          id: string
+          message_type: string
+          room_id: string
+          sender: string
+          sender_name: string | null
+        }
+        Insert: {
+          content?: Json
+          created_at?: string
+          disabled?: boolean | null
+          id?: string
+          message_type: string
+          room_id: string
+          sender: string
+          sender_name?: string | null
+        }
+        Update: {
+          content?: Json
+          created_at?: string
+          disabled?: boolean | null
+          id?: string
+          message_type?: string
+          room_id?: string
+          sender?: string
+          sender_name?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chat_messages_room_id_fkey"
+            columns: ["room_id"]
+            isOneToOne: false
+            referencedRelation: "game_rooms"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       game_rooms: {
         Row: {
           created_at: string
