@@ -353,8 +353,8 @@ const TruthOrDare: React.FC = () => {
           text: buttonValue === 'truth' ? '💬 TRUTH' : '🔥 DARE',
           subtext: `Type your ${buttonValue} ${buttonValue === 'truth' ? 'question' : 'challenge'} for ${currentPlayer?.name || ''}:`,
           inputPlaceholder: buttonValue === 'truth' 
-            ? 'Ask something romantic or deep...' 
-            : 'Give a fun dare (keep it loving!)...',
+            ? 'Ask something interesting or fun...' 
+            : 'Give a fun dare...',
           inputAction: 'submit_question',
           questionType: buttonValue as 'truth' | 'dare'  // Store the type for sync
         }
@@ -799,7 +799,7 @@ const TruthOrDare: React.FC = () => {
     });
 
     setIsSubmitting(false);
-    toast.success("Skipped! Your turn passes to your partner 💫");
+    toast.success("Skipped! Your turn passes to your friend 💫");
   };
 
   // Broadcast typing
@@ -934,7 +934,7 @@ const TruthOrDare: React.FC = () => {
     }
 
     if (!data) {
-      toast.error('Room not found! Check the code or ask your partner to create a new room 💔');
+      toast.error('Room not found! Check the code or ask your friend to create a new room 😅');
       return;
     }
 
@@ -967,8 +967,8 @@ const TruthOrDare: React.FC = () => {
       sender: 'system',
       message_type: 'text',
       content: {
-        text: `💕 Welcome to Couples Truth & Dare!`,
-        subtext: `${currentState.players[0]?.name} ❤️ ${nameValidation.value!}`
+        text: `🎉 Welcome to Friends Truth & Dare!`,
+        subtext: `${currentState.players[0]?.name} 🤝 ${nameValidation.value!}`
       }
     };
 
@@ -1325,7 +1325,7 @@ const TruthOrDare: React.FC = () => {
   const copyRoomCode = () => {
     navigator.clipboard.writeText(roomCode);
     haptics.light();
-    toast.success('Room code copied! Share with your love 💕');
+    toast.success('Room code copied! Share with your friend 🎉');
   };
 
   // Floating hearts, reactions render, and iOS notifications
@@ -1413,7 +1413,7 @@ const TruthOrDare: React.FC = () => {
                     <p className="text-center text-xs text-green-400/80 font-medium">Choice made ✓</p>
                   )}
                   {!shouldShowButtonsForMessage(msg, messages) && !msg.disabled && msg.content.buttons && (
-                    <p className="text-center text-xs text-muted-foreground italic">Waiting for partner...</p>
+                    <p className="text-center text-xs text-muted-foreground italic">Waiting for friend...</p>
                   )}
                 </div>
               )}
@@ -1607,13 +1607,13 @@ const TruthOrDare: React.FC = () => {
         
         <div className="space-y-2 mb-8">
           <div className="flex items-center justify-center gap-2">
-            <Heart className="w-8 h-8 text-pink-500 animate-pulse" fill="currentColor" />
-            <h2 className="font-orbitron text-2xl bg-gradient-to-r from-pink-500 to-red-500 bg-clip-text text-transparent">
-              Couples Truth & Dare
+            <Sparkles className="w-8 h-8 text-purple-500 animate-pulse" />
+            <h2 className="font-orbitron text-2xl bg-gradient-to-r from-purple-500 to-blue-500 bg-clip-text text-transparent">
+              Friends Truth & Dare
             </h2>
-            <Heart className="w-8 h-8 text-pink-500 animate-pulse" fill="currentColor" />
+            <Sparkles className="w-8 h-8 text-purple-500 animate-pulse" />
           </div>
-          <p className="text-muted-foreground text-sm">A loving game for two hearts 💕</p>
+          <p className="text-muted-foreground text-sm">A fun game for friends 🎉</p>
         </div>
 
         <div className="bg-gradient-to-br from-pink-500/10 to-red-500/10 rounded-2xl p-6 border border-pink-500/20">
@@ -1626,18 +1626,18 @@ const TruthOrDare: React.FC = () => {
         <div className="flex flex-col gap-4 mt-6">
           <Button
             onClick={() => setMode('create')}
-            className="w-full bg-gradient-to-r from-pink-500 to-red-500 text-white hover:from-pink-600 hover:to-red-600 py-6 text-lg shadow-lg shadow-pink-500/25"
+            className="w-full bg-gradient-to-r from-purple-500 to-blue-500 text-white hover:from-purple-600 hover:to-blue-600 py-6 text-lg shadow-lg shadow-purple-500/25"
           >
-            <Heart className="w-5 h-5 mr-2" fill="currentColor" />
-            Create Love Room
+            <Sparkles className="w-5 h-5 mr-2" />
+            Create Game Room
           </Button>
           <Button
             onClick={() => setMode('join')}
             variant="outline"
-            className="w-full border-pink-500/30 hover:bg-pink-500/10 py-6 text-lg"
+            className="w-full border-purple-500/30 hover:bg-purple-500/10 py-6 text-lg"
           >
             <Users className="w-5 h-5 mr-2" />
-            Join Partner's Room
+            Join Friend's Room
           </Button>
         </div>
       </div>
@@ -1653,8 +1653,8 @@ const TruthOrDare: React.FC = () => {
         </Button>
         
         <div className="space-y-2">
-          <Heart className="w-10 h-10 text-pink-500 mx-auto animate-pulse" fill="currentColor" />
-          <h3 className="font-orbitron text-xl">What's your name, love?</h3>
+          <Sparkles className="w-10 h-10 text-purple-500 mx-auto animate-pulse" />
+          <h3 className="font-orbitron text-xl">What's your name?</h3>
         </div>
         
         <Input
@@ -1685,8 +1685,8 @@ const TruthOrDare: React.FC = () => {
         </Button>
         
         <div className="space-y-2">
-          <Heart className="w-10 h-10 text-pink-500 mx-auto animate-pulse" fill="currentColor" />
-          <h3 className="font-orbitron text-xl">Join your partner's room</h3>
+          <Sparkles className="w-10 h-10 text-purple-500 mx-auto animate-pulse" />
+          <h3 className="font-orbitron text-xl">Join your friend's room</h3>
         </div>
         
         <Input
@@ -1728,8 +1728,8 @@ const TruthOrDare: React.FC = () => {
         </div>
 
         <div className="space-y-2">
-          <h3 className="font-orbitron text-xl">Waiting for your love... 💕</h3>
-          <p className="text-muted-foreground text-sm">Share the room code with your partner</p>
+          <h3 className="font-orbitron text-xl">Waiting for your friend... 🎉</h3>
+          <p className="text-muted-foreground text-sm">Share the room code with your friend</p>
         </div>
 
         <button
@@ -1780,8 +1780,8 @@ const TruthOrDare: React.FC = () => {
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-semibold truncate">
-              {playerName} <span className="text-pink-400">❤️</span> {partnerName}
-            </p>
+                      {playerName} <span className="text-purple-400">🤝</span> {partnerName}
+                    </p>
             <p className="text-[11px] text-muted-foreground">Round {gameState.roundCount + 1}</p>
           </div>
         </div>
