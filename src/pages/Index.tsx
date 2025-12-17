@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Grid3X3, Zap, Brain, Target, Gamepad2, Volume2, VolumeX, Timer, Sparkles, Palette, Swords, Pencil, Heart, Trophy } from 'lucide-react';
+import { Grid3X3, Zap, Brain, Target, Gamepad2, Volume2, VolumeX, Timer, Sparkles, Palette, Swords, Pencil, Heart, Trophy, Link2, HelpCircle } from 'lucide-react';
 import TicTacToeOnline from '@/components/games/TicTacToeOnline';
 import MathChallenge from '@/components/games/MathChallenge';
 import MemoryMatch from '@/components/games/MemoryMatch';
@@ -10,6 +10,8 @@ import ColorMatch from '@/components/games/ColorMatch';
 import MathBattle from '@/components/games/MathBattle';
 import DrawingGame from '@/components/games/DrawingGame';
 import TruthOrDare from '@/components/games/TruthOrDare';
+import WordChain from '@/components/games/WordChain';
+import QuizBattle from '@/components/games/QuizBattle';
 import GameCard from '@/components/GameCard';
 import GameTransition from '@/components/GameTransition';
 import DifficultySelector from '@/components/DifficultySelector';
@@ -20,7 +22,7 @@ import { soundManager } from '@/utils/soundManager';
 import { haptics } from '@/utils/haptics';
 import { DifficultyProvider } from '@/contexts/DifficultyContext';
 
-type GameType = 'tictactoe' | 'math' | 'memory' | 'numberguess' | 'reaction' | 'pattern' | 'colormatch' | 'mathbattle' | 'drawing' | 'truthordare';
+type GameType = 'tictactoe' | 'math' | 'memory' | 'numberguess' | 'reaction' | 'pattern' | 'colormatch' | 'mathbattle' | 'drawing' | 'truthordare' | 'wordchain' | 'quizbattle';
 
 const games = [
   {
@@ -53,6 +55,22 @@ const games = [
     description: 'Party game',
     icon: Heart,
     color: 'pink' as const,
+    multiplayer: true,
+  },
+  {
+    id: 'wordchain' as GameType,
+    title: 'Word Chain',
+    description: 'Word linking game',
+    icon: Link2,
+    color: 'green' as const,
+    multiplayer: true,
+  },
+  {
+    id: 'quizbattle' as GameType,
+    title: 'Quiz Battle',
+    description: 'Trivia showdown',
+    icon: HelpCircle,
+    color: 'purple' as const,
     multiplayer: true,
   },
   {
@@ -135,6 +153,10 @@ const IndexContent: React.FC = () => {
         return <DrawingGame />;
       case 'truthordare':
         return <TruthOrDare />;
+      case 'wordchain':
+        return <WordChain />;
+      case 'quizbattle':
+        return <QuizBattle />;
       case 'math':
         return <MathChallenge />;
       case 'pattern':
@@ -194,7 +216,7 @@ const IndexContent: React.FC = () => {
             <ThemeToggle />
           </div>
           <p className="text-muted-foreground font-rajdhani text-sm sm:text-lg max-w-md mx-auto mb-2 sm:mb-4">
-            10 games • Real-time multiplayer • Mind training
+            12 games • Real-time multiplayer • Mind training
           </p>
           <DifficultySelector />
         </header>

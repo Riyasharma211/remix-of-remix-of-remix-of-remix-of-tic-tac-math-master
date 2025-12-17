@@ -6,7 +6,7 @@ interface GameCardProps {
   title: string;
   description: string;
   icon: LucideIcon;
-  color: 'cyan' | 'purple' | 'pink' | 'orange';
+  color: 'cyan' | 'purple' | 'pink' | 'orange' | 'green';
   isActive: boolean;
   onClick: () => void;
 }
@@ -34,6 +34,12 @@ const colorClasses = {
     border: 'border-neon-orange',
     bg: 'bg-neon-orange/10',
     text: 'text-neon-orange',
+    glow: '',
+  },
+  green: {
+    border: 'border-neon-green',
+    bg: 'bg-neon-green/10',
+    text: 'text-neon-green',
     glow: '',
   },
 };
