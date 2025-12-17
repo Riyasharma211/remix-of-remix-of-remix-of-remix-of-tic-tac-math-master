@@ -35,13 +35,20 @@ interface ChatMessage {
 }
 
 interface GameState {
-  players: { id: string; name: string; skipsLeft: number }[];
+  players: { id: string; name: string; skipsLeft: number; points: number }[];
   currentPlayerIndex: number;
   currentType?: 'truth' | 'dare';
   roundCount: number;
   truthCount: number;
   dareCount: number;
 }
+
+// Points for actions
+const POINTS = {
+  TRUTH_ANSWERED: 10,
+  DARE_COMPLETED: 20,
+  SKIP_PENALTY: -5
+};
 
 const TruthOrDare: React.FC = () => {
   const [mode, setMode] = useState<GameMode>('menu');
@@ -75,7 +82,12 @@ const TruthOrDare: React.FC = () => {
   // Reactions state: { messageId: { emoji: [playerName1, playerName2] } }
   const [reactions, setReactions] = useState<Record<string, Record<string, string[]>>>({});
   
+  // Dare timer state
+  const [dareTimer, setDareTimer] = useState<number | null>(null);
+  const dareTimerRef = useRef<NodeJS.Timeout | null>(null);
+  
   const REACTION_EMOJIS = ['😍', '💕', '🔥', '😂', '😤'];
+  const DARE_TIME_LIMIT = 60; // seconds
 
   const currentPlayer = gameState.players[gameState.currentPlayerIndex];
   const isMyTurn = currentPlayer?.id === playerId;
@@ -95,6 +107,42 @@ const TruthOrDare: React.FC = () => {
     }, 100);
     return () => clearTimeout(timer);
   }, [messages]);
+
+  // Dare timer - starts when player needs to complete a dare
+  useEffect(() => {
+    if (currentInputAction === 'complete_dare' && isMyTurn) {
+      // Start 60 second countdown
+      setDareTimer(DARE_TIME_LIMIT);
+      
+      dareTimerRef.current = setInterval(() => {
+        setDareTimer(prev => {
+          if (prev === null || prev <= 1) {
+            // Time's up!
+            if (dareTimerRef.current) {
+              clearInterval(dareTimerRef.current);
+              dareTimerRef.current = null;
+            }
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+      
+      return () => {
+        if (dareTimerRef.current) {
+          clearInterval(dareTimerRef.current);
+          dareTimerRef.current = null;
+        }
+      };
+    } else {
+      // Clear timer when not in dare mode
+      if (dareTimerRef.current) {
+        clearInterval(dareTimerRef.current);
+        dareTimerRef.current = null;
+      }
+      setDareTimer(null);
+    }
+  }, [currentInputAction, isMyTurn]);
 
   // Floating hearts animation
   const spawnHeart = useCallback(() => {
@@ -345,8 +393,15 @@ const TruthOrDare: React.FC = () => {
       const currentState = gameStateRef.current;
       const nextIndex = (currentState.currentPlayerIndex + 1) % currentState.players.length;
       const nextPlayer = currentState.players[nextIndex];
+      
+      // Add points for answering truth
+      const updatedPlayers = currentState.players.map((p, idx) => 
+        idx === myPlayerIndex ? { ...p, points: p.points + POINTS.TRUTH_ANSWERED } : p
+      );
+      
       const newState: GameState = {
         ...currentState,
+        players: updatedPlayers,
         currentPlayerIndex: nextIndex,
         currentType: undefined,
         roundCount: currentState.roundCount + 1,
@@ -425,8 +480,22 @@ const TruthOrDare: React.FC = () => {
     const currentState = gameStateRef.current;
     const nextIndex = (currentState.currentPlayerIndex + 1) % currentState.players.length;
     const nextPlayer = currentState.players[nextIndex];
+    
+    // Add points for completing dare and stop timer
+    const updatedPlayers = currentState.players.map((p, idx) => 
+      idx === myPlayerIndex ? { ...p, points: p.points + POINTS.DARE_COMPLETED } : p
+    );
+    
+    // Clear dare timer
+    if (dareTimerRef.current) {
+      clearInterval(dareTimerRef.current);
+      dareTimerRef.current = null;
+    }
+    setDareTimer(null);
+    
     const newState: GameState = {
       ...currentState,
+      players: updatedPlayers,
       currentPlayerIndex: nextIndex,
       currentType: undefined,
       roundCount: currentState.roundCount + 1,
@@ -511,10 +580,17 @@ const TruthOrDare: React.FC = () => {
     const nextIndex = (currentState.currentPlayerIndex + 1) % currentState.players.length;
     const nextPlayer = currentState.players[nextIndex];
     
-    // Update current player's skipsLeft
+    // Update current player's skipsLeft and deduct points
     const updatedPlayers = currentState.players.map((p, idx) => 
-      idx === myPlayerIndex ? { ...p, skipsLeft: p.skipsLeft - 1 } : p
+      idx === myPlayerIndex ? { ...p, skipsLeft: p.skipsLeft - 1, points: Math.max(0, p.points + POINTS.SKIP_PENALTY) } : p
     );
+    
+    // Clear dare timer if skipping a dare
+    if (dareTimerRef.current) {
+      clearInterval(dareTimerRef.current);
+      dareTimerRef.current = null;
+    }
+    setDareTimer(null);
     
     const newState: GameState = {
       ...currentState,
@@ -623,7 +699,7 @@ const TruthOrDare: React.FC = () => {
 
     const code = generateRoomCode();
     const initialState: GameState = {
-      players: [{ id: playerId, name: validation.value!, skipsLeft: 2 }],
+      players: [{ id: playerId, name: validation.value!, skipsLeft: 2, points: 0 }],
       currentPlayerIndex: 0,
       roundCount: 0,
       truthCount: 0,
@@ -697,7 +773,7 @@ const TruthOrDare: React.FC = () => {
     }
 
     // Add player to game
-    currentState.players.push({ id: playerId, name: nameValidation.value!, skipsLeft: 2 });
+    currentState.players.push({ id: playerId, name: nameValidation.value!, skipsLeft: 2, points: 0 });
 
     await supabase
       .from('game_rooms')
@@ -1373,13 +1449,16 @@ const TruthOrDare: React.FC = () => {
         <Button variant="ghost" size="icon" onClick={leaveGame} className="text-muted-foreground">
           <ArrowLeft className="w-5 h-5" />
         </Button>
-        <div className="text-center">
+        <div className="text-center flex-1">
           <p className="text-sm">
             {playerName} <span className="text-pink-500">❤️</span> {partnerName}
           </p>
           <p className="text-xs text-muted-foreground">Round {gameState.roundCount + 1}</p>
         </div>
-        <div className="w-10" />
+        {/* Points display */}
+        <div className="text-right min-w-[60px]">
+          <p className="text-xs text-yellow-400 font-semibold">⭐ {gameState.players[myPlayerIndex]?.points || 0}</p>
+        </div>
       </div>
 
       {/* Chat messages */}
@@ -1407,13 +1486,34 @@ const TruthOrDare: React.FC = () => {
       {shouldShowInput && (
         <div className="px-4 py-3 border-t border-pink-500/20 bg-gradient-to-r from-pink-500/5 to-purple-500/5">
           {currentInputAction === 'complete_dare' ? (
-            <div className="space-y-2">
+            <div className="space-y-3">
+              {/* Timer display */}
+              {dareTimer !== null && (
+                <div className={`text-center p-3 rounded-xl ${
+                  dareTimer <= 10 
+                    ? 'bg-red-500/20 border border-red-500/50' 
+                    : dareTimer <= 30 
+                      ? 'bg-orange-500/20 border border-orange-500/50'
+                      : 'bg-blue-500/20 border border-blue-500/50'
+                }`}>
+                  <p className="text-xs text-muted-foreground mb-1">⏱️ Time Remaining</p>
+                  <p className={`text-3xl font-bold font-mono ${
+                    dareTimer <= 10 ? 'text-red-400 animate-pulse' : dareTimer <= 30 ? 'text-orange-400' : 'text-blue-400'
+                  }`}>
+                    {Math.floor(dareTimer / 60)}:{(dareTimer % 60).toString().padStart(2, '0')}
+                  </p>
+                  {dareTimer === 0 && (
+                    <p className="text-red-400 text-sm mt-1">⏰ Time is up! Complete or skip!</p>
+                  )}
+                </div>
+              )}
+              
               <Button
                 onClick={handleDareComplete}
                 disabled={isSubmitting}
                 className="w-full bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 py-6 text-lg"
               >
-                {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : '✅ Mark Dare as Done!'}
+                {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : '✅ Mark Dare as Done! (+20 pts)'}
               </Button>
               {/* Skip button for dare */}
               {gameState.players[myPlayerIndex]?.skipsLeft > 0 && (
@@ -1423,7 +1523,7 @@ const TruthOrDare: React.FC = () => {
                   variant="outline"
                   className="w-full border-orange-500/30 hover:bg-orange-500/10 text-orange-400"
                 >
-                  ⏭️ Skip ({gameState.players[myPlayerIndex]?.skipsLeft} left)
+                  ⏭️ Skip ({gameState.players[myPlayerIndex]?.skipsLeft} left) (-5 pts)
                 </Button>
               )}
             </div>
@@ -1460,11 +1560,11 @@ const TruthOrDare: React.FC = () => {
                   size="sm"
                   className="w-full border-orange-500/30 hover:bg-orange-500/10 text-orange-400"
                 >
-                  ⏭️ Skip this question ({gameState.players[myPlayerIndex]?.skipsLeft} left)
+                  ⏭️ Skip ({gameState.players[myPlayerIndex]?.skipsLeft} left) (-5 pts)
                 </Button>
               )}
               <p className="text-xs text-muted-foreground text-center">
-                {inputValue.length}/300
+                {inputValue.length}/300 • Answer = +10 pts
               </p>
             </div>
           ) : (
