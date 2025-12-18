@@ -134,21 +134,35 @@ const TruthOrDare: React.FC = () => {
   const generateRoomCode = () => Math.random().toString(36).substring(2, 6).toUpperCase();
 
   // Auto-scroll to bottom when messages change
-  const scrollToBottom = useCallback(() => {
+  const prevMessagesLengthRef = useRef(messages.length);
+  const newMessageIdsRef = useRef<Set<string>>(new Set());
+  
+  const scrollToBottom = useCallback((instant = false) => {
     if (chatContainerRef.current) {
       chatContainerRef.current.scrollTo({
         top: chatContainerRef.current.scrollHeight,
-        behavior: 'smooth'
+        behavior: instant ? 'auto' : 'smooth'
       });
     }
   }, []);
 
   useEffect(() => {
-    // Immediate scroll for better UX
-    scrollToBottom();
-    // Also scroll after a delay to handle any DOM updates
-    const timer = setTimeout(scrollToBottom, 150);
-    return () => clearTimeout(timer);
+    // Track new messages for animation
+    if (messages.length > prevMessagesLengthRef.current) {
+      const newMessages = messages.slice(prevMessagesLengthRef.current);
+      newMessages.forEach(msg => newMessageIdsRef.current.add(msg.id));
+      
+      // Clear animation state after animation completes
+      setTimeout(() => {
+        newMessages.forEach(msg => newMessageIdsRef.current.delete(msg.id));
+      }, 400);
+    }
+    prevMessagesLengthRef.current = messages.length;
+    
+    // Scroll with slight delay for animation sync
+    requestAnimationFrame(() => {
+      scrollToBottom();
+    });
   }, [messages, scrollToBottom]);
 
   // Keyboard-aware behavior for mobile
@@ -1499,11 +1513,19 @@ const TruthOrDare: React.FC = () => {
   const renderMessage = (msg: ChatMessage) => {
     const isSystem = msg.sender === 'system';
     const isMe = (msg.sender === 'player1' && myPlayerIndex === 0) || (msg.sender === 'player2' && myPlayerIndex === 1);
+    const isNewMessage = newMessageIdsRef.current.has(msg.id);
+    
+    // Animation classes based on message type and position
+    const getAnimationClass = () => {
+      if (!isNewMessage) return '';
+      if (isSystem) return 'animate-message-pop';
+      return isMe ? 'animate-message-slide' : 'animate-message-slide-left';
+    };
     
     // System messages (centered cards)
     if (isSystem) {
       return (
-        <div key={msg.id} className="flex justify-center animate-slide-up my-3">
+        <div key={msg.id} className={`flex justify-center my-3 ${getAnimationClass()}`}>
           <div className="max-w-[90%] w-full">
             <div className="bg-gradient-to-br from-pink-500/15 to-purple-500/15 backdrop-blur-sm rounded-2xl p-4 border border-pink-500/20 shadow-lg shadow-pink-500/5">
               {/* Buttons message */}
@@ -1650,7 +1672,7 @@ const TruthOrDare: React.FC = () => {
     return (
       <div
         key={msg.id}
-        className={`flex animate-slide-up my-1 ${isMe ? 'justify-end' : 'justify-start'}`}
+        className={`flex my-1 ${isMe ? 'justify-end' : 'justify-start'} ${getAnimationClass()}`}
       >
         <div className={`max-w-[75%] ${isMe ? 'items-end' : 'items-start'} flex flex-col`}>
           {/* Sender name */}
