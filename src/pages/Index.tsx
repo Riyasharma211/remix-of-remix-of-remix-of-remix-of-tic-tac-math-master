@@ -266,9 +266,10 @@ const IndexContent: React.FC = () => {
     haptics.light();
   }, [activeGame, allGames]);
 
+  // Swipe navigation disabled for better mobile UX
   const swipeHandlers = useSwipe({
-    onSwipeLeft: () => navigateGame('next'),
-    onSwipeRight: () => navigateGame('prev'),
+    onSwipeLeft: () => {},
+    onSwipeRight: () => {},
     threshold: 60,
   });
 
