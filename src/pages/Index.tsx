@@ -500,6 +500,10 @@ const IndexContent: React.FC = () => {
             ))}
           </div>
         </div>
+        {/* iOS Home Indicator */}
+        <div className="flex justify-center pt-1 pb-0.5">
+          <div className="w-32 h-1 bg-foreground/30 rounded-full" />
+        </div>
       </nav>
 
       {/* Bottom nav spacer for mobile */}
