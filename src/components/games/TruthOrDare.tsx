@@ -594,10 +594,20 @@ const TruthOrDare: React.FC = () => {
 
       const currentState = gameStateRef.current;
       
+      console.log('ANSWER SUBMIT - gameState:', JSON.stringify(currentState));
+      console.log('ANSWER SUBMIT - My playerId:', playerId, 'playerName:', playerName);
+      
       // Find MY index (the answerer) - I am the one who chose truth/dare
-      const meIndex = currentState.players.findIndex(p => p.id === playerId);
+      let meIndex = currentState.players.findIndex(p => p.id === playerId);
+      
+      // Fallback: try finding by name if ID doesn't match
       if (meIndex === -1) {
-        console.error('Player not found in game state!');
+        console.warn('Player not found by ID, trying by name...');
+        meIndex = currentState.players.findIndex(p => p.name === playerName);
+      }
+      
+      if (meIndex === -1) {
+        console.error('Player not found in game state!', { playerId, playerName, players: currentState.players });
         setIsSubmitting(false);
         return;
       }
@@ -607,12 +617,12 @@ const TruthOrDare: React.FC = () => {
       const otherPlayer = currentState.players[otherIndex];
       
       if (!otherPlayer) {
-        console.error('Other player not found!');
+        console.error('Other player not found!', { otherIndex, players: currentState.players });
         setIsSubmitting(false);
         return;
       }
       
-      console.log('ANSWER SUBMIT - Me:', playerName, 'meIndex:', meIndex, 'NextTurn:', otherPlayer.name, 'otherIndex:', otherIndex);
+      console.log('ANSWER SUBMIT - Me:', playerName, 'meIndex:', meIndex, 'NextTurn:', otherPlayer.name, 'otherIndex:', otherIndex, 'otherPlayerId:', otherPlayer.id);
 
       // Save answer message
       const answerMsg: Omit<ChatMessage, 'id' | 'created_at'> = {
@@ -805,10 +815,20 @@ const TruthOrDare: React.FC = () => {
     // Create next turn - I just completed dare, so the OTHER player gets the turn
     const currentState = gameStateRef.current;
     
+    console.log('DARE COMPLETE - gameState:', JSON.stringify(currentState));
+    console.log('DARE COMPLETE - My playerId:', playerId, 'playerName:', playerName);
+    
     // Find MY index (the dare completer)
-    const meIndex = currentState.players.findIndex(p => p.id === playerId);
+    let meIndex = currentState.players.findIndex(p => p.id === playerId);
+    
+    // Fallback: try finding by name if ID doesn't match
     if (meIndex === -1) {
-      console.error('Player not found in game state!');
+      console.warn('Player not found by ID, trying by name...');
+      meIndex = currentState.players.findIndex(p => p.name === playerName);
+    }
+    
+    if (meIndex === -1) {
+      console.error('Player not found in game state!', { playerId, playerName, players: currentState.players });
       setIsSubmitting(false);
       return;
     }
@@ -818,12 +838,12 @@ const TruthOrDare: React.FC = () => {
     const otherPlayer = currentState.players[otherIndex];
     
     if (!otherPlayer) {
-      console.error('Other player not found!');
+      console.error('Other player not found!', { otherIndex, players: currentState.players });
       setIsSubmitting(false);
       return;
     }
     
-    console.log('DARE COMPLETE - Me:', playerName, 'meIndex:', meIndex, 'NextTurn:', otherPlayer.name, 'otherIndex:', otherIndex);
+    console.log('DARE COMPLETE - Me:', playerName, 'meIndex:', meIndex, 'NextTurn:', otherPlayer.name, 'otherIndex:', otherIndex, 'otherPlayerId:', otherPlayer.id);
     
     const updatedPlayers = currentState.players.map((p, idx) => 
       idx === meIndex ? { ...p, points: p.points + POINTS.DARE_COMPLETED } : p
@@ -1200,13 +1220,19 @@ const TruthOrDare: React.FC = () => {
 
   // Check if buttons should be shown for a message - use forPlayerId from the message itself
   const shouldShowButtonsForMessage = (msg: ChatMessage, allMessages: ChatMessage[]): boolean => {
-    if (msg.message_type !== 'buttons' || !msg.content.buttons || msg.disabled) {
+    // Basic validation - must be a buttons message with actual buttons
+    if (msg.message_type !== 'buttons' || !msg.content.buttons) {
+      return false;
+    }
+    
+    // Check if disabled (treat null/undefined as not disabled)
+    if (msg.disabled === true) {
       return false;
     }
     
     // Only show buttons for the MOST RECENT non-disabled buttons message
     const latestButtonsMsg = [...allMessages].reverse().find(
-      m => m.message_type === 'buttons' && !m.disabled && m.content.buttons
+      m => m.message_type === 'buttons' && m.disabled !== true && m.content.buttons
     );
     if (!latestButtonsMsg || latestButtonsMsg.id !== msg.id) {
       return false;
@@ -1214,13 +1240,17 @@ const TruthOrDare: React.FC = () => {
     
     // Use forPlayerId from the message itself - no race condition!
     const forPlayerId = msg.content.forPlayerId;
+    const isMatch = forPlayerId === playerId;
+    
     console.log('shouldShowButtons check:', { 
       msgId: msg.id, 
       forPlayerId,
       playerId,
-      isMatch: forPlayerId === playerId 
+      isMatch,
+      disabled: msg.disabled
     });
-    return forPlayerId === playerId;
+    
+    return isMatch;
   };
 
   // Determine input action from messages - use forPlayerId from messages for reliability
