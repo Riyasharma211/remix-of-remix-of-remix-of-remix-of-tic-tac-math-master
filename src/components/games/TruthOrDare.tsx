@@ -9,7 +9,7 @@ import { RealtimeChannel } from '@supabase/supabase-js';
 import { celebrateHearts } from '@/utils/confetti';
 import { validatePlayerName, validateRoomCode, validateQuestion, validateAnswer } from '@/utils/gameValidation';
 import { soundManager } from '@/utils/soundManager';
-import { IOSNotificationContainer } from '@/components/ui/ios-notification';
+// iOS notifications removed per user request
 import { useActiveGame } from '@/contexts/ActiveGameContext';
 
 type GameMode = 'menu' | 'create' | 'join' | 'waiting' | 'playing';
@@ -592,12 +592,25 @@ const TruthOrDare: React.FC = () => {
 
       const currentState = gameStateRef.current;
       
-      // Find MY index and the OTHER player explicitly using playerId
+      // Find MY index (the answerer) - I am the one who chose truth/dare
       const meIndex = currentState.players.findIndex(p => p.id === playerId);
+      if (meIndex === -1) {
+        console.error('Player not found in game state!');
+        setIsSubmitting(false);
+        return;
+      }
+      
+      // The OTHER player is who asked the question - they get the next turn
       const otherIndex = meIndex === 0 ? 1 : 0;
       const otherPlayer = currentState.players[otherIndex];
       
-      console.log('ANSWER SUBMIT - Me:', playerName, 'meIndex:', meIndex, 'Other:', otherPlayer?.name, 'otherIndex:', otherIndex);
+      if (!otherPlayer) {
+        console.error('Other player not found!');
+        setIsSubmitting(false);
+        return;
+      }
+      
+      console.log('ANSWER SUBMIT - Me:', playerName, 'meIndex:', meIndex, 'NextTurn:', otherPlayer.name, 'otherIndex:', otherIndex);
 
       // Save answer message
       const answerMsg: Omit<ChatMessage, 'id' | 'created_at'> = {
@@ -625,31 +638,31 @@ const TruthOrDare: React.FC = () => {
         idx === meIndex ? { ...p, points: p.points + POINTS.TRUTH_ANSWERED } : p
       );
       
-      // Next turn goes to the OTHER player (not me who just answered)
+      // CRITICAL: Next turn goes to the OTHER player (the one who asked)
       const newState: GameState = {
         ...currentState,
         players: updatedPlayers,
-        currentPlayerIndex: otherIndex, // OTHER player's turn
+        currentPlayerIndex: otherIndex, // OTHER player's turn to select Truth/Dare
         currentType: undefined,
         roundCount: currentState.roundCount + 1,
         truthCount: questionType === 'truth' ? currentState.truthCount + 1 : currentState.truthCount,
         dareCount: questionType === 'dare' ? currentState.dareCount + 1 : currentState.dareCount
       };
 
-      // Save turn message - buttons only for OTHER player (they choose next)
+      // Save turn message - buttons ONLY for OTHER player (they choose next)
       const turnMsg: Omit<ChatMessage, 'id' | 'created_at'> = {
         sender: 'system',
         message_type: 'buttons',
         content: createTurnMessageContent(
-          otherPlayer?.name || '',
-          otherPlayer?.id || '', // CRITICAL: Use other player's ID for button visibility
+          otherPlayer.name,
+          otherPlayer.id, // CRITICAL: Use OTHER player's ID for button visibility
           newState.truthCount,
           newState.dareCount,
           true
         )
       };
 
-      console.log('Creating turn message for:', otherPlayer?.name, 'with forPlayerId:', otherPlayer?.id);
+      console.log('Creating turn message for:', otherPlayer.name, 'with forPlayerId:', otherPlayer.id);
 
       await saveMessages([answerMsg, resultMsg, turnMsg], roomId);
       setCurrentInputAction(null);
@@ -663,7 +676,7 @@ const TruthOrDare: React.FC = () => {
         .update({ game_state: JSON.parse(JSON.stringify(newState)) })
         .eq('id', roomId);
 
-      // Broadcast state change
+      // Broadcast state change to sync other player
       channelRef.current?.send({
         type: 'broadcast',
         event: 'game_state',
@@ -790,22 +803,35 @@ const TruthOrDare: React.FC = () => {
     // Create next turn - I just completed dare, so the OTHER player gets the turn
     const currentState = gameStateRef.current;
     
-    // Find MY index and the OTHER player explicitly using playerId
+    // Find MY index (the dare completer)
     const meIndex = currentState.players.findIndex(p => p.id === playerId);
+    if (meIndex === -1) {
+      console.error('Player not found in game state!');
+      setIsSubmitting(false);
+      return;
+    }
+    
+    // The OTHER player gave the dare - they get the next turn
     const otherIndex = meIndex === 0 ? 1 : 0;
     const otherPlayer = currentState.players[otherIndex];
     
-    console.log('DARE COMPLETE - Me:', playerName, 'meIndex:', meIndex, 'Other:', otherPlayer?.name, 'otherIndex:', otherIndex);
+    if (!otherPlayer) {
+      console.error('Other player not found!');
+      setIsSubmitting(false);
+      return;
+    }
+    
+    console.log('DARE COMPLETE - Me:', playerName, 'meIndex:', meIndex, 'NextTurn:', otherPlayer.name, 'otherIndex:', otherIndex);
     
     const updatedPlayers = currentState.players.map((p, idx) => 
       idx === meIndex ? { ...p, points: p.points + POINTS.DARE_COMPLETED } : p
     );
     
-    // Next turn goes to the OTHER player (not me who just completed the dare)
+    // CRITICAL: Next turn goes to the OTHER player (the one who gave the dare)
     const newState: GameState = {
       ...currentState,
       players: updatedPlayers,
-      currentPlayerIndex: otherIndex, // OTHER player's turn
+      currentPlayerIndex: otherIndex, // OTHER player's turn to select Truth/Dare
       currentType: undefined,
       roundCount: currentState.roundCount + 1,
       dareCount: currentState.dareCount + 1
@@ -813,20 +839,20 @@ const TruthOrDare: React.FC = () => {
     
     gameStateRef.current = newState; // Update ref immediately
 
-    // Save turn message - buttons for OTHER player (they choose next)
+    // Save turn message - buttons ONLY for OTHER player (they choose next)
     const turnMsg: Omit<ChatMessage, 'id' | 'created_at'> = {
       sender: 'system',
       message_type: 'buttons',
       content: createTurnMessageContent(
-        otherPlayer?.name || '',
-        otherPlayer?.id || '', // CRITICAL: Use other player's ID for button visibility
+        otherPlayer.name,
+        otherPlayer.id, // CRITICAL: Use OTHER player's ID for button visibility
         newState.truthCount,
         newState.dareCount,
         true
       )
     };
 
-    console.log('Creating dare turn message for:', otherPlayer?.name, 'with forPlayerId:', otherPlayer?.id);
+    console.log('Creating dare turn message for:', otherPlayer.name, 'with forPlayerId:', otherPlayer.id);
 
     await saveMessages([completionMsg, resultMsg, turnMsg], roomId);
     setCurrentInputAction(null);
@@ -838,7 +864,7 @@ const TruthOrDare: React.FC = () => {
       .update({ game_state: JSON.parse(JSON.stringify(newState)) })
       .eq('id', roomId);
 
-    // Broadcast state change
+    // Broadcast state change to sync other player
     channelRef.current?.send({
       type: 'broadcast',
       event: 'game_state',
@@ -1530,7 +1556,6 @@ const TruthOrDare: React.FC = () => {
   // Floating hearts, reactions render, and iOS notifications
   const renderFloatingHearts = () => (
     <>
-      <IOSNotificationContainer />
       <div className="fixed inset-0 pointer-events-none overflow-hidden z-50">
       {floatingHearts.map(heart => (
         <div
