@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback, forwardRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   Heart,
   Copy,
@@ -90,7 +90,7 @@ const createTurnMessageContent = (
 });
 
 // --- Main Component ---
-const TruthOrDare = forwardRef<HTMLDivElement>((_, ref) => {
+const TruthOrDare: React.FC = () => {
   const [mode, setMode] = useState<GameMode>("menu");
   const [roomCode, setRoomCode] = useState("");
   const [inputCode, setInputCode] = useState("");
@@ -950,7 +950,7 @@ const TruthOrDare = forwardRef<HTMLDivElement>((_, ref) => {
   // --- MENU VIEW ---
   if (mode === "menu") {
     return (
-      <div ref={ref} className="flex flex-col items-center justify-center h-full p-6 space-y-8 bg-gradient-to-b from-background to-secondary/20">
+      <div className="flex flex-col items-center justify-center h-full p-6 space-y-8 bg-gradient-to-b from-background to-secondary/20">
         <div className="text-center space-y-2">
           <div className="flex justify-center mb-4">
             <div className="p-4 bg-gradient-to-br from-pink-500 to-purple-600 rounded-full">
@@ -985,7 +985,7 @@ const TruthOrDare = forwardRef<HTMLDivElement>((_, ref) => {
   // --- CREATE/JOIN VIEW ---
   if (mode === "create" || mode === "join") {
     return (
-      <div ref={ref} className="flex flex-col h-full p-6 bg-background">
+      <div className="flex flex-col h-full p-6 bg-background">
         <Button variant="ghost" onClick={() => setMode("menu")} className="self-start mb-6">
           <ArrowLeft className="w-4 h-4 mr-2" /> Back
         </Button>
@@ -1030,7 +1030,7 @@ const TruthOrDare = forwardRef<HTMLDivElement>((_, ref) => {
   // --- WAITING VIEW ---
   if (mode === "waiting") {
     return (
-      <div ref={ref} className="flex flex-col items-center justify-center h-full p-6 space-y-8 bg-gradient-to-b from-background to-secondary/20">
+      <div className="flex flex-col items-center justify-center h-full p-6 space-y-8 bg-gradient-to-b from-background to-secondary/20">
         <div className="text-center space-y-2">
           <h2 className="text-xl font-bold text-foreground">Waiting for friend...</h2>
           <p className="text-muted-foreground text-sm">Share this code with your partner</p>
@@ -1072,7 +1072,7 @@ const TruthOrDare = forwardRef<HTMLDivElement>((_, ref) => {
   const shouldShowInput = !!currentInputAction;
 
   return (
-    <div ref={ref} className="flex flex-col h-full bg-background overflow-hidden">
+    <div className="flex flex-col h-full bg-background overflow-hidden">
       {renderFloatingReactions()}
 
       {/* Header */}
@@ -1208,8 +1208,6 @@ const TruthOrDare = forwardRef<HTMLDivElement>((_, ref) => {
       )}
     </div>
   );
-});
-
-TruthOrDare.displayName = "TruthOrDare";
+};
 
 export default TruthOrDare;
