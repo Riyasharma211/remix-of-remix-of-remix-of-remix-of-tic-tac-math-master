@@ -396,3 +396,12 @@ html::-webkit-scrollbar, body::-webkit-scrollbar {
 .animate-confetti {
   animation: confetti 1.5s ease-out forwards;
 }
+
+/* Safe area padding for notched devices */
+.safe-area-bottom {
+  padding-bottom: max(0.375rem, env(safe-area-inset-bottom));
+}
+
+.safe-area-top {
+  padding-top: max(0.5rem, env(safe-area-inset-top));
+}
