@@ -528,7 +528,7 @@ const TruthOrDare: React.FC = () => {
       const lastInputMsg = [...messagesRef.current].reverse().find(m => m.message_type === 'input' && m.content.questionType);
       const questionType = lastInputMsg?.content.questionType || gameStateRef.current.currentType || 'truth';
       
-      // Get target player (the one who chose truth/dare)
+      // Get target player (the one who chose truth/dare) - they are the current turn player
       const targetPlayer = gameStateRef.current.players[gameStateRef.current.currentPlayerIndex];
       const targetPlayerName = targetPlayer?.name || 'Friend';
       
@@ -542,7 +542,7 @@ const TruthOrDare: React.FC = () => {
         content: { text: validation.value! }
       };
 
-      // Save answer input message for target player
+      // Save answer input message for target player - include their ID for reliable turn tracking
       const answerInputMsg: Omit<ChatMessage, 'id' | 'created_at'> = {
         sender: 'system',
         message_type: 'input',
@@ -553,7 +553,8 @@ const TruthOrDare: React.FC = () => {
           inputPlaceholder: questionType === 'truth' ? 'Type your honest answer...' : undefined,
           inputAction: questionType === 'truth' ? 'submit_answer' : 'complete_dare',
           questionType: questionType,
-          targetPlayerName: targetPlayerName
+          targetPlayerName: targetPlayerName,
+          forPlayerId: targetPlayer?.id // Track who should answer
         }
       };
 
@@ -595,7 +596,7 @@ const TruthOrDare: React.FC = () => {
       const question = questionMsg?.content.question || '';
       const questionType = questionMsg?.content.questionType || 'truth';
 
-      console.log('Submitting answer, type:', questionType);
+      console.log('Submitting answer, type:', questionType, 'myPlayerIndex:', myPlayerIndex);
 
       // Save answer message
       const answerMsg: Omit<ChatMessage, 'id' | 'created_at'> = {
@@ -618,10 +619,13 @@ const TruthOrDare: React.FC = () => {
         }
       };
 
-      // Create next turn - use refs for latest state
+      // Create next turn - I just answered, so the OTHER player gets the turn
+      // Use myPlayerIndex directly instead of relying on potentially stale currentPlayerIndex
       const currentState = gameStateRef.current;
-      const nextIndex = (currentState.currentPlayerIndex + 1) % currentState.players.length;
+      const nextIndex = myPlayerIndex === 0 ? 1 : 0; // The other player
       const nextPlayer = currentState.players[nextIndex];
+      
+      console.log('Turn switching: I am player', myPlayerIndex, ', next turn goes to player', nextIndex, '(', nextPlayer?.name, ')');
       
       // Add points for answering truth
       const updatedPlayers = currentState.players.map((p, idx) => 
@@ -638,7 +642,7 @@ const TruthOrDare: React.FC = () => {
         dareCount: questionType === 'dare' ? currentState.dareCount + 1 : currentState.dareCount
       };
 
-      // Save turn message - buttons only for next player
+      // Save turn message - buttons only for next player (use their ID directly)
       const turnMsg: Omit<ChatMessage, 'id' | 'created_at'> = {
         sender: 'system',
         message_type: 'buttons',
@@ -655,6 +659,7 @@ const TruthOrDare: React.FC = () => {
       setCurrentInputAction(null);
       setInputValue('');
       setGameState(newState);
+      gameStateRef.current = newState; // Update ref immediately
 
       // Update game state in room
       await supabase
@@ -792,10 +797,12 @@ const TruthOrDare: React.FC = () => {
       }
     };
 
-    // Create next turn - add points to the player who completed
+    // Create next turn - I just completed dare, so the OTHER player gets the turn
     const currentState = gameStateRef.current;
-    const nextIndex = (currentState.currentPlayerIndex + 1) % currentState.players.length;
+    const nextIndex = myPlayerIndex === 0 ? 1 : 0; // The other player
     const nextPlayer = currentState.players[nextIndex];
+    
+    console.log('Dare complete - Turn switching: I am player', myPlayerIndex, ', next turn goes to player', nextIndex, '(', nextPlayer?.name, ')');
     
     const updatedPlayers = currentState.players.map((p, idx) => 
       idx === myPlayerIndex ? { ...p, points: p.points + POINTS.DARE_COMPLETED } : p
@@ -809,6 +816,8 @@ const TruthOrDare: React.FC = () => {
       roundCount: currentState.roundCount + 1,
       dareCount: currentState.dareCount + 1
     };
+    
+    gameStateRef.current = newState; // Update ref immediately
 
     // Save turn message
     const turnMsg: Omit<ChatMessage, 'id' | 'created_at'> = {
