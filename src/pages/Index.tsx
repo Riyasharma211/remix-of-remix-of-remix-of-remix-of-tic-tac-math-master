@@ -31,11 +31,13 @@ import { AchievementNotification } from '@/components/AchievementNotification';
 import SplashScreen from '@/components/SplashScreen';
 import CursorParticles from '@/components/CursorParticles';
 import ParallaxOrbs from '@/components/ParallaxOrbs';
+import LeaveGameDialog from '@/components/LeaveGameDialog';
 import { Button } from '@/components/ui/button';
 import MagneticButton from '@/components/MagneticButton';
 import { soundManager } from '@/utils/soundManager';
 import { haptics } from '@/utils/haptics';
 import { DifficultyProvider } from '@/contexts/DifficultyContext';
+import { ActiveGameProvider, useActiveGame } from '@/contexts/ActiveGameContext';
 import { Achievement } from '@/hooks/useGameStats';
 
 // Achievement notification context
@@ -222,12 +224,16 @@ const IndexContent: React.FC = () => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [pendingAchievements, setPendingAchievements] = useState<Achievement[]>([]);
   const [swipeDirection, setSwipeDirection] = useState<'left' | 'right' | null>(null);
+  const [showLeaveDialog, setShowLeaveDialog] = useState(false);
+  const [pendingGameSwitch, setPendingGameSwitch] = useState<GameType | null>(null);
   const [showSplash, setShowSplash] = useState(() => {
     // Only show splash on mobile and on first load
     const isMobile = window.innerWidth < 1024;
     const hasSeenSplash = sessionStorage.getItem('hasSeenSplash');
     return isMobile && !hasSeenSplash;
   });
+
+  const { isGameActive, activeGameName, setGameActive } = useActiveGame();
 
   const handleSplashComplete = useCallback(() => {
     setShowSplash(false);
@@ -285,6 +291,40 @@ const IndexContent: React.FC = () => {
     setShowStats(true);
   };
 
+  // Handle game switching with confirmation if game is active
+  const handleGameSwitch = useCallback((newGame: GameType) => {
+    if (newGame === activeGame) return;
+    
+    if (isGameActive) {
+      // Show confirmation dialog
+      setPendingGameSwitch(newGame);
+      setShowLeaveDialog(true);
+      haptics.medium();
+    } else {
+      // Switch directly
+      setSwipeDirection(null);
+      setActiveGame(newGame);
+      soundManager.playLocalSound('click');
+      haptics.light();
+    }
+  }, [activeGame, isGameActive]);
+
+  const confirmLeaveGame = useCallback(() => {
+    if (pendingGameSwitch) {
+      setGameActive(false);
+      setSwipeDirection(null);
+      setActiveGame(pendingGameSwitch);
+      soundManager.playLocalSound('click');
+    }
+    setShowLeaveDialog(false);
+    setPendingGameSwitch(null);
+  }, [pendingGameSwitch, setGameActive]);
+
+  const cancelLeaveGame = useCallback(() => {
+    setShowLeaveDialog(false);
+    setPendingGameSwitch(null);
+  }, []);
+
   // Swipe navigation for mobile
   const allGames = useMemo(() => [...games.filter(g => g.multiplayer), ...games.filter(g => !g.multiplayer)], []);
   
@@ -300,10 +340,17 @@ const IndexContent: React.FC = () => {
       setSwipeDirection('right');
     }
     
-    setActiveGame(allGames[newIndex].id);
-    soundManager.playLocalSound('whoosh');
-    haptics.light();
-  }, [activeGame, allGames]);
+    const newGame = allGames[newIndex].id;
+    if (isGameActive) {
+      setPendingGameSwitch(newGame);
+      setShowLeaveDialog(true);
+      haptics.medium();
+    } else {
+      setActiveGame(newGame);
+      soundManager.playLocalSound('whoosh');
+      haptics.light();
+    }
+  }, [activeGame, allGames, isGameActive]);
 
   // Swipe navigation disabled for better mobile UX
   const swipeHandlers = useSwipe({
@@ -524,12 +571,7 @@ const IndexContent: React.FC = () => {
             {multiplayerGames.map((game) => (
               <button
                 key={game.id}
-                onClick={() => {
-                  setSwipeDirection(null);
-                  setActiveGame(game.id);
-                  soundManager.playLocalSound('click');
-                  haptics.light();
-                }}
+                onClick={() => handleGameSwitch(game.id)}
                 className={`flex flex-col items-center justify-center p-1.5 rounded-lg min-w-[52px] transition-all duration-200 active:scale-95 ${
                   activeGame === game.id 
                     ? `bg-neon-${game.color}/20 border border-neon-${game.color}/50` 
@@ -548,12 +590,7 @@ const IndexContent: React.FC = () => {
             {singlePlayerGames.map((game) => (
               <button
                 key={game.id}
-                onClick={() => {
-                  setSwipeDirection(null);
-                  setActiveGame(game.id);
-                  soundManager.playLocalSound('click');
-                  haptics.light();
-                }}
+                onClick={() => handleGameSwitch(game.id)}
                 className={`flex flex-col items-center justify-center p-1.5 rounded-lg min-w-[52px] transition-all duration-200 active:scale-95 ${
                   activeGame === game.id 
                     ? `bg-neon-${game.color}/20 border border-neon-${game.color}/50` 
@@ -580,6 +617,14 @@ const IndexContent: React.FC = () => {
       {/* Modals */}
       <Leaderboard isOpen={showLeaderboard} onClose={() => setShowLeaderboard(false)} />
       <GameStatsDashboard isOpen={showStats} onClose={() => setShowStats(false)} />
+      
+      {/* Leave Game Confirmation Dialog */}
+      <LeaveGameDialog
+        isOpen={showLeaveDialog}
+        gameName={activeGameName || games.find(g => g.id === activeGame)?.title || 'this game'}
+        onConfirm={confirmLeaveGame}
+        onCancel={cancelLeaveGame}
+      />
     </div>
     </AchievementContext.Provider>
   );
@@ -587,7 +632,9 @@ const IndexContent: React.FC = () => {
 
 const Index: React.FC = () => (
   <DifficultyProvider>
-    <IndexContent />
+    <ActiveGameProvider>
+      <IndexContent />
+    </ActiveGameProvider>
   </DifficultyProvider>
 );
 

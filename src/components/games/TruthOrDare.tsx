@@ -10,6 +10,7 @@ import { celebrateHearts } from '@/utils/confetti';
 import { validatePlayerName, validateRoomCode, validateQuestion, validateAnswer } from '@/utils/gameValidation';
 import { soundManager } from '@/utils/soundManager';
 import { IOSNotificationContainer, showIOSNotification } from '@/components/ui/ios-notification';
+import { useActiveGame } from '@/contexts/ActiveGameContext';
 
 type GameMode = 'menu' | 'create' | 'join' | 'waiting' | 'playing';
 
@@ -61,6 +62,23 @@ const TruthOrDare: React.FC = () => {
   const [playerId] = useState(() => Math.random().toString(36).substring(2, 8));
   const [playerName, setPlayerName] = useState('');
   const [partnerName, setPartnerName] = useState('');
+  
+  // Active game context for leave warning
+  const { setGameActive, setActiveGameName } = useActiveGame();
+  
+  // Update active game state when mode changes
+  useEffect(() => {
+    const isInGame = mode === 'waiting' || mode === 'playing';
+    setGameActive(isInGame);
+    if (isInGame) {
+      setActiveGameName('Truth & Dare');
+    }
+    
+    // Cleanup on unmount
+    return () => {
+      setGameActive(false);
+    };
+  }, [mode, setGameActive, setActiveGameName]);
   
   // Chat state
   const [messages, setMessages] = useState<ChatMessage[]>([]);
