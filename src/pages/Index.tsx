@@ -1,6 +1,6 @@
 import React, { useState, useCallback, createContext, useContext, useMemo, useEffect } from 'react';
 import { useSwipe } from '@/hooks/useSwipe';
-import { Grid3X3, Zap, Brain, Target, Gamepad2, Volume2, VolumeX, Timer, Sparkles, Palette, Swords, Pencil, Heart, Trophy, Link2, HelpCircle, Maximize, Minimize, BarChart3, Shuffle, Keyboard, Crosshair } from 'lucide-react';
+import { Grid3X3, Zap, Brain, Target, Gamepad2, Volume2, VolumeX, Timer, Sparkles, Palette, Swords, Pencil, Heart, Trophy, Link2, HelpCircle, Maximize, Minimize, BarChart3, Shuffle, Keyboard, Crosshair, Hand, Circle, Type, Calculator } from 'lucide-react';
 import TicTacToeOnline from '@/components/games/TicTacToeOnline';
 import MathChallenge from '@/components/games/MathChallenge';
 import MemoryMatch from '@/components/games/MemoryMatch';
@@ -17,6 +17,10 @@ import WordScramble from '@/components/games/WordScramble';
 import TypingSpeed from '@/components/games/TypingSpeed';
 import AimTrainer from '@/components/games/AimTrainer';
 import SnakeGame from '@/components/games/SnakeGame';
+import RockPaperScissors from '@/components/games/RockPaperScissors';
+import ConnectFour from '@/components/games/ConnectFour';
+import HangmanBattle from '@/components/games/HangmanBattle';
+import SpeedMathDuel from '@/components/games/SpeedMathDuel';
 import GameCard from '@/components/GameCard';
 import GameTransition from '@/components/GameTransition';
 import DifficultySelector from '@/components/DifficultySelector';
@@ -45,7 +49,7 @@ export const useAchievementNotification = () => {
   return context;
 };
 
-type GameType = 'tictactoe' | 'math' | 'memory' | 'numberguess' | 'reaction' | 'pattern' | 'colormatch' | 'mathbattle' | 'drawing' | 'truthordare' | 'wordchain' | 'quizbattle' | 'wordscramble' | 'typingspeed' | 'aimtrainer' | 'snake';
+type GameType = 'tictactoe' | 'math' | 'memory' | 'numberguess' | 'reaction' | 'pattern' | 'colormatch' | 'mathbattle' | 'drawing' | 'truthordare' | 'wordchain' | 'quizbattle' | 'wordscramble' | 'typingspeed' | 'aimtrainer' | 'snake' | 'rps' | 'connect4' | 'hangman' | 'speedmath';
 
 const games = [
   {
