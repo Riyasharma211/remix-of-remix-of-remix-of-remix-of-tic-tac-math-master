@@ -233,7 +233,7 @@ const TruthOrDare: React.FC = () => {
     }, 3000);
   }, []);
 
-  // Save message to database
+  // Save message to database and add to local state immediately
   const saveMessage = async (msg: Omit<ChatMessage, 'id' | 'created_at'>, currentRoomId: string): Promise<ChatMessage | null> => {
     const { data, error } = await supabase
       .from('chat_messages')
@@ -253,10 +253,18 @@ const TruthOrDare: React.FC = () => {
       return null;
     }
 
-    return data as unknown as ChatMessage;
+    const savedMsg = data as unknown as ChatMessage;
+    
+    // Immediately add to local state to avoid waiting for realtime subscription
+    setMessages(prev => {
+      if (prev.some(m => m.id === savedMsg.id)) return prev;
+      return [...prev, savedMsg];
+    });
+
+    return savedMsg;
   };
 
-  // Save multiple messages
+  // Save multiple messages and add to local state immediately
   const saveMessages = async (msgs: Omit<ChatMessage, 'id' | 'created_at'>[], currentRoomId: string): Promise<ChatMessage[]> => {
     const { data, error } = await supabase
       .from('chat_messages')
@@ -275,7 +283,24 @@ const TruthOrDare: React.FC = () => {
       return [];
     }
 
-    return (data || []) as unknown as ChatMessage[];
+    const savedMsgs = (data || []) as unknown as ChatMessage[];
+    
+    // Immediately add to local state to avoid waiting for realtime subscription
+    setMessages(prev => {
+      const newMsgs = savedMsgs.filter(m => !prev.some(p => p.id === m.id));
+      if (newMsgs.length === 0) return prev;
+      
+      const updatedMessages = [...prev, ...newMsgs];
+      
+      // Also update input action based on new messages
+      const action = determineInputAction(updatedMessages, gameStateRef.current, playerId);
+      console.log('Setting input action after save:', action);
+      setCurrentInputAction(action);
+      
+      return updatedMessages;
+    });
+
+    return savedMsgs;
   };
 
   // Update message disabled state
@@ -1048,8 +1073,10 @@ const TruthOrDare: React.FC = () => {
     return forPlayerId === playerId;
   };
 
-  // Determine input action from messages
-  const determineInputAction = (msgs: ChatMessage[], state: GameState, currentPlayerId: string): string | null => {
+  // Determine input action from messages - check for waiting state
+  const determineInputAction = useCallback((msgs: ChatMessage[], state: GameState, currentPlayerId: string): string | null => {
+    if (!state.players || state.players.length < 2) return null;
+    
     const currentTurnPlayer = state.players[state.currentPlayerIndex];
     const isCurrentPlayerTurn = currentTurnPlayer?.id === currentPlayerId;
     
@@ -1067,7 +1094,7 @@ const TruthOrDare: React.FC = () => {
     const lastInputMsg = reversedMsgs[lastInputMsgIdx];
     const action = lastInputMsg.content.inputAction;
     
-    console.log('Determining input action:', { action, isCurrentPlayerTurn, currentTurnPlayer: currentTurnPlayer?.name });
+    console.log('Determining input action:', { action, isCurrentPlayerTurn, currentTurnPlayer: currentTurnPlayer?.name, currentPlayerId });
     
     // submit_question is for opponent (not current turn player)
     if (action === 'submit_question' && !isCurrentPlayerTurn) {
@@ -1079,7 +1106,7 @@ const TruthOrDare: React.FC = () => {
     }
 
     return null;
-  };
+  }, []);
 
   // Keep refs updated for use in callbacks
   const gameStateRef = useRef(gameState);
@@ -1209,20 +1236,21 @@ const TruthOrDare: React.FC = () => {
           });
         }
       })
-      .on('broadcast', { event: 'game_state' }, ({ payload }) => {
+      .on('broadcast', { event: 'game_state' }, async ({ payload }) => {
         console.log('Game state update:', payload);
         if (payload?.gameState) {
           setGameState(payload.gameState);
           gameStateRef.current = payload.gameState;
           
-          // Re-adjust messages for new game state
-          setMessages(prev => {
-            const adjusted = adjustMessagesForPlayer(prev, payload.gameState, playerId);
-            const action = determineInputAction(adjusted, payload.gameState, playerId);
+          // Reload messages from DB to ensure we have latest messages
+          if (roomId) {
+            const loadedMessages = await loadMessages(roomId);
+            const adjustedMessages = adjustMessagesForPlayer(loadedMessages, payload.gameState, playerId);
+            setMessages(adjustedMessages);
+            const action = determineInputAction(adjustedMessages, payload.gameState, playerId);
             console.log('Updated input action after game state change:', action);
             setCurrentInputAction(action);
-            return adjusted;
-          });
+          }
         }
       })
       .on('broadcast', { event: 'typing' }, ({ payload }) => {
@@ -1777,7 +1805,7 @@ const TruthOrDare: React.FC = () => {
 
   // Chat-style gameplay
   return (
-    <div className="flex flex-col h-[calc(100dvh-120px)] max-w-md mx-auto bg-gradient-to-b from-pink-950/20 to-background">
+    <div className="flex flex-col h-[calc(100dvh-180px)] sm:h-[calc(100dvh-120px)] max-w-md mx-auto bg-gradient-to-b from-pink-950/20 to-background">
       {renderFloatingHearts()}
       
       {/* WhatsApp-style Header */}
