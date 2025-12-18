@@ -9,7 +9,7 @@ import { RealtimeChannel } from '@supabase/supabase-js';
 import { celebrateHearts } from '@/utils/confetti';
 import { validatePlayerName, validateRoomCode, validateQuestion, validateAnswer } from '@/utils/gameValidation';
 import { soundManager } from '@/utils/soundManager';
-import { IOSNotificationContainer, showIOSNotification } from '@/components/ui/ios-notification';
+import { IOSNotificationContainer } from '@/components/ui/ios-notification';
 import { useActiveGame } from '@/contexts/ActiveGameContext';
 
 type GameMode = 'menu' | 'create' | 'join' | 'waiting' | 'playing';
@@ -584,12 +584,6 @@ const TruthOrDare: React.FC = () => {
 
       celebrateHearts();
       soundManager.playLocalSound('win');
-      showIOSNotification({
-        title: 'Truth Answered! 💬',
-        message: '+10 points! Well done!',
-        icon: '💬',
-        variant: 'success',
-      });
 
       // Find the question from previous messages and get the type
       const questionMsg = [...messagesRef.current].reverse().find(m => m.content.question);
@@ -748,12 +742,6 @@ const TruthOrDare: React.FC = () => {
     setIsSubmitting(true);
     celebrateHearts();
     soundManager.playLocalSound('win');
-    showIOSNotification({
-      title: 'Dare Completed! 🔥',
-      message: '+20 points! Amazing!',
-      icon: '🔥',
-      variant: 'success',
-    });
 
     // Upload photo if selected
     let photoUrl: string | null = null;
@@ -1161,12 +1149,7 @@ const TruthOrDare: React.FC = () => {
     celebrateHearts();
     haptics.success();
     soundManager.playLocalSound('start');
-    showIOSNotification({
-      title: 'Game Started!',
-      message: `Joined ${currentState.players[0]?.name}'s room! Let's play 💕`,
-      icon: '💕',
-      variant: 'love',
-    });
+    toast.success(`Joined ${currentState.players[0]?.name}'s room! Let's play 💕`);
   };
 
   // Adjust messages for current player - no longer remove buttons, just return as is
@@ -1364,12 +1347,7 @@ const TruthOrDare: React.FC = () => {
           celebrateHearts();
           haptics.success();
           soundManager.playLocalSound('start');
-          showIOSNotification({
-            title: `${payload.playerName} joined!`,
-            message: "Let the fun game begin! 🎉",
-            icon: '🎉',
-            variant: 'love',
-          });
+          toast.success(`${payload.playerName} joined! Let the fun begin 🎉`);
         }
       })
       .on('broadcast', { event: 'game_state' }, async ({ payload }) => {
@@ -1378,16 +1356,10 @@ const TruthOrDare: React.FC = () => {
           setGameState(payload.gameState);
           gameStateRef.current = payload.gameState;
           
-          // Show notification if included (e.g., when partner chose truth/dare)
+          // Play sound if notification included (e.g., when partner chose truth/dare)
           if (payload?.notification) {
             haptics.medium();
             soundManager.playLocalSound('ding');
-            showIOSNotification({
-              title: payload.notification.title,
-              message: payload.notification.message,
-              icon: payload.notification.icon,
-              variant: 'love',
-            });
           }
           
           // Reload messages from DB to ensure sync (postgres_changes might be delayed)
@@ -1403,20 +1375,10 @@ const TruthOrDare: React.FC = () => {
         }
       })
       .on('broadcast', { event: 'question_sent' }, async ({ payload }) => {
-        // Partner sent a question/dare - show notification to the player who needs to answer
+        // Partner sent a question/dare - play sound
         if (payload?.fromPlayer && payload?.questionType) {
           haptics.medium();
           soundManager.playLocalSound('ding');
-          showIOSNotification({
-            title: payload.questionType === 'truth' 
-              ? `${payload.fromPlayer} asked you a TRUTH! 💬` 
-              : `${payload.fromPlayer} gave you a DARE! 🔥`,
-            message: payload.questionType === 'truth'
-              ? 'Answer honestly!'
-              : 'Complete the challenge!',
-            icon: payload.questionType === 'truth' ? '💬' : '🔥',
-            variant: 'love',
-          });
           
           // Reload messages to get the question
           const currentRoomId = roomIdRef.current;
