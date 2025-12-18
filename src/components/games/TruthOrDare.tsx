@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback, forwardRef } from "react";
 import {
   Heart,
   Copy,
@@ -13,187 +13,16 @@ import {
   CheckCheck,
   ChevronDown,
 } from "lucide-react";
-import { initializeApp } from "firebase/app";
-import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, User } from "firebase/auth";
-import {
-  getFirestore,
-  collection,
-  doc,
-  setDoc,
-  getDoc,
-  updateDoc,
-  onSnapshot,
-  arrayUnion,
-  serverTimestamp,
-  query,
-  orderBy,
-  addDoc,
-  limit,
-  where,
-} from "firebase/firestore";
+import { supabase } from "@/integrations/supabase/client";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { toast } from "sonner";
+import { haptics } from "@/utils/haptics";
+import { soundManager } from "@/utils/soundManager";
+import { useActiveGame } from "@/contexts/ActiveGameContext";
+import { celebrateHearts } from "@/utils/confetti";
 
-// --- Firebase Configuration ---
-const firebaseConfig = JSON.parse(typeof __firebase_config !== "undefined" ? __firebase_config : "{}");
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
-const appId = typeof __app_id !== "undefined" ? __app_id : "default-app-id";
-
-// --- Utility Functions ---
-
-const haptics = {
-  light: () => {
-    if (typeof navigator !== "undefined" && navigator.vibrate) navigator.vibrate(10);
-  },
-  medium: () => {
-    if (typeof navigator !== "undefined" && navigator.vibrate) navigator.vibrate(40);
-  },
-  success: () => {
-    if (typeof navigator !== "undefined" && navigator.vibrate) navigator.vibrate([10, 30, 10]);
-  },
-};
-
-const soundManager = {
-  playLocalSound: (type: "win" | "start" | "click") => {
-    try {
-      const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
-      if (!AudioContext) return;
-      const ctx = new AudioContext();
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-
-      const now = ctx.currentTime;
-      if (type === "win") {
-        osc.frequency.setValueAtTime(440, now);
-        osc.frequency.exponentialRampToValueAtTime(880, now + 0.1);
-        gain.gain.setValueAtTime(0.1, now);
-        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
-        osc.start(now);
-        osc.stop(now + 0.3);
-      } else if (type === "start") {
-        osc.frequency.setValueAtTime(300, now);
-        osc.frequency.linearRampToValueAtTime(600, now + 0.1);
-        gain.gain.setValueAtTime(0.1, now);
-        gain.gain.linearRampToValueAtTime(0.01, now + 0.2);
-        osc.start(now);
-        osc.stop(now + 0.2);
-      }
-    } catch (e) {
-      console.error("Audio error", e);
-    }
-  },
-  playEmojiSound: (emoji: string) => {
-    haptics.light();
-  },
-};
-
-const validatePlayerName = (name: string) => {
-  if (!name || name.trim().length < 2) return { success: false, error: "Name too short" };
-  if (name.length > 20) return { success: false, error: "Name too long" };
-  return { success: true, value: name.trim() };
-};
-
-const validateRoomCode = (code: string) => {
-  if (!code || code.length !== 4) return { success: false, error: "Code must be 4 chars" };
-  return { success: true, value: code.toUpperCase() };
-};
-
-const validateQuestion = (q: string) => {
-  if (!q || q.trim().length < 3) return { success: false, error: "Question too short" };
-  return { success: true, value: q.trim() };
-};
-
-const validateAnswer = (a: string) => {
-  if (!a || a.trim().length < 1) return { success: false, error: "Answer cannot be empty" };
-  return { success: true, value: a.trim() };
-};
-
-const celebrateHearts = () => {
-  if (typeof document === "undefined") return;
-  const colors = ["#ff0000", "#ff69b4", "#ff1493"];
-  for (let i = 0; i < 50; i++) {
-    const el = document.createElement("div");
-    el.innerText = "❤";
-    el.style.position = "fixed";
-    el.style.left = Math.random() * 100 + "vw";
-    el.style.top = "-20px";
-    el.style.fontSize = Math.random() * 20 + 10 + "px";
-    el.style.color = colors[Math.floor(Math.random() * colors.length)];
-    el.style.pointerEvents = "none";
-    el.style.zIndex = "9999";
-    el.style.transition = "transform 2s linear, opacity 2s ease-in";
-    document.body.appendChild(el);
-
-    setTimeout(() => {
-      el.style.transform = `translateY(${window.innerHeight + 50}px) rotate(${Math.random() * 360}deg)`;
-      el.style.opacity = "0";
-    }, 50);
-
-    setTimeout(() => {
-      document.body.removeChild(el);
-    }, 2050);
-  }
-};
-
-// --- UI Components ---
-
-const Button = React.forwardRef<
-  HTMLButtonElement,
-  React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "default" | "ghost" | "outline" | "secondary" }
->(({ className, variant = "default", ...props }, ref) => {
-  const baseStyles =
-    "inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50";
-  const variantClass =
-    variant === "ghost"
-      ? "hover:bg-gray-100 text-gray-700"
-      : variant === "outline"
-        ? "border border-gray-200 bg-transparent hover:bg-gray-50"
-        : "bg-pink-600 text-white hover:bg-pink-700";
-
-  return <button ref={ref} className={`${baseStyles} ${variantClass} ${className}`} {...props} />;
-});
-Button.displayName = "Button";
-
-const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement>>(
-  ({ className, ...props }, ref) => {
-    return (
-      <input
-        className={`flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 ${className}`}
-        ref={ref}
-        {...props}
-      />
-    );
-  },
-);
-Input.displayName = "Input";
-
-const IOSNotificationContainer = () => (
-  <div
-    id="ios-notifications"
-    className="fixed top-4 left-0 right-0 z-50 pointer-events-none flex flex-col items-center gap-2"
-  />
-);
-
-const showIOSNotification = ({ title, message, icon }: any) => {
-  if (typeof document === "undefined") return;
-  const container = document.getElementById("ios-notifications");
-  if (!container) return;
-  const el = document.createElement("div");
-  el.className =
-    "bg-white/90 backdrop-blur-md text-black px-4 py-3 rounded-2xl shadow-lg border border-gray-100 flex items-center gap-3 animate-in slide-in-from-top-4 duration-300 max-w-[90vw]";
-  el.innerHTML = `<span class="text-2xl">${icon}</span><div><p class="font-semibold text-sm">${title}</p><p class="text-xs text-gray-500">${message}</p></div>`;
-  container.appendChild(el);
-  setTimeout(() => {
-    el.style.opacity = "0";
-    el.style.transform = "translateY(-20px)";
-    setTimeout(() => container.removeChild(el), 300);
-  }, 3000);
-};
-
-// --- Types & Constants ---
-
+// --- Types ---
 type GameMode = "menu" | "create" | "join" | "waiting" | "playing";
 
 interface ChatMessage {
@@ -215,7 +44,7 @@ interface ChatMessage {
     proofPhotoUrl?: string;
   };
   disabled?: boolean;
-  created_at?: any;
+  created_at?: string;
 }
 
 interface Player {
@@ -236,14 +65,37 @@ interface GameState {
 
 const POINTS = { TRUTH_ANSWERED: 10, DARE_COMPLETED: 20, SKIP_PENALTY: -5 };
 
-// --- Main Game Component ---
+// Helper to generate unique IDs
+const generateId = () => Math.random().toString(36).substring(2, 15);
+const generateRoomCode = () => Math.random().toString(36).substring(2, 6).toUpperCase();
 
-const TruthOrDare: React.FC = () => {
-  const [user, setUser] = useState<User | null>(null);
+// Create turn message content
+const createTurnMessageContent = (
+  playerName: string,
+  playerId: string,
+  truthCount: number,
+  dareCount: number,
+  showButtons: boolean
+) => ({
+  text: `✨ ${playerName}'s turn!`,
+  subtext: `Truths: ${truthCount} | Dares: ${dareCount}`,
+  forPlayerId: playerId,
+  buttons: showButtons
+    ? [
+        { label: "💬 Truth", value: "truth", variant: "truth" as const },
+        { label: "🔥 Dare", value: "dare", variant: "dare" as const },
+        { label: "End Game", value: "end", variant: "end" as const },
+      ]
+    : undefined,
+});
+
+// --- Main Component ---
+const TruthOrDare = forwardRef<HTMLDivElement>((_, ref) => {
   const [mode, setMode] = useState<GameMode>("menu");
   const [roomCode, setRoomCode] = useState("");
   const [inputCode, setInputCode] = useState("");
   const [roomId, setRoomId] = useState<string | null>(null);
+  const [playerId] = useState(() => generateId());
   const [playerName, setPlayerName] = useState("");
   const [partnerName, setPartnerName] = useState("");
 
@@ -260,56 +112,17 @@ const TruthOrDare: React.FC = () => {
     dareCount: 0,
   });
 
-  const [floatingHearts, setFloatingHearts] = useState<{ id: number; x: number }[]>([]);
   const [floatingReactions, setFloatingReactions] = useState<
     { id: number; x: number; y?: number; emoji: string; delay?: number; scale?: number }[]
   >([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [partnerIsTyping, setPartnerIsTyping] = useState(false);
-  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const [reactions, setReactions] = useState<Record<string, Record<string, string[]>>>({});
-  const [readReceipts, setReadReceipts] = useState<Record<string, "sent" | "delivered" | "read">>({});
-
   const [dareTimer, setDareTimer] = useState<number | null>(null);
-  const dareTimerRef = useRef<NodeJS.Timeout | null>(null);
   const [darePhoto, setDarePhoto] = useState<File | null>(null);
   const [darePhotoPreview, setDarePhotoPreview] = useState<string | null>(null);
-  const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const REACTION_EMOJIS = ["😍", "💕", "🔥", "😂", "😤", "🥵", "💋", "😘", "🙈", "👏", "💯", "✨"];
-
-  // --- Auth Initialization (FIXED) ---
-  useEffect(() => {
-    const init = async () => {
-      try {
-        if (typeof __initial_auth_token !== "undefined" && __initial_auth_token) {
-          // Correct Modular Syntax
-          await signInWithCustomToken(auth, __initial_auth_token);
-        } else {
-          await signInAnonymously(auth);
-        }
-      } catch (e) {
-        console.error("Auth error, falling back to anon", e);
-        // Fallback
-        try {
-          await signInAnonymously(auth);
-        } catch (innerE) {
-          console.error("Fatal auth error", innerE);
-        }
-      }
-    };
-    init();
-    const unsubscribe = onAuthStateChanged(auth, setUser);
-    return () => unsubscribe();
-  }, []);
-
-  // Derived state
-  const myPlayerIndex = gameState.players.findIndex((p) => p.id === user?.uid);
-  const currentPlayer = gameState.players[gameState.currentPlayerIndex];
-  // Logic Fix: Opponent is whoever is NOT the current player
-  const opponentPlayer = gameState.players.find((p) => p.id !== currentPlayer?.id);
-  const isMyTurn = currentPlayer?.id === user?.uid;
+  const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const { setGameActive, setActiveGameName } = useActiveGame();
 
   // Refs for callbacks
   const gameStateRef = useRef(gameState);
@@ -321,10 +134,23 @@ const TruthOrDare: React.FC = () => {
     messagesRef.current = messages;
   }, [messages]);
 
-  // --- Helpers ---
+  // Derived state
+  const myPlayerIndex = gameState.players.findIndex((p) => p.id === playerId);
+  const currentPlayer = gameState.players[gameState.currentPlayerIndex];
+  const isMyTurn = currentPlayer?.id === playerId;
 
-  const generateRoomCode = () => Math.random().toString(36).substring(2, 6).toUpperCase();
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current);
+      }
+      setGameActive(false);
+      setActiveGameName('');
+    };
+  }, [setGameActive, setActiveGameName]);
 
+  // Scroll to bottom
   const scrollToBottom = useCallback(() => {
     if (chatContainerRef.current) {
       chatContainerRef.current.scrollTo({ top: chatContainerRef.current.scrollHeight, behavior: "smooth" });
@@ -337,65 +163,7 @@ const TruthOrDare: React.FC = () => {
     return () => clearTimeout(timer);
   }, [messages, scrollToBottom]);
 
-  // --- Firebase Listeners ---
-
-  useEffect(() => {
-    if (!roomId || !user) return;
-
-    // Listen to Room State
-    const roomUnsub = onSnapshot(doc(db, "artifacts", appId, "public", "data", `tod_room_${roomId}`), (docSnapshot) => {
-      if (docSnapshot.exists()) {
-        const data = docSnapshot.data();
-        if (data.game_state) {
-          setGameState(data.game_state);
-
-          // Partner Name logic
-          const otherPlayer = data.game_state.players.find((p: Player) => p.id !== user.uid);
-          if (otherPlayer) setPartnerName(otherPlayer.name);
-
-          // Re-evaluate input action whenever game state changes
-          if (messagesRef.current.length > 0) {
-            const action = determineInputAction(messagesRef.current, data.game_state, user.uid);
-            setCurrentInputAction(action);
-          }
-
-          if (data.status === "playing" && mode === "waiting") {
-            setMode("playing");
-            celebrateHearts();
-            haptics.success();
-          }
-        }
-      } else {
-        // Room deleted
-        if (mode !== "menu") {
-          // Only alert if we were in game
-          leaveGame();
-        }
-      }
-    });
-
-    // Listen to Messages
-    const msgsQuery = query(
-      collection(db, "artifacts", appId, "public", "data", `tod_room_${roomId}_messages`),
-      orderBy("created_at", "asc"),
-    );
-    const msgsUnsub = onSnapshot(msgsQuery, (snapshot) => {
-      const newMsgs = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }) as ChatMessage);
-      setMessages(newMsgs);
-
-      // Determine input action based on new messages
-      const action = determineInputAction(newMsgs, gameStateRef.current, user.uid);
-      setCurrentInputAction(action);
-      setPartnerIsTyping(false);
-    });
-
-    return () => {
-      roomUnsub();
-      msgsUnsub();
-    };
-  }, [roomId, user, mode]);
-
-  // --- LOGIC FIX: Determining who types when ---
+  // --- Determine Input Action ---
   const determineInputAction = useCallback(
     (msgs: ChatMessage[], state: GameState, currentPlayerId: string): string | null => {
       if (!state.players || state.players.length < 2) return null;
@@ -408,7 +176,7 @@ const TruthOrDare: React.FC = () => {
       const lastResultMsgIdx = reversedMsgs.findIndex((m) => m.message_type === "result");
       const lastButtonsMsgIdx = reversedMsgs.findIndex((m) => m.message_type === "buttons" && !m.disabled);
 
-      // If we have a result or new buttons AFTER the input request, the input is finished
+      // If no input message or a result/buttons came after, no input needed
       if (lastInputMsgIdx === -1) return null;
       if (lastResultMsgIdx !== -1 && lastResultMsgIdx < lastInputMsgIdx) return null;
       if (lastButtonsMsgIdx !== -1 && lastButtonsMsgIdx < lastInputMsgIdx) return null;
@@ -416,181 +184,312 @@ const TruthOrDare: React.FC = () => {
       const lastInputMsg = reversedMsgs[lastInputMsgIdx];
       const action = lastInputMsg.content.inputAction;
 
-      // Logic 1: 'submit_question' -> The OPPONENT needs to type
+      // 'submit_question' -> The OPPONENT (not current turn player) needs to type
       if (action === "submit_question") {
         if (!isCurrentTurnPlayer) return "submit_question";
-        return null; // Current turn player waits
+        return null;
       }
 
-      // Logic 2: 'submit_answer'/'complete_dare' -> The CURRENT TURN PLAYER types
+      // 'submit_answer'/'complete_dare' -> The CURRENT TURN PLAYER types
       if (action === "submit_answer" || action === "complete_dare") {
         if (isCurrentTurnPlayer) return action;
-        return null; // Opponent waits
+        return null;
       }
 
       return null;
     },
-    [],
+    []
   );
 
-  const saveMessages = async (msgs: Omit<ChatMessage, "id" | "created_at">[]) => {
-    if (!roomId) return;
-    const batch = msgs.map((msg) =>
-      addDoc(collection(db, "artifacts", appId, "public", "data", `tod_room_${roomId}_messages`), {
-        ...msg,
-        created_at: serverTimestamp(),
-      }),
-    );
-    await Promise.all(batch);
-  };
+  // --- Setup Realtime Channel ---
+  const setupChannel = useCallback(
+    (code: string) => {
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current);
+      }
 
-  const updateMessageDisabled = async (msgId: string) => {
-    if (!roomId) return;
-    await updateDoc(doc(db, "artifacts", appId, "public", "data", `tod_room_${roomId}_messages`, msgId), {
-      disabled: true,
+      const channel = supabase.channel(`tod-${code}`, {
+        config: { broadcast: { self: true } },
+      });
+
+      channel
+        .on("broadcast", { event: "game_state" }, ({ payload }) => {
+          setGameState(payload.state);
+          
+          const otherPlayer = payload.state.players.find((p: Player) => p.id !== playerId);
+          if (otherPlayer) setPartnerName(otherPlayer.name);
+          
+          if (payload.state.players.length === 2 && mode === "waiting") {
+            setMode("playing");
+            celebrateHearts();
+            haptics.success();
+            soundManager.playLocalSound("start");
+          }
+        })
+        .on("broadcast", { event: "message" }, ({ payload }) => {
+          setMessages((prev) => {
+            const exists = prev.some((m) => m.id === payload.message.id);
+            if (exists) return prev;
+            const newMsgs = [...prev, payload.message];
+            const action = determineInputAction(newMsgs, gameStateRef.current, playerId);
+            setCurrentInputAction(action);
+            return newMsgs;
+          });
+        })
+        .on("broadcast", { event: "disable_message" }, ({ payload }) => {
+          setMessages((prev) =>
+            prev.map((m) => (m.id === payload.messageId ? { ...m, disabled: true } : m))
+          );
+        })
+        .on("broadcast", { event: "game_left" }, () => {
+          toast.info("Game ended");
+          leaveGame();
+        })
+        .on("broadcast", { event: "reaction" }, ({ payload }) => {
+          showFloatingEmoji(payload.emoji);
+          soundManager.playEmojiSound(payload.emoji);
+        })
+        .subscribe();
+
+      channelRef.current = channel;
+    },
+    [mode, playerId, determineInputAction]
+  );
+
+  // --- Broadcast Helpers ---
+  const broadcastState = (state: GameState) => {
+    channelRef.current?.send({
+      type: "broadcast",
+      event: "game_state",
+      payload: { state },
     });
   };
 
-  const updateGameState = async (newState: GameState) => {
-    if (!roomId) return;
-    await updateDoc(doc(db, "artifacts", appId, "public", "data", `tod_room_${roomId}`), {
-      game_state: newState,
+  const broadcastMessage = (message: ChatMessage) => {
+    channelRef.current?.send({
+      type: "broadcast",
+      event: "message",
+      payload: { message },
     });
   };
 
-  // --- Interaction Handlers ---
+  const broadcastDisableMessage = (messageId: string) => {
+    channelRef.current?.send({
+      type: "broadcast",
+      event: "disable_message",
+      payload: { messageId },
+    });
+  };
 
+  // --- Leave Game ---
+  const leaveGame = useCallback(() => {
+    if (channelRef.current) {
+      channelRef.current.send({
+        type: "broadcast",
+        event: "game_left",
+        payload: {},
+      });
+      supabase.removeChannel(channelRef.current);
+      channelRef.current = null;
+    }
+    setMode("menu");
+    setRoomId(null);
+    setRoomCode("");
+    setMessages([]);
+    setGameState({
+      players: [],
+      currentPlayerIndex: 0,
+      roundCount: 0,
+      truthCount: 0,
+      dareCount: 0,
+    });
+    setPartnerName("");
+    setCurrentInputAction(null);
+    setGameActive(false);
+    setActiveGameName('');
+  }, [setGameActive, setActiveGameName]);
+
+  // --- Copy Room Code ---
+  const copyRoomCode = () => {
+    navigator.clipboard.writeText(roomCode);
+    toast.success("Code copied!");
+    haptics.light();
+  };
+
+  // --- Floating Emoji ---
+  const showFloatingEmoji = (emoji: string) => {
+    const newReactions = Array.from({ length: 12 }, (_, i) => ({
+      id: Date.now() + i,
+      x: Math.random() * 80 + 10,
+      y: Math.random() * 20 + 40,
+      emoji,
+      delay: i * 80,
+      scale: 0.8 + Math.random() * 0.4,
+    }));
+    setFloatingReactions((prev) => [...prev, ...newReactions]);
+    setTimeout(() => {
+      setFloatingReactions((prev) => prev.filter((r) => !newReactions.some((nr) => nr.id === r.id)));
+    }, 3000);
+  };
+
+  // --- Photo Handlers ---
+  const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setDarePhoto(file);
+      setDarePhotoPreview(URL.createObjectURL(file));
+    }
+  };
+
+  const clearPhoto = () => {
+    setDarePhoto(null);
+    setDarePhotoPreview(null);
+  };
+
+  // --- Button Click Handler ---
   const handleButtonClick = async (buttonValue: string, messageId: string) => {
-    if (isSubmitting || !roomId || !user) return;
+    if (isSubmitting || !roomId) return;
     haptics.light();
     setIsSubmitting(true);
 
-    // Update UI locally immediately
+    // Disable the button message
     setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, disabled: true } : m)));
-    await updateMessageDisabled(messageId);
+    broadcastDisableMessage(messageId);
 
     if (buttonValue === "truth" || buttonValue === "dare") {
       const newState: GameState = { ...gameState, currentType: buttonValue as "truth" | "dare" };
 
       // 1. Announce Choice
-      const choiceMsg: Omit<ChatMessage, "id" | "created_at"> = {
+      const choiceMsg: ChatMessage = {
+        id: generateId(),
         sender: myPlayerIndex === 0 ? "player1" : "player2",
         sender_name: playerName,
         message_type: "text",
         content: { text: buttonValue === "truth" ? "💬 I choose TRUTH!" : "🔥 I choose DARE!" },
+        created_at: new Date().toISOString(),
       };
 
-      // 2. Ask OPPONENT to type question
-      const opponent = gameState.players.find((p) => p.id !== user.uid) || { name: "Partner" };
+      // 2. Ask OPPONENT to type question (opponent is NOT the current turn player)
+      const opponent = gameState.players.find((p) => p.id !== playerId);
+      const opponentName = opponent?.name || "Partner";
 
-      const inputMsg: Omit<ChatMessage, "id" | "created_at"> = {
+      const inputMsg: ChatMessage = {
+        id: generateId(),
         sender: "system",
         message_type: "input",
         content: {
           text: buttonValue === "truth" ? `💬 ${playerName} CHOSE TRUTH` : `🔥 ${playerName} CHOSE DARE`,
-          subtext: `${opponent.name}, please type your question for ${playerName}:`,
-          inputPlaceholder: buttonValue === "truth" ? `Ask a truth question...` : `Give a dare...`,
-          inputAction: "submit_question", // Triggers input for Opponent
+          subtext: `${opponentName}, please type your ${buttonValue === "truth" ? "question" : "dare"} for ${playerName}:`,
+          inputPlaceholder: buttonValue === "truth" ? "Ask a truth question..." : "Give a dare...",
+          inputAction: "submit_question",
           questionType: buttonValue as "truth" | "dare",
         },
+        created_at: new Date().toISOString(),
       };
 
-      await saveMessages([choiceMsg, inputMsg]);
-      await updateGameState(newState);
+      setMessages((prev) => [...prev, choiceMsg, inputMsg]);
+      broadcastMessage(choiceMsg);
+      broadcastMessage(inputMsg);
+      
+      setGameState(newState);
+      broadcastState(newState);
+      
+      // Re-evaluate input action
+      const action = determineInputAction([...messagesRef.current, choiceMsg, inputMsg], newState, playerId);
+      setCurrentInputAction(action);
     } else if (buttonValue === "end") {
-      await leaveGame();
+      leaveGame();
     }
+    
     setIsSubmitting(false);
   };
 
+  // --- Input Submit Handler ---
   const handleInputSubmit = async () => {
-    if (!inputValue.trim() || isSubmitting || !roomId || !user) return;
+    if (!inputValue.trim() || isSubmitting || !roomId) return;
     haptics.light();
     setIsSubmitting(true);
 
-    // --- PHASE 1: Opponent asking question ---
+    // PHASE 1: Opponent asking question
     if (currentInputAction === "submit_question") {
-      const validation = validateQuestion(inputValue);
-      if (!validation.success) {
-        // Simple alert or toast
-        alert(validation.error || "Invalid question");
-        setIsSubmitting(false);
-        return;
-      }
+      const questionType = gameState.currentType || "truth";
+      const currentTurnPlayer = gameState.players[gameState.currentPlayerIndex];
 
-      const lastInputMsg = [...messagesRef.current]
-        .reverse()
-        .find((m) => m.message_type === "input" && m.content.questionType);
-      const questionType = lastInputMsg?.content.questionType || "truth";
-
-      // 1. Save Question
-      const questionMsg: Omit<ChatMessage, "id" | "created_at"> = {
+      // 1. Save Question as player message
+      const questionMsg: ChatMessage = {
+        id: generateId(),
         sender: myPlayerIndex === 0 ? "player1" : "player2",
         sender_name: playerName,
         message_type: "text",
-        content: { text: validation.value! },
+        content: { text: inputValue.trim() },
+        created_at: new Date().toISOString(),
       };
 
-      // 2. Prompt Current Player to Answer
-      const answerInputMsg: Omit<ChatMessage, "id" | "created_at"> = {
+      // 2. Prompt Current Turn Player to Answer
+      const answerInputMsg: ChatMessage = {
+        id: generateId(),
         sender: "system",
         message_type: "input",
         content: {
           text: questionType === "truth" ? "💬 ANSWER TRUTH" : "🔥 COMPLETE DARE",
-          subtext: `Question for ${gameState.players[gameState.currentPlayerIndex]?.name}:`,
-          question: validation.value!,
+          subtext: `Question for ${currentTurnPlayer?.name}:`,
+          question: inputValue.trim(),
           inputPlaceholder: questionType === "truth" ? "Type your answer..." : undefined,
           inputAction: questionType === "truth" ? "submit_answer" : "complete_dare",
           questionType: questionType,
         },
+        created_at: new Date().toISOString(),
       };
 
-      await saveMessages([questionMsg, answerInputMsg]);
+      setMessages((prev) => [...prev, questionMsg, answerInputMsg]);
+      broadcastMessage(questionMsg);
+      broadcastMessage(answerInputMsg);
       setInputValue("");
+      
+      // Re-evaluate input action
+      const action = determineInputAction([...messagesRef.current, questionMsg, answerInputMsg], gameState, playerId);
+      setCurrentInputAction(action);
 
-      // --- PHASE 2: Current Player Answering ---
+    // PHASE 2: Current Player Answering
     } else if (currentInputAction === "submit_answer") {
-      const validation = validateAnswer(inputValue);
-      if (!validation.success) {
-        alert(validation.error || "Invalid answer");
-        setIsSubmitting(false);
-        return;
-      }
-
       celebrateHearts();
       soundManager.playLocalSound("win");
-      showIOSNotification({ title: "Answered!", message: "+10 points!", icon: "💬" });
+      toast.success("Answered! +10 points!");
 
       const questionMsg = [...messagesRef.current].reverse().find((m) => m.content.question);
       const question = questionMsg?.content.question || "";
       const questionType = questionMsg?.content.questionType || "truth";
 
-      const answerMsg: Omit<ChatMessage, "id" | "created_at"> = {
+      const answerMsg: ChatMessage = {
+        id: generateId(),
         sender: myPlayerIndex === 0 ? "player1" : "player2",
         sender_name: playerName,
         message_type: "text",
-        content: { text: validation.value! },
+        content: { text: inputValue.trim() },
+        created_at: new Date().toISOString(),
       };
 
-      const resultMsg: Omit<ChatMessage, "id" | "created_at"> = {
+      const resultMsg: ChatMessage = {
+        id: generateId(),
         sender: "system",
         message_type: "result",
         content: {
           text: "💬 TRUTH RESULT",
           question,
-          answer: validation.value!,
+          answer: inputValue.trim(),
           answeredBy: playerName,
           questionType: questionType,
         },
+        created_at: new Date().toISOString(),
       };
 
-      // SWITCH TURN (Next Player)
+      // SWITCH TURN to next player
       const currentState = gameStateRef.current;
       const nextIndex = (currentState.currentPlayerIndex + 1) % currentState.players.length;
       const nextPlayer = currentState.players[nextIndex];
 
       const updatedPlayers = currentState.players.map((p, idx) =>
-        idx === myPlayerIndex ? { ...p, points: p.points + POINTS.TRUTH_ANSWERED } : p,
+        idx === myPlayerIndex ? { ...p, points: p.points + POINTS.TRUTH_ANSWERED } : p
       );
 
       const newState: GameState = {
@@ -600,11 +499,11 @@ const TruthOrDare: React.FC = () => {
         currentType: undefined,
         roundCount: currentState.roundCount + 1,
         truthCount: currentState.truthCount + 1,
-        dareCount: currentState.dareCount,
       };
 
       // Show Buttons for Next Player
-      const turnMsg: Omit<ChatMessage, "id" | "created_at"> = {
+      const turnMsg: ChatMessage = {
+        id: generateId(),
         sender: "system",
         message_type: "buttons",
         content: createTurnMessageContent(
@@ -612,49 +511,59 @@ const TruthOrDare: React.FC = () => {
           nextPlayer.id,
           newState.truthCount,
           newState.dareCount,
-          true,
+          true
         ),
+        created_at: new Date().toISOString(),
       };
 
-      await saveMessages([answerMsg, resultMsg, turnMsg]);
-      await updateGameState(newState);
+      setMessages((prev) => [...prev, answerMsg, resultMsg, turnMsg]);
+      broadcastMessage(answerMsg);
+      broadcastMessage(resultMsg);
+      broadcastMessage(turnMsg);
+      
+      setGameState(newState);
+      broadcastState(newState);
       setCurrentInputAction(null);
       setInputValue("");
     }
+    
     setIsSubmitting(false);
   };
 
+  // --- Dare Complete Handler ---
   const handleDareComplete = async () => {
-    if (isSubmitting || !roomId || !user) return;
+    if (isSubmitting || !roomId) return;
     setIsSubmitting(true);
 
-    let photoUrl = null;
-    if (darePhoto) {
-      // In real app, upload here. Mocking for stability in single file.
-      photoUrl = "https://placehold.co/400x300?text=Proof+Image";
-    }
+    celebrateHearts();
+    soundManager.playLocalSound("win");
+    toast.success("Dare completed! +20 points!");
 
     const questionMsg = [...messagesRef.current].reverse().find((m) => m.content.question);
     const question = questionMsg?.content.question || "";
 
-    const completionMsg: Omit<ChatMessage, "id" | "created_at"> = {
+    const completionMsg: ChatMessage = {
+      id: generateId(),
       sender: myPlayerIndex === 0 ? "player1" : "player2",
       sender_name: playerName,
       message_type: "text",
-      content: { text: photoUrl ? "✅ I completed the dare! 📸" : "✅ I completed the dare!" },
+      content: { text: darePhotoPreview ? "✅ I completed the dare! 📸" : "✅ I completed the dare!" },
+      created_at: new Date().toISOString(),
     };
 
-    const resultMsg: Omit<ChatMessage, "id" | "created_at"> = {
+    const resultMsg: ChatMessage = {
+      id: generateId(),
       sender: "system",
       message_type: "result",
       content: {
         text: "🔥 DARE COMPLETED",
         question,
-        answer: photoUrl ? "✅ Dare completed with proof!" : "✅ Dare completed!",
+        answer: darePhotoPreview ? "✅ Dare completed with proof!" : "✅ Dare completed!",
         answeredBy: playerName,
         questionType: "dare",
-        proofPhotoUrl: photoUrl || undefined,
+        proofPhotoUrl: darePhotoPreview || undefined,
       },
+      created_at: new Date().toISOString(),
     };
 
     // SWITCH TURN
@@ -663,7 +572,7 @@ const TruthOrDare: React.FC = () => {
     const nextPlayer = currentState.players[nextIndex];
 
     const updatedPlayers = currentState.players.map((p, idx) =>
-      idx === myPlayerIndex ? { ...p, points: p.points + POINTS.DARE_COMPLETED } : p,
+      idx === myPlayerIndex ? { ...p, points: p.points + POINTS.DARE_COMPLETED } : p
     );
 
     const newState: GameState = {
@@ -672,31 +581,38 @@ const TruthOrDare: React.FC = () => {
       currentPlayerIndex: nextIndex,
       currentType: undefined,
       roundCount: currentState.roundCount + 1,
-      truthCount: currentState.truthCount,
       dareCount: currentState.dareCount + 1,
     };
 
-    const turnMsg: Omit<ChatMessage, "id" | "created_at"> = {
+    const turnMsg: ChatMessage = {
+      id: generateId(),
       sender: "system",
       message_type: "buttons",
       content: createTurnMessageContent(nextPlayer.name, nextPlayer.id, newState.truthCount, newState.dareCount, true),
+      created_at: new Date().toISOString(),
     };
 
-    await saveMessages([completionMsg, resultMsg, turnMsg]);
-    await updateGameState(newState);
+    setMessages((prev) => [...prev, completionMsg, resultMsg, turnMsg]);
+    broadcastMessage(completionMsg);
+    broadcastMessage(resultMsg);
+    broadcastMessage(turnMsg);
+    
+    setGameState(newState);
+    broadcastState(newState);
     setCurrentInputAction(null);
     setDarePhoto(null);
     setDarePhotoPreview(null);
     setIsSubmitting(false);
   };
 
+  // --- Skip Handler ---
   const handleSkip = async () => {
-    if (isSubmitting || !roomId || !user) return;
+    if (isSubmitting || !roomId) return;
 
     const currentState = gameStateRef.current;
     const currentPlayerData = currentState.players[myPlayerIndex];
     if (!currentPlayerData || currentPlayerData.skipsLeft <= 0) {
-      alert("No skips left!");
+      toast.error("No skips left!");
       return;
     }
 
@@ -705,14 +621,17 @@ const TruthOrDare: React.FC = () => {
     const questionMsg = [...messagesRef.current].reverse().find((m) => m.content.question);
     const question = questionMsg?.content.question || "";
 
-    const skipMsg: Omit<ChatMessage, "id" | "created_at"> = {
+    const skipMsg: ChatMessage = {
+      id: generateId(),
       sender: myPlayerIndex === 0 ? "player1" : "player2",
       sender_name: playerName,
       message_type: "text",
       content: { text: "⏭️ I skip this one!" },
+      created_at: new Date().toISOString(),
     };
 
-    const resultMsg: Omit<ChatMessage, "id" | "created_at"> = {
+    const resultMsg: ChatMessage = {
+      id: generateId(),
       sender: "system",
       message_type: "result",
       content: {
@@ -722,6 +641,7 @@ const TruthOrDare: React.FC = () => {
         answeredBy: playerName,
         questionType: gameState.currentType,
       },
+      created_at: new Date().toISOString(),
     };
 
     // SWITCH TURN
@@ -730,7 +650,7 @@ const TruthOrDare: React.FC = () => {
     const updatedPlayers = currentState.players.map((p, idx) =>
       idx === myPlayerIndex
         ? { ...p, skipsLeft: p.skipsLeft - 1, points: Math.max(0, p.points + POINTS.SKIP_PENALTY) }
-        : p,
+        : p
     );
 
     const newState: GameState = {
@@ -739,130 +659,155 @@ const TruthOrDare: React.FC = () => {
       currentPlayerIndex: nextIndex,
       currentType: undefined,
       roundCount: currentState.roundCount + 1,
-      truthCount: currentState.truthCount,
-      dareCount: currentState.dareCount,
     };
 
-    const turnMsg: Omit<ChatMessage, "id" | "created_at"> = {
+    const turnMsg: ChatMessage = {
+      id: generateId(),
       sender: "system",
       message_type: "buttons",
       content: createTurnMessageContent(nextPlayer.name, nextPlayer.id, newState.truthCount, newState.dareCount, true),
+      created_at: new Date().toISOString(),
     };
 
-    await saveMessages([skipMsg, resultMsg, turnMsg]);
-    await updateGameState(newState);
+    setMessages((prev) => [...prev, skipMsg, resultMsg, turnMsg]);
+    broadcastMessage(skipMsg);
+    broadcastMessage(resultMsg);
+    broadcastMessage(turnMsg);
+    
+    setGameState(newState);
+    broadcastState(newState);
     setCurrentInputAction(null);
     setIsSubmitting(false);
   };
 
+  // --- Create Room ---
   const createRoom = async () => {
-    if (!user) return;
-    const validation = validatePlayerName(playerName);
-    if (!validation.success) {
-      alert(validation.error);
+    if (!playerName.trim() || playerName.length < 2) {
+      toast.error("Name must be at least 2 characters");
       return;
     }
 
     const code = generateRoomCode();
+    const rid = generateId();
+    
     const initialState: GameState = {
-      players: [{ id: user.uid, name: validation.value!, skipsLeft: 2, points: 0 }],
+      players: [{ id: playerId, name: playerName.trim(), skipsLeft: 2, points: 0 }],
       currentPlayerIndex: 0,
       roundCount: 0,
       truthCount: 0,
       dareCount: 0,
     };
 
-    const roomDoc = await addDoc(collection(db, "artifacts", appId, "public", "data"), {
-      type: "tod_room",
-      room_code: code,
-      game_state: initialState,
-      status: "waiting",
-      created_at: serverTimestamp(),
-    });
-
     setRoomCode(code);
-    setRoomId(roomDoc.id);
+    setRoomId(rid);
     setGameState(initialState);
     setMode("waiting");
+    setGameActive(true);
+    setActiveGameName("truth-or-dare");
+    
+    setupChannel(code);
+    broadcastState(initialState);
   };
 
+  // --- Join Room ---
   const joinRoom = async () => {
-    if (!user) return;
-    const nameVal = validatePlayerName(playerName);
-    if (!nameVal.success) {
-      alert(nameVal.error);
+    if (!playerName.trim() || playerName.length < 2) {
+      toast.error("Name must be at least 2 characters");
       return;
     }
-    const codeVal = validateRoomCode(inputCode);
-    if (!codeVal.success) {
-      alert(codeVal.error);
+    if (!inputCode || inputCode.length !== 4) {
+      toast.error("Room code must be 4 characters");
       return;
     }
 
-    // Fetch by code using 'where'
-    const { getDocs } = await import("firebase/firestore");
-    const roomQuery = query(
-      collection(db, "artifacts", appId, "public", "data"),
-      where("room_code", "==", codeVal.value),
-    );
-    const querySnapshot = await getDocs(roomQuery);
+    const code = inputCode.toUpperCase();
+    setRoomCode(code);
+    setRoomId(generateId());
+    setMode("waiting");
+    setGameActive(true);
+    setActiveGameName("truth-or-dare");
+    
+    setupChannel(code);
 
-    if (querySnapshot.empty) {
-      alert("Room not found");
-      return;
-    }
-
-    const roomDoc = querySnapshot.docs[0];
-    const data = roomDoc.data();
-
-    if (data.status !== "waiting") {
-      alert("Game already started or full");
-      return;
-    }
-
-    const currentState = data.game_state as GameState;
-    if (currentState.players.length >= 2) {
-      alert("Room full");
-      return;
-    }
-
-    currentState.players.push({ id: user.uid, name: nameVal.value!, skipsLeft: 2, points: 0 });
-
-    await updateDoc(roomDoc.ref, {
-      game_state: currentState,
-      status: "playing",
-    });
-
-    setRoomId(roomDoc.id);
-    setRoomCode(codeVal.value!);
-    setGameState(currentState);
-    setPartnerName(currentState.players[0].name);
-
-    const welcomeMsg: Omit<ChatMessage, "id" | "created_at"> = {
-      sender: "system",
-      message_type: "text",
-      content: { text: `🎉 Welcome!`, subtext: `${currentState.players[0].name} 🤝 ${nameVal.value!}` },
-    };
-    const turnMsg: Omit<ChatMessage, "id" | "created_at"> = {
-      sender: "system",
-      message_type: "buttons",
-      content: createTurnMessageContent(currentState.players[0].name, currentState.players[0].id, 0, 0, true),
-    };
-
-    await saveMessages([welcomeMsg, turnMsg]);
-    setMode("playing");
+    // Wait a moment for channel to connect, then request to join
+    setTimeout(() => {
+      const newPlayer: Player = { id: playerId, name: playerName.trim(), skipsLeft: 2, points: 0 };
+      
+      channelRef.current?.send({
+        type: "broadcast",
+        event: "join_request",
+        payload: { player: newPlayer },
+      });
+    }, 500);
   };
 
-  // --- Rendering UI ---
+  // Listen for join requests (host only)
+  useEffect(() => {
+    if (!channelRef.current || mode !== "waiting") return;
 
+    const handleJoinRequest = ({ payload }: { payload: { player: Player } }) => {
+      if (gameState.players.length >= 2) return;
+      if (gameState.players.some(p => p.id === payload.player.id)) return;
+
+      const newState: GameState = {
+        ...gameState,
+        players: [...gameState.players, payload.player],
+      };
+
+      setGameState(newState);
+      setPartnerName(payload.player.name);
+      broadcastState(newState);
+
+      // Start game with welcome message
+      const welcomeMsg: ChatMessage = {
+        id: generateId(),
+        sender: "system",
+        message_type: "text",
+        content: { 
+          text: "🎉 Welcome!", 
+          subtext: `${gameState.players[0].name} 🤝 ${payload.player.name}` 
+        },
+        created_at: new Date().toISOString(),
+      };
+      
+      const turnMsg: ChatMessage = {
+        id: generateId(),
+        sender: "system",
+        message_type: "buttons",
+        content: createTurnMessageContent(
+          gameState.players[0].name,
+          gameState.players[0].id,
+          0,
+          0,
+          true
+        ),
+        created_at: new Date().toISOString(),
+      };
+
+      setMessages([welcomeMsg, turnMsg]);
+      broadcastMessage(welcomeMsg);
+      broadcastMessage(turnMsg);
+    };
+
+    channelRef.current.on("broadcast", { event: "join_request" }, handleJoinRequest);
+
+    return () => {
+      // Cleanup handled by channel removal
+    };
+  }, [mode, gameState, broadcastState]);
+
+  // --- Render Logic ---
   const shouldShowButtonsForMessage = (msg: ChatMessage, allMessages: ChatMessage[]): boolean => {
-    if (msg.message_type !== "buttons" || !msg.content.buttons || msg.disabled) return false;
+    if (msg.message_type !== "buttons" || !msg.content.buttons || msg.disabled === true) return false;
+    
     const latestButtonsMsg = [...allMessages]
       .reverse()
-      .find((m) => m.message_type === "buttons" && !m.disabled && m.content.buttons);
+      .find((m) => m.message_type === "buttons" && m.disabled !== true && m.content.buttons);
+    
     if (!latestButtonsMsg || latestButtonsMsg.id !== msg.id) return false;
+    
     const forPlayerId = msg.content.forPlayerId;
-    return forPlayerId === user?.uid;
+    return forPlayerId === playerId;
   };
 
   const renderMessage = (msg: ChatMessage) => {
@@ -872,11 +817,11 @@ const TruthOrDare: React.FC = () => {
     if (isSystem) {
       return (
         <div key={msg.id} className="flex justify-center my-3 animate-in slide-in-from-bottom-2">
-          <div className="max-w-[90%] w-full bg-pink-50/90 backdrop-blur border border-pink-200 rounded-2xl p-4 shadow-sm">
+          <div className="max-w-[90%] w-full bg-secondary/50 backdrop-blur border border-border rounded-2xl p-4 shadow-sm">
             {msg.message_type === "buttons" && (
               <div className="space-y-3 text-center">
-                <p className="font-semibold text-gray-800">{msg.content.text}</p>
-                {msg.content.subtext && <p className="text-xs text-gray-500">{msg.content.subtext}</p>}
+                <p className="font-semibold text-foreground">{msg.content.text}</p>
+                {msg.content.subtext && <p className="text-xs text-muted-foreground">{msg.content.subtext}</p>}
 
                 {shouldShowButtonsForMessage(msg, messages) ? (
                   <div className="flex flex-wrap gap-2 justify-center mt-2">
@@ -889,8 +834,8 @@ const TruthOrDare: React.FC = () => {
                           btn.variant === "truth"
                             ? "bg-gradient-to-r from-pink-500 to-purple-500 text-white"
                             : btn.variant === "dare"
-                              ? "bg-gradient-to-r from-orange-500 to-red-500 text-white"
-                              : "bg-gray-200 text-gray-800"
+                            ? "bg-gradient-to-r from-orange-500 to-red-500 text-white"
+                            : "bg-muted text-muted-foreground"
                         }
                       >
                         {btn.label}
@@ -900,7 +845,7 @@ const TruthOrDare: React.FC = () => {
                 ) : msg.disabled ? (
                   <p className="text-xs text-green-600 font-medium mt-1">✓ Selection made</p>
                 ) : (
-                  <p className="text-xs text-gray-400 italic mt-1">Waiting for player...</p>
+                  <p className="text-xs text-muted-foreground italic mt-1">Waiting for player...</p>
                 )}
               </div>
             )}
@@ -909,15 +854,17 @@ const TruthOrDare: React.FC = () => {
                 <div className="flex items-center justify-center gap-2">
                   <span className="text-xl">{msg.content.text?.includes("TRUTH") ? "💬" : "🔥"}</span>
                   <span
-                    className={`font-bold text-sm tracking-wide ${msg.content.text?.includes("TRUTH") ? "text-pink-600" : "text-orange-600"}`}
+                    className={`font-bold text-sm tracking-wide ${
+                      msg.content.text?.includes("TRUTH") ? "text-pink-600" : "text-orange-600"
+                    }`}
                   >
                     {msg.content.text}
                   </span>
                 </div>
-                <p className="text-sm text-gray-700">{msg.content.subtext}</p>
+                <p className="text-sm text-foreground">{msg.content.subtext}</p>
                 {msg.content.question && (
-                  <div className="bg-white/50 p-3 rounded-xl border border-pink-100 mt-2">
-                    <p className="font-medium text-gray-800">{msg.content.question}</p>
+                  <div className="bg-background/50 p-3 rounded-xl border border-border mt-2">
+                    <p className="font-medium text-foreground">{msg.content.question}</p>
                   </div>
                 )}
               </div>
@@ -926,23 +873,24 @@ const TruthOrDare: React.FC = () => {
               <div className="space-y-3">
                 <div className="flex items-center justify-center gap-2">
                   <span className="text-xl">✨</span>
-                  <span className="font-bold text-sm text-gray-800">{msg.content.text}</span>
+                  <span className="font-bold text-sm text-foreground">{msg.content.text}</span>
                 </div>
                 <div className="space-y-2">
-                  <div className="bg-white/50 p-2 rounded-lg">
-                    <p className="text-[10px] uppercase text-gray-400">Question</p>
-                    <p className="text-sm text-gray-800">{msg.content.question}</p>
+                  <div className="bg-background/50 p-2 rounded-lg">
+                    <p className="text-[10px] uppercase text-muted-foreground">Question</p>
+                    <p className="text-sm text-foreground">{msg.content.question}</p>
                   </div>
-                  <div className="bg-green-50 p-2 rounded-lg border border-green-100">
+                  <div className="bg-green-500/10 p-2 rounded-lg border border-green-500/20">
                     <p className="text-[10px] uppercase text-green-600">Answer by {msg.content.answeredBy}</p>
-                    <p className="text-sm font-medium text-gray-800">{msg.content.answer}</p>
+                    <p className="text-sm font-medium text-foreground">{msg.content.answer}</p>
                   </div>
                   {msg.content.proofPhotoUrl && (
                     <div className="mt-2 text-center">
                       <p className="text-xs text-purple-500 mb-1">📸 Photo Proof</p>
                       <img
                         src={msg.content.proofPhotoUrl}
-                        className="max-h-32 rounded-lg mx-auto border border-gray-200"
+                        className="max-h-32 rounded-lg mx-auto border border-border"
+                        alt="Dare proof"
                       />
                     </div>
                   )}
@@ -951,8 +899,8 @@ const TruthOrDare: React.FC = () => {
             )}
             {msg.message_type === "text" && (
               <div className="text-center">
-                <p className="text-sm text-gray-800">{msg.content.text}</p>
-                {msg.content.subtext && <p className="text-xs text-gray-400 mt-1">{msg.content.subtext}</p>}
+                <p className="text-sm text-foreground">{msg.content.text}</p>
+                {msg.content.subtext && <p className="text-xs text-muted-foreground mt-1">{msg.content.subtext}</p>}
               </div>
             )}
           </div>
@@ -963,41 +911,68 @@ const TruthOrDare: React.FC = () => {
     return (
       <div key={msg.id} className={`flex my-2 ${isMe ? "justify-end" : "justify-start"}`}>
         <div
-          className={`max-w-[75%] px-4 py-2 rounded-2xl shadow-sm ${isMe ? "bg-pink-500 text-white rounded-br-none" : "bg-white text-gray-800 rounded-bl-none border border-gray-100"}`}
+          className={`max-w-[75%] px-4 py-2 rounded-2xl shadow-sm ${
+            isMe
+              ? "bg-primary text-primary-foreground rounded-br-none"
+              : "bg-card text-card-foreground rounded-bl-none border border-border"
+          }`}
         >
-          {msg.sender_name && !isMe && <p className="text-[10px] font-bold text-pink-500 mb-1">{msg.sender_name}</p>}
+          {msg.sender_name && !isMe && (
+            <p className="text-[10px] font-bold text-primary mb-1">{msg.sender_name}</p>
+          )}
           {msg.message_type === "text" && <p className="text-sm">{msg.content.text}</p>}
         </div>
       </div>
     );
   };
 
-  // --- Main Render ---
+  // Render floating reactions
+  const renderFloatingReactions = () => (
+    <div className="fixed inset-0 pointer-events-none z-50 overflow-hidden">
+      {floatingReactions.map((r) => (
+        <div
+          key={r.id}
+          className="absolute animate-float-up"
+          style={{
+            left: `${r.x}%`,
+            top: `${r.y || 50}%`,
+            animationDelay: `${r.delay || 0}ms`,
+            transform: `scale(${r.scale || 1})`,
+            fontSize: "2rem",
+          }}
+        >
+          {r.emoji}
+        </div>
+      ))}
+    </div>
+  );
 
+  // --- MENU VIEW ---
   if (mode === "menu") {
     return (
-      <div className="flex flex-col items-center justify-center h-full p-6 space-y-8 bg-pink-50/30">
-        {renderFloatingHearts()}
+      <div ref={ref} className="flex flex-col items-center justify-center h-full p-6 space-y-8 bg-gradient-to-b from-background to-secondary/20">
         <div className="text-center space-y-2">
           <div className="flex justify-center mb-4">
-            <Heart className="w-12 h-12 text-pink-500 fill-pink-500 animate-pulse" />
+            <div className="p-4 bg-gradient-to-br from-pink-500 to-purple-600 rounded-full">
+              <Sparkles className="w-10 h-10 text-white" />
+            </div>
           </div>
-          <h1 className="text-3xl font-bold bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">
-            Friends Truth & Dare
+          <h1 className="text-3xl font-bold bg-gradient-to-r from-pink-500 to-purple-600 bg-clip-text text-transparent">
+            Truth or Dare
           </h1>
-          <p className="text-gray-500">Fun game for close friends 💕</p>
+          <p className="text-muted-foreground">Play with a friend!</p>
         </div>
 
-        <div className="w-full max-w-xs space-y-4">
+        <div className="flex flex-col gap-4 w-full max-w-xs">
           <Button
-            className="w-full h-12 text-lg bg-gradient-to-r from-pink-500 to-rose-500 shadow-lg"
+            className="h-14 text-lg bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-600 hover:to-purple-700"
             onClick={() => setMode("create")}
           >
-            <Sparkles className="w-5 h-5 mr-2" /> Create Room
+            <Heart className="w-5 h-5 mr-2" /> Create Room
           </Button>
           <Button
             variant="outline"
-            className="w-full h-12 text-lg border-pink-200 text-pink-700 hover:bg-pink-50"
+            className="h-14 text-lg border-2"
             onClick={() => setMode("join")}
           >
             <Users className="w-5 h-5 mr-2" /> Join Room
@@ -1007,18 +982,21 @@ const TruthOrDare: React.FC = () => {
     );
   }
 
+  // --- CREATE/JOIN VIEW ---
   if (mode === "create" || mode === "join") {
     return (
-      <div className="flex flex-col h-full p-6 bg-white">
+      <div ref={ref} className="flex flex-col h-full p-6 bg-background">
         <Button variant="ghost" onClick={() => setMode("menu")} className="self-start mb-6">
           <ArrowLeft className="w-4 h-4 mr-2" /> Back
         </Button>
         <div className="flex-1 flex flex-col items-center justify-center space-y-6 max-w-sm mx-auto w-full">
-          <h2 className="text-2xl font-bold text-gray-800">{mode === "create" ? "Create a Room" : "Join a Room"}</h2>
+          <h2 className="text-2xl font-bold text-foreground">
+            {mode === "create" ? "Create a Room" : "Join a Room"}
+          </h2>
 
           {mode === "join" && (
             <div className="w-full space-y-2">
-              <label className="text-xs font-semibold text-gray-500 uppercase">Room Code</label>
+              <label className="text-xs font-semibold text-muted-foreground uppercase">Room Code</label>
               <Input
                 value={inputCode}
                 onChange={(e) => setInputCode(e.target.value.toUpperCase().slice(0, 4))}
@@ -1029,7 +1007,7 @@ const TruthOrDare: React.FC = () => {
           )}
 
           <div className="w-full space-y-2">
-            <label className="text-xs font-semibold text-gray-500 uppercase">Your Name</label>
+            <label className="text-xs font-semibold text-muted-foreground uppercase">Your Name</label>
             <Input
               value={playerName}
               onChange={(e) => setPlayerName(e.target.value)}
@@ -1039,7 +1017,7 @@ const TruthOrDare: React.FC = () => {
           </div>
 
           <Button
-            className="w-full h-12 text-lg mt-4 bg-pink-600 hover:bg-pink-700"
+            className="w-full h-12 text-lg mt-4 bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-600 hover:to-purple-700"
             onClick={mode === "create" ? createRoom : joinRoom}
           >
             {mode === "create" ? "Start Game" : "Join Game"}
@@ -1049,70 +1027,71 @@ const TruthOrDare: React.FC = () => {
     );
   }
 
+  // --- WAITING VIEW ---
   if (mode === "waiting") {
     return (
-      <div className="flex flex-col items-center justify-center h-full p-6 space-y-8 bg-pink-50/50">
+      <div ref={ref} className="flex flex-col items-center justify-center h-full p-6 space-y-8 bg-gradient-to-b from-background to-secondary/20">
         <div className="text-center space-y-2">
-          <h2 className="text-xl font-bold text-gray-800">Waiting for friend...</h2>
-          <p className="text-gray-500 text-sm">Share this code with your partner</p>
+          <h2 className="text-xl font-bold text-foreground">Waiting for friend...</h2>
+          <p className="text-muted-foreground text-sm">Share this code with your partner</p>
         </div>
 
         <button
           onClick={copyRoomCode}
-          className="bg-white px-8 py-6 rounded-3xl shadow-sm border border-pink-100 flex flex-col items-center gap-2 transition-transform active:scale-95"
+          className="bg-card px-8 py-6 rounded-3xl shadow-sm border border-border flex flex-col items-center gap-2 transition-transform active:scale-95"
         >
-          <span className="text-4xl font-mono font-bold text-pink-600 tracking-widest">{roomCode}</span>
-          <span className="text-xs text-gray-400 flex items-center gap-1">
+          <span className="text-4xl font-mono font-bold text-primary tracking-widest">{roomCode}</span>
+          <span className="text-xs text-muted-foreground flex items-center gap-1">
             <Copy className="w-3 h-3" /> Tap to copy
           </span>
         </button>
 
-        <div className="w-full max-w-xs bg-white/50 rounded-xl p-4 border border-white">
-          <p className="text-xs font-bold text-gray-400 uppercase mb-2">Players Joined</p>
+        <div className="w-full max-w-xs bg-card/50 rounded-xl p-4 border border-border">
+          <p className="text-xs font-bold text-muted-foreground uppercase mb-2">Players Joined</p>
           <div className="space-y-2">
             {gameState.players.map((p) => (
-              <div key={p.id} className="flex items-center gap-2 text-gray-800">
+              <div key={p.id} className="flex items-center gap-2 text-foreground">
                 <div className="w-2 h-2 rounded-full bg-green-500"></div>
-                {p.name} {p.id === user?.uid && <span className="text-gray-400 text-xs">(You)</span>}
+                {p.name} {p.id === playerId && <span className="text-muted-foreground text-xs">(You)</span>}
               </div>
             ))}
-            {gameState.players.length === 0 && <p className="text-gray-400 text-sm italic">Loading...</p>}
+            {gameState.players.length === 0 && (
+              <p className="text-muted-foreground text-sm italic">Loading...</p>
+            )}
           </div>
         </div>
 
-        <Button variant="ghost" onClick={leaveGame} className="text-gray-400 hover:text-red-500">
+        <Button variant="ghost" onClick={leaveGame} className="text-muted-foreground hover:text-destructive">
           Cancel
         </Button>
       </div>
     );
   }
 
-  // Playing Mode
+  // --- PLAYING VIEW ---
   const shouldShowInput = !!currentInputAction;
 
   return (
-    <div
-      className={`flex flex-col h-full bg-gray-50 overflow-hidden ${keyboardVisible ? "max-h-[calc(100dvh-80px)]" : ""}`}
-    >
-      {renderFloatingHearts()}
+    <div ref={ref} className="flex flex-col h-full bg-background overflow-hidden">
+      {renderFloatingReactions()}
 
       {/* Header */}
-      <div className="h-16 bg-white border-b border-gray-100 flex items-center px-4 justify-between shrink-0 shadow-sm z-10">
-        <Button variant="ghost" size="sm" onClick={leaveGame}>
-          <ArrowLeft className="w-5 h-5 text-gray-500" />
+      <div className="h-16 bg-card border-b border-border flex items-center px-4 justify-between shrink-0 shadow-sm z-10">
+        <Button variant="ghost" onClick={leaveGame} className="p-2">
+          <ArrowLeft className="w-5 h-5 text-muted-foreground" />
         </Button>
         <div className="text-center">
-          <p className="font-bold text-gray-800 text-sm">
-            {playerName} <span className="text-pink-500">vs</span> {partnerName}
+          <p className="font-bold text-foreground text-sm">
+            {playerName} <span className="text-primary">vs</span> {partnerName}
           </p>
           <div className="flex items-center justify-center gap-1">
             <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
-            <p className="text-[10px] text-gray-500">Round {gameState.roundCount + 1}</p>
+            <p className="text-[10px] text-muted-foreground">Round {gameState.roundCount + 1}</p>
           </div>
         </div>
         <div className="flex flex-col items-end">
-          <span className="text-xs font-bold text-gray-400">PTS</span>
-          <span className="text-sm font-bold text-pink-600">{gameState.players[myPlayerIndex]?.points || 0}</span>
+          <span className="text-xs font-bold text-muted-foreground">PTS</span>
+          <span className="text-sm font-bold text-primary">{gameState.players[myPlayerIndex]?.points || 0}</span>
         </div>
       </div>
 
@@ -1120,21 +1099,21 @@ const TruthOrDare: React.FC = () => {
       <div className="flex-1 overflow-y-auto p-4 space-y-2 scroll-smooth" ref={chatContainerRef}>
         {messages.map((msg) => renderMessage(msg))}
         {messages.length === 0 && (
-          <div className="text-center py-10 text-gray-400 text-sm">
+          <div className="text-center py-10 text-muted-foreground text-sm">
             <Sparkles className="w-8 h-8 mx-auto mb-2 opacity-50" />
             Game started! Waiting for the first move...
           </div>
         )}
-        <div className="h-4" /> {/* Spacer */}
+        <div className="h-4" />
       </div>
 
       {/* Input Area */}
       {shouldShowInput && (
-        <div className="shrink-0 bg-white p-4 border-t border-gray-100 animate-in slide-in-from-bottom-4 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
+        <div className="shrink-0 bg-card p-4 border-t border-border animate-in slide-in-from-bottom-4 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
           {currentInputAction === "complete_dare" ? (
             <div className="space-y-3">
-              <div className="flex justify-between items-center bg-gray-50 p-3 rounded-lg border border-gray-100">
-                <span className="text-xs font-bold text-gray-500 uppercase">Timer</span>
+              <div className="flex justify-between items-center bg-secondary p-3 rounded-lg border border-border">
+                <span className="text-xs font-bold text-muted-foreground uppercase">Timer</span>
                 <span className="font-mono font-bold text-xl text-orange-500">
                   {dareTimer
                     ? `${Math.floor(dareTimer / 60)}:${(dareTimer % 60).toString().padStart(2, "0")}`
@@ -1146,7 +1125,7 @@ const TruthOrDare: React.FC = () => {
                 <div className="grid grid-cols-2 gap-3">
                   <Button
                     variant="outline"
-                    className="h-12 border-dashed border-2 border-gray-300 text-gray-500"
+                    className="h-12 border-dashed border-2"
                     onClick={() => fileInputRef.current?.click()}
                   >
                     <Camera className="w-4 h-4 mr-2" /> Add Proof
@@ -1160,24 +1139,30 @@ const TruthOrDare: React.FC = () => {
                   </Button>
                 </div>
               ) : (
-                <div className="relative rounded-xl overflow-hidden border border-gray-200 h-32 bg-black">
-                  <img src={darePhotoPreview} className="w-full h-full object-cover opacity-80" />
+                <div className="relative rounded-xl overflow-hidden border border-border h-32 bg-black">
+                  <img src={darePhotoPreview} className="w-full h-full object-cover opacity-80" alt="Proof" />
                   <div className="absolute inset-0 flex items-center justify-center gap-2">
-                    <Button size="sm" variant="secondary" onClick={clearPhoto}>
+                    <Button variant="secondary" onClick={clearPhoto}>
                       Retake
                     </Button>
-                    <Button size="sm" className="bg-green-500 text-white" onClick={handleDareComplete}>
+                    <Button className="bg-green-500 text-white" onClick={handleDareComplete}>
                       Send Proof
                     </Button>
                   </div>
                 </div>
               )}
-              <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handlePhotoSelect} />
+              <input
+                type="file"
+                ref={fileInputRef}
+                className="hidden"
+                accept="image/*"
+                onChange={handlePhotoSelect}
+              />
 
               {gameState.players[myPlayerIndex]?.skipsLeft > 0 && (
                 <button
                   onClick={handleSkip}
-                  className="w-full text-center text-xs text-gray-400 hover:text-gray-600 underline"
+                  className="w-full text-center text-xs text-muted-foreground hover:text-foreground underline"
                 >
                   Skip Dare (-5 pts, {gameState.players[myPlayerIndex]?.skipsLeft} left)
                 </button>
@@ -1185,8 +1170,10 @@ const TruthOrDare: React.FC = () => {
             </div>
           ) : (
             <div className="space-y-3">
-              <p className="text-xs font-bold text-gray-400 ml-1 uppercase">
-                {currentInputAction === "submit_question" ? `Ask ${partnerName || "Opponent"}` : "Your Answer"}
+              <p className="text-xs font-bold text-muted-foreground ml-1 uppercase">
+                {currentInputAction === "submit_question"
+                  ? `Ask ${gameState.players[gameState.currentPlayerIndex]?.name || "Opponent"}`
+                  : "Your Answer"}
               </p>
               <div className="flex gap-2">
                 <Input
@@ -1196,13 +1183,13 @@ const TruthOrDare: React.FC = () => {
                   placeholder={
                     currentInputAction === "submit_question" ? "Type your question..." : "Type your answer..."
                   }
-                  className="h-12 text-lg bg-gray-50 border-gray-200 focus:bg-white transition-all"
+                  className="h-12 text-lg"
                   autoFocus
                 />
                 <Button
                   onClick={handleInputSubmit}
                   disabled={!inputValue.trim() || isSubmitting}
-                  className="h-12 w-12 rounded-xl bg-pink-500 hover:bg-pink-600 shrink-0"
+                  className="h-12 w-12 rounded-xl shrink-0"
                 >
                   {isSubmitting ? <Loader2 className="animate-spin" /> : <Send className="w-5 h-5" />}
                 </Button>
@@ -1210,7 +1197,7 @@ const TruthOrDare: React.FC = () => {
               {currentInputAction === "submit_answer" && gameState.players[myPlayerIndex]?.skipsLeft > 0 && (
                 <button
                   onClick={handleSkip}
-                  className="w-full text-center text-xs text-gray-400 hover:text-gray-600 underline"
+                  className="w-full text-center text-xs text-muted-foreground hover:text-foreground underline"
                 >
                   Skip Question (-5 pts)
                 </button>
@@ -1221,6 +1208,8 @@ const TruthOrDare: React.FC = () => {
       )}
     </div>
   );
-};
+});
+
+TruthOrDare.displayName = "TruthOrDare";
 
 export default TruthOrDare;
