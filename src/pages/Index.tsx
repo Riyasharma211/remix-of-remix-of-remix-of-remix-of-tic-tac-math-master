@@ -16,6 +16,7 @@ import QuizBattle from '@/components/games/QuizBattle';
 import WordScramble from '@/components/games/WordScramble';
 import TypingSpeed from '@/components/games/TypingSpeed';
 import AimTrainer from '@/components/games/AimTrainer';
+import SnakeGame from '@/components/games/SnakeGame';
 import GameCard from '@/components/GameCard';
 import GameTransition from '@/components/GameTransition';
 import DifficultySelector from '@/components/DifficultySelector';
@@ -40,7 +41,7 @@ export const useAchievementNotification = () => {
   return context;
 };
 
-type GameType = 'tictactoe' | 'math' | 'memory' | 'numberguess' | 'reaction' | 'pattern' | 'colormatch' | 'mathbattle' | 'drawing' | 'truthordare' | 'wordchain' | 'quizbattle' | 'wordscramble' | 'typingspeed' | 'aimtrainer';
+type GameType = 'tictactoe' | 'math' | 'memory' | 'numberguess' | 'reaction' | 'pattern' | 'colormatch' | 'mathbattle' | 'drawing' | 'truthordare' | 'wordchain' | 'quizbattle' | 'wordscramble' | 'typingspeed' | 'aimtrainer' | 'snake';
 
 const games = [
   {
@@ -161,6 +162,14 @@ const games = [
     description: 'Click targets',
     icon: Crosshair,
     color: 'pink' as const,
+    multiplayer: false,
+  },
+  {
+    id: 'snake' as GameType,
+    title: 'Snake',
+    description: 'Classic arcade',
+    icon: Gamepad2,
+    color: 'green' as const,
     multiplayer: false,
   },
 ];
@@ -284,6 +293,8 @@ const IndexContent: React.FC = () => {
         return <TypingSpeed />;
       case 'aimtrainer':
         return <AimTrainer />;
+      case 'snake':
+        return <SnakeGame />;
       default:
         return <TicTacToeOnline />;
     }
@@ -360,7 +371,7 @@ const IndexContent: React.FC = () => {
             <ThemeToggle />
           </div>
           <p className="text-muted-foreground font-rajdhani text-sm sm:text-lg max-w-md mx-auto mb-2 sm:mb-4">
-            15 games • Real-time multiplayer • Mind training
+            16 games • Real-time multiplayer • Mind training
           </p>
           <DifficultySelector />
         </header>
