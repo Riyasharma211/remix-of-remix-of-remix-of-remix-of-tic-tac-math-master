@@ -51,7 +51,7 @@ const GameTransition: React.FC<GameTransitionProps> = ({ children, gameKey, dire
   };
 
   return (
-    <div className="relative w-full min-h-[300px] overflow-hidden">
+    <div className="relative w-full h-full flex flex-col overflow-hidden">
       {/* Loading overlay */}
       <div 
         className={`absolute inset-0 flex items-center justify-center z-10 transition-opacity duration-150
@@ -65,7 +65,7 @@ const GameTransition: React.FC<GameTransitionProps> = ({ children, gameKey, dire
       
       {/* Content with transition */}
       <div 
-        className={`w-full transition-all duration-300 ease-out
+        className={`w-full flex-1 min-h-0 flex flex-col transition-all duration-300 ease-out
           ${showContent 
             ? `opacity-100 ${getEnterTransform()}` 
             : `opacity-0 ${isTransitioning ? getExitTransform() : getInitialTransform()}`

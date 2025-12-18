@@ -492,7 +492,7 @@ const IndexContent: React.FC = () => {
       <div className="flex-1 min-h-0 relative z-10 flex flex-col lg:block">
         {/* Mobile: Game Area Takes Full Space */}
         <main 
-          className="lg:hidden flex-1 mx-2 mb-2 glass-neon rounded-2xl p-3 flex items-center justify-center overflow-auto"
+          className="lg:hidden flex-1 min-h-0 mx-2 mb-2 glass-neon rounded-2xl p-2 flex flex-col overflow-hidden"
           {...swipeHandlers}
         >
           <GameTransition gameKey={activeGame} direction={swipeDirection}>
