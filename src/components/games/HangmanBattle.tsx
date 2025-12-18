@@ -450,12 +450,21 @@ const HangmanBattle: React.FC = () => {
 
         {/* Hangman Drawing */}
         <div className="text-center">
-          <div className="text-4xl mb-2">
-            {wrongGuesses >= 1 && '😵'}
-            {wrongGuesses >= 2 && '🫥'}
-            {wrongGuesses >= 3 && '💀'}
+          <div className="text-5xl mb-2 transition-all duration-300" style={{ animation: wrongGuesses > 0 ? 'shake 0.5s ease-in-out' : 'none' }}>
+            {wrongGuesses === 0 && '😊'}
+            {wrongGuesses === 1 && '😟'}
+            {wrongGuesses === 2 && '😰'}
+            {wrongGuesses === 3 && '😨'}
+            {wrongGuesses === 4 && '😱'}
+            {wrongGuesses === 5 && '😵'}
+            {wrongGuesses >= 6 && '💀'}
           </div>
-          <p className="text-sm text-red-500">Wrong: {wrongGuesses}/{MAX_WRONG_GUESSES}</p>
+          <div className="flex justify-center gap-1 mb-2">
+            {Array(MAX_WRONG_GUESSES).fill(null).map((_, i) => (
+              <div key={i} className={`w-3 h-3 rounded-full transition-all duration-300 ${i < wrongGuesses ? 'bg-red-500 shadow-md shadow-red-500/50 animate-scale-in' : 'bg-muted'}`} />
+            ))}
+          </div>
+          <p className="text-sm text-red-500">{MAX_WRONG_GUESSES - wrongGuesses} guesses left</p>
         </div>
 
         {/* Word Display */}
@@ -463,7 +472,9 @@ const HangmanBattle: React.FC = () => {
           {word.split('').map((letter, idx) => (
             <span
               key={idx}
-              className="w-8 h-10 border-b-2 border-foreground flex items-center justify-center font-mono text-2xl font-bold"
+              className={`w-10 h-12 border-b-2 border-neon-purple flex items-center justify-center font-mono text-2xl font-bold transition-all duration-300 ${
+                letter !== '_' ? 'animate-scale-in text-neon-purple drop-shadow-[0_0_8px_rgba(168,85,247,0.5)]' : ''
+              }`}
             >
               {letter === '_' ? '' : letter.toUpperCase()}
             </span>
@@ -478,12 +489,15 @@ const HangmanBattle: React.FC = () => {
         {/* Keyboard */}
         {isMyTurnToGuess && (
           <div className="grid grid-cols-9 gap-1 w-full max-w-xs">
-            {alphabet.map(letter => (
+            {alphabet.map((letter, index) => (
               <Button
                 key={letter}
                 variant={guessedLetters.includes(letter) ? 'secondary' : 'outline'}
                 size="sm"
-                className="w-8 h-8 p-0 text-xs font-bold"
+                className={`w-8 h-8 p-0 text-xs font-bold transition-all duration-200 animate-fade-in ${
+                  !guessedLetters.includes(letter) ? 'hover:scale-110 hover:bg-neon-purple/20 hover:border-neon-purple active:scale-95' : 'opacity-50'
+                }`}
+                style={{ animationDelay: `${index * 0.02}s` }}
                 onClick={() => guessLetter(letter)}
                 disabled={guessedLetters.includes(letter)}
               >

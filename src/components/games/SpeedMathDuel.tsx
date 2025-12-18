@@ -364,11 +364,14 @@ const SpeedMathDuel: React.FC = () => {
     
     return (
       <div className="flex flex-col items-center justify-center gap-4 p-4 w-full max-w-md">
-        <div className="flex items-center justify-between w-full">
+      <div className="flex items-center justify-between w-full">
           <div className="flex items-center gap-2">
-            {isConnected ? <Wifi className="w-4 h-4 text-green-500" /> : <WifiOff className="w-4 h-4 text-red-500" />}
-            <Timer className="w-4 h-4 text-neon-orange" />
-            <span className={`font-mono text-lg font-bold ${timeLeft <= 10 ? 'text-red-500 animate-pulse' : ''}`}>
+            {isConnected ? <Wifi className="w-4 h-4 text-green-500 animate-pulse" /> : <WifiOff className="w-4 h-4 text-red-500" />}
+            <Timer className={`w-5 h-5 ${timeLeft <= 10 ? 'text-red-500 animate-[spin_1s_linear_infinite]' : 'text-neon-orange'}`} />
+            <span className={`font-mono text-xl font-bold transition-all duration-300 ${
+              timeLeft <= 10 ? 'text-red-500 animate-pulse scale-110' : 
+              timeLeft <= 30 ? 'text-neon-orange' : 'text-foreground'
+            }`}>
               {timeLeft}s
             </span>
           </div>
@@ -379,23 +382,27 @@ const SpeedMathDuel: React.FC = () => {
         <div className="flex items-center justify-center gap-8 w-full">
           <div className="text-center">
             <p className="text-sm text-muted-foreground">You</p>
-            <p className="font-orbitron text-3xl font-bold text-neon-green">{myScore}</p>
+            <p className="font-orbitron text-3xl font-bold text-neon-green drop-shadow-[0_0_10px_rgba(0,255,0,0.3)] transition-all duration-200" key={myScore} style={{ animation: 'pulse 0.3s ease-out' }}>{myScore}</p>
           </div>
-          <span className="text-2xl text-muted-foreground">vs</span>
+          <span className="text-2xl text-muted-foreground">⚡</span>
           <div className="text-center">
             <p className="text-sm text-muted-foreground">Opponent</p>
-            <p className="font-orbitron text-3xl font-bold text-neon-orange">{opponentScore}</p>
+            <p className="font-orbitron text-3xl font-bold text-neon-orange drop-shadow-[0_0_10px_rgba(255,165,0,0.3)] transition-all duration-200" key={opponentScore} style={{ animation: 'pulse 0.3s ease-out' }}>{opponentScore}</p>
           </div>
         </div>
 
         {/* Streak */}
         {streak > 1 && (
-          <p className="text-neon-cyan text-sm">🔥 {streak} streak! (+{streak * 2} bonus)</p>
+          <div className="flex items-center gap-2 animate-scale-in">
+            <span className="text-2xl animate-[bounce_0.5s_ease-in-out_infinite]">🔥</span>
+            <p className="text-neon-cyan font-bold">{streak} streak! (+{streak * 2} bonus)</p>
+            <span className="text-2xl animate-[bounce_0.5s_ease-in-out_infinite_0.1s]">🔥</span>
+          </div>
         )}
 
         {/* Problem */}
-        <div className="bg-card/50 p-8 rounded-2xl text-center">
-          <p className="font-orbitron text-4xl font-bold">
+        <div className="bg-card/50 p-8 rounded-2xl text-center shadow-lg shadow-neon-green/10 animate-scale-in" key={currentIndex}>
+          <p className="font-orbitron text-4xl font-bold bg-gradient-to-r from-neon-green via-neon-cyan to-neon-green bg-clip-text text-transparent">
             {currentProblem.num1} {currentProblem.operator} {currentProblem.num2} = ?
           </p>
         </div>
