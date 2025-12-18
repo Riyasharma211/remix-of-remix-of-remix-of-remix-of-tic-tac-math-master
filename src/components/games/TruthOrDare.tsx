@@ -1805,11 +1805,11 @@ const TruthOrDare: React.FC = () => {
 
   // Chat-style gameplay
   return (
-    <div className="flex flex-col h-[calc(100dvh-180px)] sm:h-[calc(100dvh-120px)] max-w-md mx-auto bg-gradient-to-b from-pink-950/20 to-background">
+    <div className="flex flex-col h-full max-h-[calc(100dvh-200px)] sm:max-h-[calc(100dvh-140px)] max-w-md mx-auto bg-gradient-to-b from-pink-950/20 to-background overflow-hidden">
       {renderFloatingHearts()}
       
       {/* WhatsApp-style Header */}
-      <div className="flex items-center gap-3 px-3 py-2.5 bg-gradient-to-r from-pink-500/10 to-purple-500/10 backdrop-blur-sm border-b border-white/5 shadow-sm">
+      <div className="shrink-0 flex items-center gap-3 px-3 py-2.5 bg-gradient-to-r from-pink-500/10 to-purple-500/10 backdrop-blur-sm border-b border-white/5 shadow-sm">
         <Button 
           variant="ghost" 
           size="icon" 
@@ -1845,7 +1845,7 @@ const TruthOrDare: React.FC = () => {
       {/* Chat messages with wallpaper */}
       <div 
         ref={chatContainerRef}
-        className="flex-1 overflow-y-auto px-3 py-3 space-y-1"
+        className="flex-1 overflow-y-auto px-3 py-3 space-y-1 min-h-0"
         style={{
           backgroundImage: 'radial-gradient(circle at 20% 50%, rgba(236, 72, 153, 0.03) 0%, transparent 50%), radial-gradient(circle at 80% 80%, rgba(168, 85, 247, 0.03) 0%, transparent 50%)'
         }}
@@ -1874,7 +1874,7 @@ const TruthOrDare: React.FC = () => {
 
       {/* WhatsApp-style Input bar */}
       {shouldShowInput && (
-        <div className="px-3 py-2.5 bg-gradient-to-r from-pink-500/5 to-purple-500/5 border-t border-white/5">
+        <div className="shrink-0 px-3 py-2.5 bg-gradient-to-r from-pink-500/5 to-purple-500/5 border-t border-white/5">
           {currentInputAction === 'complete_dare' ? (
             <div className="space-y-2.5">
               {/* Timer display */}
