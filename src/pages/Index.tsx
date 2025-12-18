@@ -318,7 +318,7 @@ const IndexContent: React.FC = () => {
   return (
     <AchievementContext.Provider value={{ showAchievements }}>
     {showSplash && <SplashScreen onComplete={handleSplashComplete} />}
-    <div className="h-screen bg-background relative overflow-hidden flex flex-col">
+    <div className="h-screen bg-background bg-grid-pattern relative overflow-hidden flex flex-col">
       {/* Achievement Notification */}
       {pendingAchievements.length > 0 && (
         <AchievementNotification 
@@ -327,72 +327,60 @@ const IndexContent: React.FC = () => {
         />
       )}
 
-      {/* Futuristic Background Effects */}
-      <div className="absolute inset-0 bg-mesh-gradient pointer-events-none" />
-      <div className="absolute inset-0 bg-grid-pattern opacity-30 pointer-events-none" />
-      
-      {/* Animated Orbs */}
-      <div className="absolute top-10 left-[10%] w-64 h-64 bg-neon-cyan/20 rounded-full blur-[100px] pointer-events-none animate-orb" />
-      <div className="absolute bottom-20 right-[10%] w-72 h-72 bg-neon-purple/20 rounded-full blur-[120px] pointer-events-none animate-orb-delayed" />
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-neon-pink/10 rounded-full blur-[150px] pointer-events-none animate-pulse" />
+      {/* Background Effects */}
+      <div className="absolute inset-0 bg-gradient-to-br from-neon-cyan/5 via-transparent to-neon-purple/5 pointer-events-none" />
+      <div className="absolute top-0 left-1/4 w-48 sm:w-96 h-48 sm:h-96 bg-neon-cyan/10 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute bottom-0 right-1/4 w-48 sm:w-96 h-48 sm:h-96 bg-neon-purple/10 rounded-full blur-3xl pointer-events-none" />
 
-      {/* Mobile Header - Futuristic */}
+      {/* Mobile Header - Super Compact */}
       <header className="lg:hidden relative z-10 px-3 pt-2 pb-1 shrink-0">
-        <div className="flex items-center justify-between glass-morphism rounded-2xl px-3 py-2">
-          <div className="flex items-center gap-2">
-            <div className="relative">
-              <Gamepad2 className="w-6 h-6 text-neon-cyan" />
-              <div className="absolute inset-0 bg-neon-cyan/50 blur-md -z-10" />
-            </div>
-            <span className="font-orbitron text-lg font-bold tracking-wider">
-              <span className="text-neon-cyan text-glow-cyan">MIND</span>
-              <span className="text-neon-purple text-glow-purple">GAMES</span>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1.5">
+            <Gamepad2 className="w-5 h-5 text-neon-cyan" />
+            <span className="font-orbitron text-base font-bold">
+              <span className="text-neon-cyan">MIND</span>
+              <span className="text-neon-purple">GAMES</span>
             </span>
           </div>
           <div className="flex items-center gap-0.5">
             <DifficultySelector />
-            <Button variant="ghost" size="icon" onClick={toggleSound} className="h-8 w-8 rounded-xl hover:bg-neon-green/10">
-              {soundEnabled ? <Volume2 className="w-4 h-4 text-neon-green" /> : <VolumeX className="w-4 h-4 text-muted-foreground" />}
+            <Button variant="ghost" size="icon" onClick={toggleSound} className="h-7 w-7">
+              {soundEnabled ? <Volume2 className="w-3.5 h-3.5 text-neon-green" /> : <VolumeX className="w-3.5 h-3.5 text-muted-foreground" />}
             </Button>
-            <Button variant="ghost" size="icon" onClick={openStats} className="h-8 w-8 rounded-xl hover:bg-neon-cyan/10">
-              <BarChart3 className="w-4 h-4 text-neon-cyan" />
+            <Button variant="ghost" size="icon" onClick={openStats} className="h-7 w-7">
+              <BarChart3 className="w-3.5 h-3.5 text-neon-blue" />
             </Button>
-            <Button variant="ghost" size="icon" onClick={openLeaderboard} className="h-8 w-8 rounded-xl hover:bg-neon-orange/10">
-              <Trophy className="w-4 h-4 text-neon-orange" />
+            <Button variant="ghost" size="icon" onClick={openLeaderboard} className="h-7 w-7">
+              <Trophy className="w-3.5 h-3.5 text-neon-orange" />
             </Button>
             <ThemeToggle />
           </div>
         </div>
       </header>
 
-      {/* Desktop Header - Futuristic */}
-      <header className="hidden lg:block text-center py-6 animate-slide-in shrink-0 relative z-10">
-        <div className="flex items-center justify-center gap-4 mb-6">
-          <div className="relative">
-            <Gamepad2 className="w-12 h-12 text-neon-cyan animate-float" />
-            <div className="absolute inset-0 bg-neon-cyan/40 blur-xl -z-10" />
-          </div>
-          <h1 className="font-orbitron text-5xl md:text-6xl font-black tracking-wider">
+      {/* Desktop Header */}
+      <header className="hidden lg:block text-center py-4 animate-slide-in shrink-0 relative z-10">
+        <div className="flex items-center justify-center gap-3 mb-4">
+          <Gamepad2 className="w-10 h-10 text-neon-cyan animate-float" />
+          <h1 className="font-orbitron text-4xl md:text-5xl font-bold text-foreground">
             <span className="text-neon-cyan text-glow-cyan">MIND</span>
             <span className="text-neon-purple text-glow-purple">GAMES</span>
           </h1>
-          <div className="flex items-center gap-1 ml-4">
-            <Button variant="ghost" size="icon" onClick={toggleSound} className="h-11 w-11 rounded-xl glass-morphism hover:bg-neon-green/20 transition-all">
-              {soundEnabled ? <Volume2 className="w-5 h-5 text-neon-green" /> : <VolumeX className="w-5 h-5 text-muted-foreground" />}
-            </Button>
-            <Button variant="ghost" size="icon" onClick={openStats} className="h-11 w-11 rounded-xl glass-morphism hover:bg-neon-cyan/20 transition-all">
-              <BarChart3 className="w-5 h-5 text-neon-cyan" />
-            </Button>
-            <Button variant="ghost" size="icon" onClick={openLeaderboard} className="h-11 w-11 rounded-xl glass-morphism hover:bg-neon-orange/20 transition-all">
-              <Trophy className="w-5 h-5 text-neon-orange" />
-            </Button>
-            <Button variant="ghost" size="icon" onClick={toggleFullscreen} className="h-11 w-11 rounded-xl glass-morphism hover:bg-neon-purple/20 transition-all">
-              {isFullscreen ? <Minimize className="w-5 h-5 text-neon-purple" /> : <Maximize className="w-5 h-5 text-neon-purple" />}
-            </Button>
-            <ThemeToggle />
-          </div>
+          <Button variant="ghost" size="icon" onClick={toggleSound} className="h-10 w-10">
+            {soundEnabled ? <Volume2 className="w-5 h-5 text-neon-green" /> : <VolumeX className="w-5 h-5 text-muted-foreground" />}
+          </Button>
+          <Button variant="ghost" size="icon" onClick={openStats} className="h-10 w-10">
+            <BarChart3 className="w-5 h-5 text-neon-blue" />
+          </Button>
+          <Button variant="ghost" size="icon" onClick={openLeaderboard} className="h-10 w-10">
+            <Trophy className="w-5 h-5 text-neon-orange" />
+          </Button>
+          <Button variant="ghost" size="icon" onClick={toggleFullscreen} className="h-10 w-10">
+            {isFullscreen ? <Minimize className="w-5 h-5 text-neon-purple" /> : <Maximize className="w-5 h-5 text-neon-purple" />}
+          </Button>
+          <ThemeToggle />
         </div>
-        <p className="text-muted-foreground font-rajdhani text-xl max-w-lg mx-auto mb-5 tracking-wide">
+        <p className="text-muted-foreground font-rajdhani text-lg max-w-md mx-auto mb-4">
           16 games • Real-time multiplayer • Mind training
         </p>
         <DifficultySelector />
@@ -402,7 +390,7 @@ const IndexContent: React.FC = () => {
       <div className="flex-1 min-h-0 relative z-10 flex flex-col lg:block">
         {/* Mobile: Game Area Takes Full Space */}
         <main 
-          className="lg:hidden flex-1 mx-2 mb-2 glass-morphism rounded-3xl p-3 flex items-center justify-center overflow-auto neon-border"
+          className="lg:hidden flex-1 mx-2 mb-2 bg-card/50 backdrop-blur-sm rounded-2xl border border-border p-3 flex items-center justify-center overflow-auto"
           {...swipeHandlers}
         >
           <GameTransition gameKey={activeGame} direction={swipeDirection}>
@@ -473,69 +461,61 @@ const IndexContent: React.FC = () => {
         </footer>
       </div>
 
-      {/* Mobile Bottom Navigation - Futuristic Glass */}
-      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 px-2 pb-1 safe-area-bottom animate-slide-up-full">
-        <div className="glass-morphism rounded-3xl px-2 py-2 shadow-[0_-8px_32px_rgba(0,0,0,0.4)]">
-          <div className="flex gap-1 overflow-x-auto scrollbar-hide pb-1">
-            {/* Multiplayer Section */}
-            <div className="flex gap-1 pr-2 border-r border-neon-cyan/20">
-              {multiplayerGames.map((game) => (
-                <button
-                  key={game.id}
-                  onClick={() => {
-                    setSwipeDirection(null);
-                    setActiveGame(game.id);
-                    soundManager.playLocalSound('click');
-                    haptics.light();
-                  }}
-                  className={`relative flex flex-col items-center justify-center p-2 rounded-2xl min-w-[56px] transition-all duration-300 active:scale-90 ${
-                    activeGame === game.id 
-                      ? `bg-gradient-to-br from-neon-${game.color}/30 to-neon-${game.color}/10 shadow-lg` 
-                      : 'bg-transparent hover:bg-muted/30'
-                  }`}
-                >
-                  {activeGame === game.id && (
-                    <div className={`absolute inset-0 bg-neon-${game.color}/20 rounded-2xl blur-md -z-10`} />
-                  )}
-                  <game.icon className={`w-5 h-5 transition-all duration-300 ${activeGame === game.id ? `text-neon-${game.color} drop-shadow-[0_0_8px_hsl(var(--neon-${game.color}))]` : 'text-muted-foreground'}`} />
-                  <span className={`text-[9px] font-orbitron mt-1 truncate max-w-[48px] transition-all duration-300 ${activeGame === game.id ? `text-neon-${game.color} font-semibold` : 'text-muted-foreground'}`}>
-                    {game.title.split(' ')[0]}
-                  </span>
-                </button>
-              ))}
-            </div>
-            {/* Solo Section */}
-            <div className="flex gap-1 pl-1">
-              {singlePlayerGames.map((game) => (
-                <button
-                  key={game.id}
-                  onClick={() => {
-                    setSwipeDirection(null);
-                    setActiveGame(game.id);
-                    soundManager.playLocalSound('click');
-                    haptics.light();
-                  }}
-                  className={`relative flex flex-col items-center justify-center p-2 rounded-2xl min-w-[56px] transition-all duration-300 active:scale-90 ${
-                    activeGame === game.id 
-                      ? `bg-gradient-to-br from-neon-${game.color}/30 to-neon-${game.color}/10 shadow-lg` 
-                      : 'bg-transparent hover:bg-muted/30'
-                  }`}
-                >
-                  {activeGame === game.id && (
-                    <div className={`absolute inset-0 bg-neon-${game.color}/20 rounded-2xl blur-md -z-10`} />
-                  )}
-                  <game.icon className={`w-5 h-5 transition-all duration-300 ${activeGame === game.id ? `text-neon-${game.color} drop-shadow-[0_0_8px_hsl(var(--neon-${game.color}))]` : 'text-muted-foreground'}`} />
-                  <span className={`text-[9px] font-orbitron mt-1 truncate max-w-[48px] transition-all duration-300 ${activeGame === game.id ? `text-neon-${game.color} font-semibold` : 'text-muted-foreground'}`}>
-                    {game.title.split(' ')[0]}
-                  </span>
-                </button>
-              ))}
-            </div>
+      {/* Mobile Bottom Navigation - App Style with Glass Effect */}
+      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-card/80 backdrop-blur-xl backdrop-saturate-150 border-t border-white/10 px-2 py-1.5 safe-area-bottom shadow-[0_-4px_20px_rgba(0,0,0,0.3)] animate-slide-up-full">
+        <div className="flex gap-1 overflow-x-auto scrollbar-hide pb-1">
+          {/* Multiplayer Section */}
+          <div className="flex gap-1 pr-2 border-r border-border/50">
+            {multiplayerGames.map((game) => (
+              <button
+                key={game.id}
+                onClick={() => {
+                  setSwipeDirection(null);
+                  setActiveGame(game.id);
+                  soundManager.playLocalSound('click');
+                  haptics.light();
+                }}
+                className={`flex flex-col items-center justify-center p-1.5 rounded-lg min-w-[52px] transition-all duration-200 active:scale-95 ${
+                  activeGame === game.id 
+                    ? `bg-neon-${game.color}/20 border border-neon-${game.color}/50` 
+                    : 'bg-transparent'
+                }`}
+              >
+                <game.icon className={`w-5 h-5 ${activeGame === game.id ? `text-neon-${game.color}` : 'text-muted-foreground'}`} />
+                <span className={`text-[8px] font-orbitron mt-0.5 truncate max-w-[48px] ${activeGame === game.id ? `text-neon-${game.color}` : 'text-muted-foreground'}`}>
+                  {game.title.split(' ')[0]}
+                </span>
+              </button>
+            ))}
           </div>
-          {/* iOS Home Indicator */}
-          <div className="flex justify-center pt-2">
-            <div className="w-28 h-1 bg-gradient-to-r from-neon-cyan/50 via-neon-purple/50 to-neon-pink/50 rounded-full" />
+          {/* Solo Section */}
+          <div className="flex gap-1 pl-1">
+            {singlePlayerGames.map((game) => (
+              <button
+                key={game.id}
+                onClick={() => {
+                  setSwipeDirection(null);
+                  setActiveGame(game.id);
+                  soundManager.playLocalSound('click');
+                  haptics.light();
+                }}
+                className={`flex flex-col items-center justify-center p-1.5 rounded-lg min-w-[52px] transition-all duration-200 active:scale-95 ${
+                  activeGame === game.id 
+                    ? `bg-neon-${game.color}/20 border border-neon-${game.color}/50` 
+                    : 'bg-transparent'
+                }`}
+              >
+                <game.icon className={`w-5 h-5 ${activeGame === game.id ? `text-neon-${game.color}` : 'text-muted-foreground'}`} />
+                <span className={`text-[8px] font-orbitron mt-0.5 truncate max-w-[48px] ${activeGame === game.id ? `text-neon-${game.color}` : 'text-muted-foreground'}`}>
+                  {game.title.split(' ')[0]}
+                </span>
+              </button>
+            ))}
           </div>
+        </div>
+        {/* iOS Home Indicator */}
+        <div className="flex justify-center pt-1 pb-0.5">
+          <div className="w-32 h-1 bg-foreground/30 rounded-full" />
         </div>
       </nav>
 
