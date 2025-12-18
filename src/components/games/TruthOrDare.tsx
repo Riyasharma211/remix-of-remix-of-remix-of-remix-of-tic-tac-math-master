@@ -295,23 +295,23 @@ const TruthOrDare: React.FC = () => {
     }, 3000);
   }, []);
 
-  // Floating emoji reaction animation - shower effect with multiple emojis
-  const spawnFloatingEmoji = useCallback((emoji: string, count: number = 8) => {
+  // Floating emoji reaction animation - Facebook-style shower effect
+  const spawnFloatingEmoji = useCallback((emoji: string, count: number = 12) => {
     const emojis = [];
     for (let i = 0; i < count; i++) {
       emojis.push({
         id: Date.now() + Math.random() + i,
-        x: Math.random() * 90 + 5, // Random x position 5-95%
-        y: Math.random() * 30, // Random start y offset 0-30%
+        x: 20 + Math.random() * 60, // Centered spread 20-80%
+        y: Math.random() * 20, // Random start y offset 0-20%
         emoji,
-        delay: Math.random() * 300, // Staggered spawn
-        scale: 0.8 + Math.random() * 0.6, // Random size 0.8-1.4
+        delay: i * 80 + Math.random() * 100, // Staggered cascade effect
+        scale: 0.7 + Math.random() * 0.8, // Random size 0.7-1.5
       });
     }
     setFloatingReactions(prev => [...prev, ...emojis]);
     setTimeout(() => {
       setFloatingReactions(prev => prev.filter(e => !emojis.find(ne => ne.id === e.id)));
-    }, 3000);
+    }, 3500);
   }, []);
 
   // Save message to database and add to local state immediately
@@ -1488,15 +1488,24 @@ const TruthOrDare: React.FC = () => {
       {floatingReactions.map(reaction => (
         <div
           key={reaction.id}
-          className="absolute text-5xl drop-shadow-lg animate-float-up"
+          className="absolute text-5xl drop-shadow-lg animate-emoji-float"
           style={{ 
             left: `${reaction.x}%`, 
-            bottom: `${20 + (reaction.y || 0)}%`,
+            bottom: `${15 + (reaction.y || 0)}%`,
             animationDelay: `${reaction.delay || 0}ms`,
-            transform: `scale(${reaction.scale || 1})`,
-          }}
+            filter: 'drop-shadow(0 4px 8px rgba(0,0,0,0.3))',
+            '--float-x': `${(Math.random() - 0.5) * 60}px`,
+          } as React.CSSProperties}
         >
-          {reaction.emoji}
+          <span 
+            className="inline-block animate-emoji-wobble"
+            style={{ 
+              animationDelay: `${(reaction.delay || 0) + 100}ms`,
+              transform: `scale(${reaction.scale || 1})`,
+            }}
+          >
+            {reaction.emoji}
+          </span>
         </div>
       ))}
       </div>
@@ -1636,15 +1645,19 @@ const TruthOrDare: React.FC = () => {
                         <button
                           key={emoji}
                           onClick={() => sendReaction(msg.id, emoji)}
-                          className={`flex items-center gap-0.5 px-2 py-1 rounded-full text-base transition-all hover:scale-110 active:scale-95 ${
+                          className={`group flex items-center gap-0.5 px-2 py-1 rounded-full text-base transition-all duration-200 hover:scale-125 active:scale-90 ${
                             hasReacted 
-                              ? 'bg-pink-500/30 ring-1 ring-pink-400' 
+                              ? 'bg-pink-500/30 ring-1 ring-pink-400 shadow-lg shadow-pink-500/20' 
                               : 'bg-background/40 hover:bg-background/60'
                           }`}
                         >
-                          <span className={hasReacted ? 'animate-bounce' : ''}>{emoji}</span>
+                          <span className={`inline-block transition-transform duration-200 group-hover:animate-emoji-wobble ${hasReacted ? 'animate-emoji-pop' : ''}`}>
+                            {emoji}
+                          </span>
                           {count > 0 && (
-                            <span className="text-[10px] font-semibold">{count}</span>
+                            <span className={`text-[10px] font-semibold transition-all ${hasReacted ? 'animate-emoji-burst' : ''}`}>
+                              {count}
+                            </span>
                           )}
                         </button>
                       );
