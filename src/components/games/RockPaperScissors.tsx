@@ -230,7 +230,7 @@ const RockPaperScissors: React.FC = () => {
         setGameState(prev => ({ ...prev, myScore: prev.myScore + 1 }));
       } else if (winner === 'player2') {
         soundManager.playLocalSound('lose');
-        haptics.error();
+        haptics.screenShake();
         setGameState(prev => ({ ...prev, opponentScore: prev.opponentScore + 1 }));
       } else {
         soundManager.playLocalSound('click');
@@ -246,6 +246,9 @@ const RockPaperScissors: React.FC = () => {
             celebrateEpicVictory();
             spawnFloatingEmojis('🏆');
             setTimeout(() => spawnFloatingEmojis('🎉'), 300);
+          } else if (newMyScore < newOpponentScore) {
+            haptics.screenShake();
+            spawnFloatingEmojis('💀');
           }
           setMode('result');
         } else {

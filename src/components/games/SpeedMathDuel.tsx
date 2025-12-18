@@ -307,6 +307,9 @@ const SpeedMathDuel: React.FC = () => {
       celebrateEpicVictory();
       spawnFloatingEmojis('🏆');
       setTimeout(() => spawnFloatingEmojis('🎉'), 300);
+    } else if (myScore < opponentScore) {
+      haptics.screenShake();
+      spawnFloatingEmojis('💀');
     }
   };
 

@@ -196,7 +196,7 @@ const ConnectFour: React.FC = () => {
             setWinner(payload.winner);
             if (payload.winner && payload.winner !== myColor) {
               soundManager.playLocalSound('lose');
-              haptics.error();
+              haptics.screenShake();
             }
           }
           if (payload.scores) setScores(payload.scores);
