@@ -453,11 +453,12 @@ const TruthOrDare: React.FC = () => {
         }
       };
 
-      // Get partner name for the prompt
+      // Get partner info for the prompt
       const partnerIdx = myPlayerIndex === 0 ? 1 : 0;
-      const partnerPlayerName = gameState.players[partnerIdx]?.name || 'Partner';
+      const partnerPlayer = gameState.players[partnerIdx];
+      const partnerPlayerName = partnerPlayer?.name || 'Partner';
 
-      // Save input prompt message for opponent - include questionType for sync
+      // Save input prompt message for opponent - include forPlayerId for who should type the question
       const inputMsg: Omit<ChatMessage, 'id' | 'created_at'> = {
         sender: 'system',
         message_type: 'input',
@@ -471,6 +472,7 @@ const TruthOrDare: React.FC = () => {
             : `Type a dare challenge for ${playerName}...`,
           inputAction: 'submit_question',
           questionType: buttonValue as 'truth' | 'dare',
+          forPlayerId: partnerPlayer?.id, // The person who should ask the question
           forPlayerName: partnerPlayerName,
           targetPlayerName: playerName
         }
@@ -1221,13 +1223,8 @@ const TruthOrDare: React.FC = () => {
     return forPlayerId === playerId;
   };
 
-  // Determine input action from messages - check for waiting state
-  const determineInputAction = useCallback((msgs: ChatMessage[], state: GameState, currentPlayerId: string): string | null => {
-    if (!state.players || state.players.length < 2) return null;
-    
-    const currentTurnPlayer = state.players[state.currentPlayerIndex];
-    const isCurrentPlayerTurn = currentTurnPlayer?.id === currentPlayerId;
-    
+  // Determine input action from messages - use forPlayerId from messages for reliability
+  const determineInputAction = useCallback((msgs: ChatMessage[], _state: GameState, currentPlayerId: string): string | null => {
     // Find last input message and check if there's a result after it
     const reversedMsgs = [...msgs].reverse();
     const lastInputMsgIdx = reversedMsgs.findIndex(m => m.message_type === 'input' && m.content.inputAction);
@@ -1241,16 +1238,13 @@ const TruthOrDare: React.FC = () => {
     
     const lastInputMsg = reversedMsgs[lastInputMsgIdx];
     const action = lastInputMsg.content.inputAction;
+    const forPlayerId = lastInputMsg.content.forPlayerId;
     
-    console.log('Determining input action:', { action, isCurrentPlayerTurn, currentTurnPlayer: currentTurnPlayer?.name, currentPlayerId });
+    console.log('Determining input action:', { action, forPlayerId, currentPlayerId, match: forPlayerId === currentPlayerId });
     
-    // submit_question is for opponent (not current turn player)
-    if (action === 'submit_question' && !isCurrentPlayerTurn) {
-      return 'submit_question';
-    }
-    // submit_answer and complete_dare are for current turn player
-    if ((action === 'submit_answer' || action === 'complete_dare') && isCurrentPlayerTurn) {
-      return action;
+    // All input actions now use forPlayerId to determine who should see the input
+    if (forPlayerId === currentPlayerId) {
+      return action || null;
     }
 
     return null;
