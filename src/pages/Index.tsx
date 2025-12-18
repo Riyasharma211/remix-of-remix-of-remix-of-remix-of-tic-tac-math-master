@@ -1,4 +1,4 @@
-import React, { useState, useCallback, createContext, useContext, useMemo } from 'react';
+import React, { useState, useCallback, createContext, useContext, useMemo, useEffect } from 'react';
 import { useSwipe } from '@/hooks/useSwipe';
 import { Grid3X3, Zap, Brain, Target, Gamepad2, Volume2, VolumeX, Timer, Sparkles, Palette, Swords, Pencil, Heart, Trophy, Link2, HelpCircle, Maximize, Minimize, BarChart3, Shuffle, Keyboard, Crosshair } from 'lucide-react';
 import TicTacToeOnline from '@/components/games/TicTacToeOnline';
@@ -24,6 +24,7 @@ import ThemeToggle from '@/components/ThemeToggle';
 import Leaderboard from '@/components/Leaderboard';
 import GameStatsDashboard from '@/components/GameStatsDashboard';
 import { AchievementNotification } from '@/components/AchievementNotification';
+import SplashScreen from '@/components/SplashScreen';
 import { Button } from '@/components/ui/button';
 import { soundManager } from '@/utils/soundManager';
 import { haptics } from '@/utils/haptics';
@@ -182,7 +183,17 @@ const IndexContent: React.FC = () => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [pendingAchievements, setPendingAchievements] = useState<Achievement[]>([]);
   const [swipeDirection, setSwipeDirection] = useState<'left' | 'right' | null>(null);
+  const [showSplash, setShowSplash] = useState(() => {
+    // Only show splash on mobile and on first load
+    const isMobile = window.innerWidth < 1024;
+    const hasSeenSplash = sessionStorage.getItem('hasSeenSplash');
+    return isMobile && !hasSeenSplash;
+  });
 
+  const handleSplashComplete = useCallback(() => {
+    setShowSplash(false);
+    sessionStorage.setItem('hasSeenSplash', 'true');
+  }, []);
   const showAchievements = useCallback((achievements: Achievement[]) => {
     if (achievements.length > 0) {
       setPendingAchievements(achievements);
@@ -305,6 +316,7 @@ const IndexContent: React.FC = () => {
 
   return (
     <AchievementContext.Provider value={{ showAchievements }}>
+    {showSplash && <SplashScreen onComplete={handleSplashComplete} />}
     <div className="h-screen bg-background bg-grid-pattern relative overflow-hidden flex flex-col">
       {/* Achievement Notification */}
       {pendingAchievements.length > 0 && (
