@@ -449,7 +449,7 @@ const IndexContent: React.FC = () => {
       </div>
 
       {/* Mobile Bottom Navigation - App Style with Glass Effect */}
-      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-card/80 backdrop-blur-xl backdrop-saturate-150 border-t border-white/10 px-2 py-1.5 safe-area-bottom shadow-[0_-4px_20px_rgba(0,0,0,0.3)]">
+      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-card/80 backdrop-blur-xl backdrop-saturate-150 border-t border-white/10 px-2 py-1.5 safe-area-bottom shadow-[0_-4px_20px_rgba(0,0,0,0.3)] animate-slide-up-full">
         <div className="flex gap-1 overflow-x-auto scrollbar-hide pb-1">
           {/* Multiplayer Section */}
           <div className="flex gap-1 pr-2 border-r border-border/50">
