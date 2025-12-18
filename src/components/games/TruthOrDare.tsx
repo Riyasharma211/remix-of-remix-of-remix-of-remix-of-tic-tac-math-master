@@ -119,6 +119,7 @@ const TruthOrDare: React.FC = () => {
   const [dareTimer, setDareTimer] = useState<number | null>(null);
   const [darePhoto, setDarePhoto] = useState<File | null>(null);
   const [darePhotoPreview, setDarePhotoPreview] = useState<string | null>(null);
+  const [darePhotoBase64, setDarePhotoBase64] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
@@ -376,12 +377,20 @@ const TruthOrDare: React.FC = () => {
     if (file) {
       setDarePhoto(file);
       setDarePhotoPreview(URL.createObjectURL(file));
+      
+      // Convert to base64 for sending over network
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setDarePhotoBase64(reader.result as string);
+      };
+      reader.readAsDataURL(file);
     }
   };
 
   const clearPhoto = () => {
     setDarePhoto(null);
     setDarePhotoPreview(null);
+    setDarePhotoBase64(null);
   };
 
   // --- Button Click Handler ---
@@ -585,7 +594,7 @@ const TruthOrDare: React.FC = () => {
       sender: myPlayerIndex === 0 ? "player1" : "player2",
       sender_name: playerName,
       message_type: "text",
-      content: { text: darePhotoPreview ? "✅ I completed the dare! 📸" : "✅ I completed the dare!" },
+      content: { text: darePhotoBase64 ? "✅ I completed the dare! 📸" : "✅ I completed the dare!" },
       created_at: new Date().toISOString(),
     };
 
@@ -596,10 +605,10 @@ const TruthOrDare: React.FC = () => {
       content: {
         text: "🔥 DARE COMPLETED",
         question,
-        answer: darePhotoPreview ? "✅ Dare completed with proof!" : "✅ Dare completed!",
+        answer: darePhotoBase64 ? "✅ Dare completed with proof!" : "✅ Dare completed!",
         answeredBy: playerName,
         questionType: "dare",
-        proofPhotoUrl: darePhotoPreview || undefined,
+        proofPhotoUrl: darePhotoBase64 || undefined,
       },
       created_at: new Date().toISOString(),
     };
@@ -640,6 +649,7 @@ const TruthOrDare: React.FC = () => {
     setCurrentInputAction(null);
     setDarePhoto(null);
     setDarePhotoPreview(null);
+    setDarePhotoBase64(null);
     setIsSubmitting(false);
   };
 
