@@ -101,6 +101,38 @@ const games = [
     multiplayer: true,
   },
   {
+    id: 'rps' as GameType,
+    title: 'Rock Paper Scissors',
+    description: 'Classic showdown',
+    icon: Hand,
+    color: 'orange' as const,
+    multiplayer: true,
+  },
+  {
+    id: 'connect4' as GameType,
+    title: 'Connect Four',
+    description: '4 in a row',
+    icon: Circle,
+    color: 'cyan' as const,
+    multiplayer: true,
+  },
+  {
+    id: 'hangman' as GameType,
+    title: 'Hangman Battle',
+    description: 'Word guessing',
+    icon: Type,
+    color: 'purple' as const,
+    multiplayer: true,
+  },
+  {
+    id: 'speedmath' as GameType,
+    title: 'Speed Math Duel',
+    description: '60s math race',
+    icon: Calculator,
+    color: 'green' as const,
+    multiplayer: true,
+  },
+  {
     id: 'math' as GameType,
     title: 'Math Challenge',
     description: 'Speed math puzzles',
@@ -314,6 +346,14 @@ const IndexContent: React.FC = () => {
         return <AimTrainer />;
       case 'snake':
         return <SnakeGame />;
+      case 'rps':
+        return <RockPaperScissors />;
+      case 'connect4':
+        return <ConnectFour />;
+      case 'hangman':
+        return <HangmanBattle />;
+      case 'speedmath':
+        return <SpeedMathDuel />;
       default:
         return <TicTacToeOnline />;
     }
@@ -396,7 +436,7 @@ const IndexContent: React.FC = () => {
           <ThemeToggle />
         </div>
         <p className="text-muted-foreground font-rajdhani text-lg max-w-md mx-auto mb-4">
-          16 games • Real-time multiplayer • Mind training
+          20 games • Real-time multiplayer • Mind training
         </p>
         <DifficultySelector />
       </header>
