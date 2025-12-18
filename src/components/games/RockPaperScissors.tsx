@@ -5,7 +5,7 @@ import { Hand, Copy, Check, RotateCcw, Wifi, WifiOff, Trophy } from 'lucide-reac
 import { supabase } from '@/integrations/supabase/client';
 import { soundManager } from '@/utils/soundManager';
 import { haptics } from '@/utils/haptics';
-import { celebrateWin } from '@/utils/confetti';
+import { celebrateWin, celebrateEpicVictory, celebrateStars } from '@/utils/confetti';
 import { useToast } from '@/hooks/use-toast';
 
 type Choice = 'rock' | 'paper' | 'scissors' | null;
@@ -243,7 +243,9 @@ const RockPaperScissors: React.FC = () => {
         
         if (gameState.round >= gameState.maxRounds || newMyScore >= 3 || newOpponentScore >= 3) {
           if (newMyScore > newOpponentScore) {
-            celebrateWin();
+            celebrateEpicVictory();
+            spawnFloatingEmojis('🏆');
+            setTimeout(() => spawnFloatingEmojis('🎉'), 300);
           }
           setMode('result');
         } else {

@@ -5,7 +5,7 @@ import { Circle, Copy, Check, RotateCcw, Wifi, WifiOff, Trophy } from 'lucide-re
 import { supabase } from '@/integrations/supabase/client';
 import { soundManager } from '@/utils/soundManager';
 import { haptics } from '@/utils/haptics';
-import { celebrateWin } from '@/utils/confetti';
+import { celebrateWin, celebrateEpicVictory, celebrateStars } from '@/utils/confetti';
 import { useToast } from '@/hooks/use-toast';
 
 type Player = 'red' | 'yellow' | null;
@@ -257,7 +257,9 @@ const ConnectFour: React.FC = () => {
       setScores(newScores);
       soundManager.playLocalSound('win');
       haptics.success();
-      celebrateWin();
+      celebrateEpicVictory();
+      spawnFloatingEmojis('🏆');
+      setTimeout(() => spawnFloatingEmojis('🎉'), 300);
 
       if (channelRef.current) {
         channelRef.current.send({
