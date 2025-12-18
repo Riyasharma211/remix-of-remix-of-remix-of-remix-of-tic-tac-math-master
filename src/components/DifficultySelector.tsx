@@ -14,29 +14,56 @@ const DifficultySelector: React.FC = () => {
   };
 
   return (
-    <div className="flex items-center gap-3 p-3 bg-card/50 rounded-xl border border-border">
-      <Gauge className="w-4 h-4 text-muted-foreground" />
-      <div className="flex gap-2">
-        {levels.map((level) => {
-          const config = difficultyConfigs[level];
-          const isActive = difficulty === level;
-          
-          return (
-            <button
-              key={level}
-              onClick={() => handleSelect(level)}
-              className={`px-3 py-1 rounded-lg font-rajdhani text-sm font-medium transition-all duration-200
-                ${isActive 
-                  ? `${config.color} bg-current/10 border border-current` 
-                  : 'text-muted-foreground hover:text-foreground'
-                }`}
-            >
-              {config.label}
-            </button>
-          );
-        })}
+    <>
+      {/* Mobile - Compact dropdown style */}
+      <div className="lg:hidden flex items-center">
+        <div className="flex bg-card/80 rounded-lg border border-border overflow-hidden">
+          {levels.map((level) => {
+            const config = difficultyConfigs[level];
+            const isActive = difficulty === level;
+            
+            return (
+              <button
+                key={level}
+                onClick={() => handleSelect(level)}
+                className={`px-2 py-0.5 font-rajdhani text-[10px] font-medium transition-all duration-200
+                  ${isActive 
+                    ? `${config.color} bg-current/20` 
+                    : 'text-muted-foreground'
+                  }`}
+              >
+                {config.label.charAt(0)}
+              </button>
+            );
+          })}
+        </div>
       </div>
-    </div>
+
+      {/* Desktop */}
+      <div className="hidden lg:flex items-center gap-3 p-3 bg-card/50 rounded-xl border border-border">
+        <Gauge className="w-4 h-4 text-muted-foreground" />
+        <div className="flex gap-2">
+          {levels.map((level) => {
+            const config = difficultyConfigs[level];
+            const isActive = difficulty === level;
+            
+            return (
+              <button
+                key={level}
+                onClick={() => handleSelect(level)}
+                className={`px-3 py-1 rounded-lg font-rajdhani text-sm font-medium transition-all duration-200
+                  ${isActive 
+                    ? `${config.color} bg-current/10 border border-current` 
+                    : 'text-muted-foreground hover:text-foreground'
+                  }`}
+              >
+                {config.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </>
   );
 };
 
