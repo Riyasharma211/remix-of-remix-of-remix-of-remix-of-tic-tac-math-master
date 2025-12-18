@@ -124,15 +124,19 @@ const TruthOrDare: React.FC = () => {
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const { setGameActive, setActiveGameName } = useActiveGame();
 
-  // Refs for callbacks
+  // Refs for callbacks to avoid stale closures
   const gameStateRef = useRef(gameState);
   const messagesRef = useRef(messages);
+  const modeRef = useRef(mode);
   useEffect(() => {
     gameStateRef.current = gameState;
   }, [gameState]);
   useEffect(() => {
     messagesRef.current = messages;
   }, [messages]);
+  useEffect(() => {
+    modeRef.current = mode;
+  }, [mode]);
 
   // Derived state
   const myPlayerIndex = gameState.players.findIndex((p) => p.id === playerId);
@@ -219,7 +223,7 @@ const TruthOrDare: React.FC = () => {
           const otherPlayer = payload.state.players.find((p: Player) => p.id !== playerId);
           if (otherPlayer) setPartnerName(otherPlayer.name);
           
-          if (payload.state.players.length === 2 && mode === "waiting") {
+          if (payload.state.players.length === 2 && modeRef.current === "waiting") {
             setMode("playing");
             celebrateHearts();
             haptics.success();
@@ -746,7 +750,8 @@ const TruthOrDare: React.FC = () => {
     if (!channelRef.current || mode !== "waiting") return;
 
     const handleJoinRequest = ({ payload }: { payload: { player: Player } }) => {
-      if (gameState.players.length >= 2) return;
+      // Only host handles join requests (has 1 player)
+      if (gameState.players.length !== 1) return;
       if (gameState.players.some(p => p.id === payload.player.id)) return;
 
       const newState: GameState = {
@@ -787,6 +792,12 @@ const TruthOrDare: React.FC = () => {
       setMessages([welcomeMsg, turnMsg]);
       broadcastMessage(welcomeMsg);
       broadcastMessage(turnMsg);
+      
+      // Transition to playing mode for host
+      setMode("playing");
+      celebrateHearts();
+      haptics.success();
+      soundManager.playLocalSound("start");
     };
 
     channelRef.current.on("broadcast", { event: "join_request" }, handleJoinRequest);
@@ -794,7 +805,7 @@ const TruthOrDare: React.FC = () => {
     return () => {
       // Cleanup handled by channel removal
     };
-  }, [mode, gameState, broadcastState]);
+  }, [mode, gameState]);
 
   // --- Render Logic ---
   const shouldShowButtonsForMessage = (msg: ChatMessage, allMessages: ChatMessage[]): boolean => {
