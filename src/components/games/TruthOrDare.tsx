@@ -1320,13 +1320,16 @@ const TruthOrDare: React.FC = () => {
           setGameState(payload.gameState);
           gameStateRef.current = payload.gameState;
           
-          // Re-determine input action with updated game state
-          setMessages(prev => {
-            const action = determineInputAction(prev, payload.gameState, playerIdRef.current);
+          // Reload messages from DB to ensure sync (postgres_changes might be delayed)
+          const currentRoomId = roomIdRef.current;
+          if (currentRoomId) {
+            const loadedMessages = await loadMessages(currentRoomId);
+            console.log('Reloaded messages after game_state:', loadedMessages.length);
+            setMessages(loadedMessages);
+            const action = determineInputAction(loadedMessages, payload.gameState, playerIdRef.current);
             console.log('Updated input action after game_state broadcast:', action);
             setCurrentInputAction(action);
-            return prev;
-          });
+          }
         }
       })
       .on('broadcast', { event: 'typing' }, ({ payload }) => {
