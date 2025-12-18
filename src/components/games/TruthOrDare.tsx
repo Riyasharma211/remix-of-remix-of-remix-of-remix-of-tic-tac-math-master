@@ -110,18 +110,51 @@ const TruthOrDare: React.FC = () => {
 
   const generateRoomCode = () => Math.random().toString(36).substring(2, 6).toUpperCase();
 
-  // Auto-scroll to bottom with delay for DOM update
+  // Auto-scroll to bottom when messages change
+  const scrollToBottom = useCallback(() => {
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTo({
+        top: chatContainerRef.current.scrollHeight,
+        behavior: 'smooth'
+      });
+    }
+  }, []);
+
   useEffect(() => {
-    const timer = setTimeout(() => {
-      if (chatContainerRef.current) {
-        chatContainerRef.current.scrollTo({
-          top: chatContainerRef.current.scrollHeight,
-          behavior: 'smooth'
-        });
-      }
-    }, 100);
+    // Immediate scroll for better UX
+    scrollToBottom();
+    // Also scroll after a delay to handle any DOM updates
+    const timer = setTimeout(scrollToBottom, 150);
     return () => clearTimeout(timer);
-  }, [messages]);
+  }, [messages, scrollToBottom]);
+
+  // Keyboard-aware behavior for mobile
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+  
+  useEffect(() => {
+    // Use visualViewport API for mobile keyboard detection
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+
+    const handleResize = () => {
+      // If viewport height is significantly smaller than window height, keyboard is open
+      const isKeyboardOpen = viewport.height < window.innerHeight * 0.75;
+      setKeyboardVisible(isKeyboardOpen);
+      
+      // Scroll to bottom when keyboard opens
+      if (isKeyboardOpen) {
+        setTimeout(scrollToBottom, 100);
+      }
+    };
+
+    viewport.addEventListener('resize', handleResize);
+    viewport.addEventListener('scroll', handleResize);
+    
+    return () => {
+      viewport.removeEventListener('resize', handleResize);
+      viewport.removeEventListener('scroll', handleResize);
+    };
+  }, [scrollToBottom]);
 
   // Send read receipts when viewing messages from partner
   useEffect(() => {
@@ -1805,7 +1838,11 @@ const TruthOrDare: React.FC = () => {
 
   // Chat-style gameplay
   return (
-    <div className="flex flex-col h-full max-h-[calc(100dvh-200px)] sm:max-h-[calc(100dvh-140px)] max-w-md mx-auto bg-gradient-to-b from-pink-950/20 to-background overflow-hidden">
+    <div className={`flex flex-col h-full max-w-md mx-auto bg-gradient-to-b from-pink-950/20 to-background overflow-hidden transition-all duration-200 ${
+      keyboardVisible 
+        ? 'max-h-[calc(100dvh-80px)]' 
+        : 'max-h-[calc(100dvh-200px)] sm:max-h-[calc(100dvh-140px)]'
+    }`}>
       {renderFloatingHearts()}
       
       {/* WhatsApp-style Header */}
@@ -1966,6 +2003,7 @@ const TruthOrDare: React.FC = () => {
                     placeholder="Type your answer..."
                     maxLength={300}
                     className="w-full bg-white/5 border-white/10 rounded-full py-5 px-4 pr-12 text-[15px] placeholder:text-muted-foreground/50"
+                    onFocus={() => setTimeout(scrollToBottom, 300)}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' && !e.shiftKey) {
                         e.preventDefault();
@@ -2007,6 +2045,7 @@ const TruthOrDare: React.FC = () => {
                   placeholder={gameState.currentType === 'truth' ? 'Ask a truth question...' : 'Give a dare...'}
                   maxLength={300}
                   className="w-full bg-white/5 border-white/10 rounded-full py-5 px-4 pr-12 text-[15px] placeholder:text-muted-foreground/50"
+                  onFocus={() => setTimeout(scrollToBottom, 300)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && !e.shiftKey) {
                       e.preventDefault();
