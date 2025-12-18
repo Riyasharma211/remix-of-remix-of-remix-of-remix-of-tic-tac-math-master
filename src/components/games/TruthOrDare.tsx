@@ -167,6 +167,40 @@ const TruthOrDare: React.FC = () => {
     return () => clearTimeout(timer);
   }, [messages, scrollToBottom]);
 
+  // Dare timer - starts when currentInputAction becomes "complete_dare"
+  useEffect(() => {
+    let interval: NodeJS.Timeout | null = null;
+    
+    if (currentInputAction === "complete_dare") {
+      // Start timer from 2 minutes (120 seconds)
+      setDareTimer(120);
+      interval = setInterval(() => {
+        setDareTimer((prev) => {
+          if (prev === null || prev <= 0) {
+            if (interval) clearInterval(interval);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    } else {
+      // Reset timer when not in dare mode
+      setDareTimer(null);
+    }
+
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [currentInputAction]);
+
+  // Re-evaluate input action when gameState changes (handles race condition with messages)
+  useEffect(() => {
+    if (mode === "playing" && messages.length > 0) {
+      const action = determineInputAction(messages, gameState, playerId);
+      setCurrentInputAction(action);
+    }
+  }, [gameState.currentPlayerIndex, messages, playerId, mode]);
+
   // --- Determine Input Action ---
   const determineInputAction = useCallback(
     (msgs: ChatMessage[], state: GameState, currentPlayerId: string): string | null => {
