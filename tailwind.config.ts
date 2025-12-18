@@ -129,6 +129,10 @@ export default {
           "80%": { transform: "translate(2px, -2px) rotate(0.2deg)" },
           "90%": { transform: "translate(-2px, 2px) rotate(0deg)" },
         },
+        "bounce-gentle": {
+          "0%, 100%": { transform: "translateY(0)" },
+          "50%": { transform: "translateY(-3px)" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
@@ -142,6 +146,7 @@ export default {
         "fade-in": "fade-in 0.3s ease-out",
         "shake": "shake 0.5s ease-in-out",
         "screen-shake": "screen-shake 0.5s ease-in-out",
+        "bounce-gentle": "bounce-gentle 1.5s ease-in-out infinite",
       },
     },
   },
