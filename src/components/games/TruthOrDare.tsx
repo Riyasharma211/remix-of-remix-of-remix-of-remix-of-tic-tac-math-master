@@ -590,11 +590,18 @@ const TruthOrDare: React.FC = () => {
       const question = questionMsg?.content.question || '';
       const questionType = questionMsg?.content.questionType || 'truth';
 
-      console.log('Submitting answer, type:', questionType, 'myPlayerIndex:', myPlayerIndex);
+      const currentState = gameStateRef.current;
+      
+      // Find MY index and the OTHER player explicitly using playerId
+      const meIndex = currentState.players.findIndex(p => p.id === playerId);
+      const otherIndex = meIndex === 0 ? 1 : 0;
+      const otherPlayer = currentState.players[otherIndex];
+      
+      console.log('ANSWER SUBMIT - Me:', playerName, 'meIndex:', meIndex, 'Other:', otherPlayer?.name, 'otherIndex:', otherIndex);
 
       // Save answer message
       const answerMsg: Omit<ChatMessage, 'id' | 'created_at'> = {
-        sender: myPlayerIndex === 0 ? 'player1' : 'player2',
+        sender: meIndex === 0 ? 'player1' : 'player2',
         sender_name: playerName,
         message_type: 'text',
         content: { text: validation.value! }
@@ -613,41 +620,36 @@ const TruthOrDare: React.FC = () => {
         }
       };
 
-      // Create next turn - I just answered, so the OTHER player gets the turn
-      // Use myPlayerIndex directly instead of relying on potentially stale currentPlayerIndex
-      const currentState = gameStateRef.current;
-      const nextIndex = myPlayerIndex === 0 ? 1 : 0; // The other player
-      const nextPlayer = currentState.players[nextIndex];
-      
-      console.log('Turn switching: I am player', myPlayerIndex, ', next turn goes to player', nextIndex, '(', nextPlayer?.name, ')');
-      
       // Add points for answering truth
       const updatedPlayers = currentState.players.map((p, idx) => 
-        idx === myPlayerIndex ? { ...p, points: p.points + POINTS.TRUTH_ANSWERED } : p
+        idx === meIndex ? { ...p, points: p.points + POINTS.TRUTH_ANSWERED } : p
       );
       
+      // Next turn goes to the OTHER player (not me who just answered)
       const newState: GameState = {
         ...currentState,
         players: updatedPlayers,
-        currentPlayerIndex: nextIndex,
+        currentPlayerIndex: otherIndex, // OTHER player's turn
         currentType: undefined,
         roundCount: currentState.roundCount + 1,
         truthCount: questionType === 'truth' ? currentState.truthCount + 1 : currentState.truthCount,
         dareCount: questionType === 'dare' ? currentState.dareCount + 1 : currentState.dareCount
       };
 
-      // Save turn message - buttons only for next player (use their ID directly)
+      // Save turn message - buttons only for OTHER player (they choose next)
       const turnMsg: Omit<ChatMessage, 'id' | 'created_at'> = {
         sender: 'system',
         message_type: 'buttons',
         content: createTurnMessageContent(
-          nextPlayer?.name || '',
-          nextPlayer?.id || '',
+          otherPlayer?.name || '',
+          otherPlayer?.id || '', // CRITICAL: Use other player's ID for button visibility
           newState.truthCount,
           newState.dareCount,
           true
         )
       };
+
+      console.log('Creating turn message for:', otherPlayer?.name, 'with forPlayerId:', otherPlayer?.id);
 
       await saveMessages([answerMsg, resultMsg, turnMsg], roomId);
       setCurrentInputAction(null);
@@ -787,19 +789,23 @@ const TruthOrDare: React.FC = () => {
 
     // Create next turn - I just completed dare, so the OTHER player gets the turn
     const currentState = gameStateRef.current;
-    const nextIndex = myPlayerIndex === 0 ? 1 : 0; // The other player
-    const nextPlayer = currentState.players[nextIndex];
     
-    console.log('Dare complete - Turn switching: I am player', myPlayerIndex, ', next turn goes to player', nextIndex, '(', nextPlayer?.name, ')');
+    // Find MY index and the OTHER player explicitly using playerId
+    const meIndex = currentState.players.findIndex(p => p.id === playerId);
+    const otherIndex = meIndex === 0 ? 1 : 0;
+    const otherPlayer = currentState.players[otherIndex];
+    
+    console.log('DARE COMPLETE - Me:', playerName, 'meIndex:', meIndex, 'Other:', otherPlayer?.name, 'otherIndex:', otherIndex);
     
     const updatedPlayers = currentState.players.map((p, idx) => 
-      idx === myPlayerIndex ? { ...p, points: p.points + POINTS.DARE_COMPLETED } : p
+      idx === meIndex ? { ...p, points: p.points + POINTS.DARE_COMPLETED } : p
     );
     
+    // Next turn goes to the OTHER player (not me who just completed the dare)
     const newState: GameState = {
       ...currentState,
       players: updatedPlayers,
-      currentPlayerIndex: nextIndex,
+      currentPlayerIndex: otherIndex, // OTHER player's turn
       currentType: undefined,
       roundCount: currentState.roundCount + 1,
       dareCount: currentState.dareCount + 1
@@ -807,18 +813,20 @@ const TruthOrDare: React.FC = () => {
     
     gameStateRef.current = newState; // Update ref immediately
 
-    // Save turn message
+    // Save turn message - buttons for OTHER player (they choose next)
     const turnMsg: Omit<ChatMessage, 'id' | 'created_at'> = {
       sender: 'system',
       message_type: 'buttons',
       content: createTurnMessageContent(
-        nextPlayer?.name || '',
-        nextPlayer?.id || '',
+        otherPlayer?.name || '',
+        otherPlayer?.id || '', // CRITICAL: Use other player's ID for button visibility
         newState.truthCount,
         newState.dareCount,
         true
       )
     };
+
+    console.log('Creating dare turn message for:', otherPlayer?.name, 'with forPlayerId:', otherPlayer?.id);
 
     await saveMessages([completionMsg, resultMsg, turnMsg], roomId);
     setCurrentInputAction(null);
@@ -881,13 +889,16 @@ const TruthOrDare: React.FC = () => {
       }
     };
 
-    // Create next turn with updated skips
-    const nextIndex = (currentState.currentPlayerIndex + 1) % currentState.players.length;
-    const nextPlayer = currentState.players[nextIndex];
+    // Find MY index and the OTHER player explicitly using playerId
+    const meIndex = currentState.players.findIndex(p => p.id === playerId);
+    const otherIndex = meIndex === 0 ? 1 : 0;
+    const otherPlayer = currentState.players[otherIndex];
+    
+    console.log('SKIP - Me:', playerName, 'meIndex:', meIndex, 'Other:', otherPlayer?.name, 'otherIndex:', otherIndex);
     
     // Update current player's skipsLeft and deduct points
     const updatedPlayers = currentState.players.map((p, idx) => 
-      idx === myPlayerIndex ? { ...p, skipsLeft: p.skipsLeft - 1, points: Math.max(0, p.points + POINTS.SKIP_PENALTY) } : p
+      idx === meIndex ? { ...p, skipsLeft: p.skipsLeft - 1, points: Math.max(0, p.points + POINTS.SKIP_PENALTY) } : p
     );
     
     // Clear dare timer if skipping a dare
@@ -897,21 +908,22 @@ const TruthOrDare: React.FC = () => {
     }
     setDareTimer(null);
     
+    // Next turn goes to the OTHER player
     const newState: GameState = {
       ...currentState,
       players: updatedPlayers,
-      currentPlayerIndex: nextIndex,
+      currentPlayerIndex: otherIndex, // OTHER player's turn
       currentType: undefined,
       roundCount: currentState.roundCount + 1
     };
 
-    // Save turn message
+    // Save turn message - buttons for OTHER player
     const turnMsg: Omit<ChatMessage, 'id' | 'created_at'> = {
       sender: 'system',
       message_type: 'buttons',
       content: createTurnMessageContent(
-        nextPlayer?.name || '',
-        nextPlayer?.id || '',
+        otherPlayer?.name || '',
+        otherPlayer?.id || '',
         newState.truthCount,
         newState.dareCount,
         true
