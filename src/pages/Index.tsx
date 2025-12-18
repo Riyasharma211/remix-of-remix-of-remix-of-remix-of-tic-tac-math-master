@@ -448,8 +448,8 @@ const IndexContent: React.FC = () => {
         </footer>
       </div>
 
-      {/* Mobile Bottom Navigation - App Style */}
-      <nav className="lg:hidden relative z-10 bg-card/95 backdrop-blur-md border-t border-border px-2 py-1.5 shrink-0 safe-area-bottom">
+      {/* Mobile Bottom Navigation - App Style with Glass Effect */}
+      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-card/80 backdrop-blur-xl backdrop-saturate-150 border-t border-white/10 px-2 py-1.5 safe-area-bottom shadow-[0_-4px_20px_rgba(0,0,0,0.3)]">
         <div className="flex gap-1 overflow-x-auto scrollbar-hide pb-1">
           {/* Multiplayer Section */}
           <div className="flex gap-1 pr-2 border-r border-border/50">
@@ -501,6 +501,9 @@ const IndexContent: React.FC = () => {
           </div>
         </div>
       </nav>
+
+      {/* Bottom nav spacer for mobile */}
+      <div className="lg:hidden h-16 shrink-0" />
 
       {/* Modals */}
       <Leaderboard isOpen={showLeaderboard} onClose={() => setShowLeaderboard(false)} />
