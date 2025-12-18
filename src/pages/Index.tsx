@@ -1,6 +1,6 @@
 import React, { useState, useCallback, createContext, useContext, useMemo } from 'react';
 import { useSwipe } from '@/hooks/useSwipe';
-import { Grid3X3, Zap, Brain, Target, Gamepad2, Volume2, VolumeX, Timer, Sparkles, Palette, Swords, Pencil, Heart, Trophy, Link2, HelpCircle, Maximize, Minimize, BarChart3 } from 'lucide-react';
+import { Grid3X3, Zap, Brain, Target, Gamepad2, Volume2, VolumeX, Timer, Sparkles, Palette, Swords, Pencil, Heart, Trophy, Link2, HelpCircle, Maximize, Minimize, BarChart3, Shuffle, Keyboard, Crosshair } from 'lucide-react';
 import TicTacToeOnline from '@/components/games/TicTacToeOnline';
 import MathChallenge from '@/components/games/MathChallenge';
 import MemoryMatch from '@/components/games/MemoryMatch';
@@ -13,6 +13,9 @@ import DrawingGame from '@/components/games/DrawingGame';
 import TruthOrDare from '@/components/games/TruthOrDare';
 import WordChain from '@/components/games/WordChain';
 import QuizBattle from '@/components/games/QuizBattle';
+import WordScramble from '@/components/games/WordScramble';
+import TypingSpeed from '@/components/games/TypingSpeed';
+import AimTrainer from '@/components/games/AimTrainer';
 import GameCard from '@/components/GameCard';
 import GameTransition from '@/components/GameTransition';
 import DifficultySelector from '@/components/DifficultySelector';
@@ -37,7 +40,7 @@ export const useAchievementNotification = () => {
   return context;
 };
 
-type GameType = 'tictactoe' | 'math' | 'memory' | 'numberguess' | 'reaction' | 'pattern' | 'colormatch' | 'mathbattle' | 'drawing' | 'truthordare' | 'wordchain' | 'quizbattle';
+type GameType = 'tictactoe' | 'math' | 'memory' | 'numberguess' | 'reaction' | 'pattern' | 'colormatch' | 'mathbattle' | 'drawing' | 'truthordare' | 'wordchain' | 'quizbattle' | 'wordscramble' | 'typingspeed' | 'aimtrainer';
 
 const games = [
   {
@@ -134,6 +137,30 @@ const games = [
     description: 'Test reflexes',
     icon: Timer,
     color: 'orange' as const,
+    multiplayer: false,
+  },
+  {
+    id: 'wordscramble' as GameType,
+    title: 'Word Scramble',
+    description: 'Unscramble words',
+    icon: Shuffle,
+    color: 'green' as const,
+    multiplayer: false,
+  },
+  {
+    id: 'typingspeed' as GameType,
+    title: 'Typing Speed',
+    description: 'Type fast',
+    icon: Keyboard,
+    color: 'cyan' as const,
+    multiplayer: false,
+  },
+  {
+    id: 'aimtrainer' as GameType,
+    title: 'Aim Trainer',
+    description: 'Click targets',
+    icon: Crosshair,
+    color: 'pink' as const,
     multiplayer: false,
   },
 ];
@@ -251,6 +278,12 @@ const IndexContent: React.FC = () => {
         return <NumberGuess />;
       case 'reaction':
         return <ReactionTime />;
+      case 'wordscramble':
+        return <WordScramble />;
+      case 'typingspeed':
+        return <TypingSpeed />;
+      case 'aimtrainer':
+        return <AimTrainer />;
       default:
         return <TicTacToeOnline />;
     }
@@ -327,7 +360,7 @@ const IndexContent: React.FC = () => {
             <ThemeToggle />
           </div>
           <p className="text-muted-foreground font-rajdhani text-sm sm:text-lg max-w-md mx-auto mb-2 sm:mb-4">
-            12 games • Real-time multiplayer • Mind training
+            15 games • Real-time multiplayer • Mind training
           </p>
           <DifficultySelector />
         </header>
