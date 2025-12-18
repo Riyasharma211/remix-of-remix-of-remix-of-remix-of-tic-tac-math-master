@@ -170,7 +170,8 @@ export const GAME_TYPES = {
   QUIZ_BATTLE: 'quiz-battle',
   WORD_SCRAMBLE: 'word-scramble',
   TYPING_SPEED: 'typing-speed',
-  AIM_TRAINER: 'aim-trainer'
+  AIM_TRAINER: 'aim-trainer',
+  SNAKE_GAME: 'snake-game'
 } as const;
 
 export const GAME_NAMES: Record<string, string> = {
@@ -188,5 +189,6 @@ export const GAME_NAMES: Record<string, string> = {
   [GAME_TYPES.QUIZ_BATTLE]: 'Quiz Battle',
   [GAME_TYPES.WORD_SCRAMBLE]: 'Word Scramble',
   [GAME_TYPES.TYPING_SPEED]: 'Typing Speed',
-  [GAME_TYPES.AIM_TRAINER]: 'Aim Trainer'
+  [GAME_TYPES.AIM_TRAINER]: 'Aim Trainer',
+  [GAME_TYPES.SNAKE_GAME]: 'Snake'
 };
