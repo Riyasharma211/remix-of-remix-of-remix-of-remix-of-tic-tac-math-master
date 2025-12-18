@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Button } from '@/components/ui/button';
-import { RotateCcw, Play, Trophy, ArrowUp, ArrowDown, ArrowLeft, ArrowRight } from 'lucide-react';
+import { RotateCcw, Play, Trophy, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Zap, Shield, Clock, Gem } from 'lucide-react';
 import { soundManager } from '@/utils/soundManager';
 import { haptics } from '@/utils/haptics';
 import { celebrateBurst } from '@/utils/confetti';
@@ -12,11 +12,30 @@ const CELL_SIZE = 20;
 
 type Direction = 'UP' | 'DOWN' | 'LEFT' | 'RIGHT';
 type Position = { x: number; y: number };
+type PowerUpType = 'speed' | 'invincible' | 'slow' | 'double';
+
+interface PowerUp {
+  type: PowerUpType;
+  position: Position;
+  expiresAt: number;
+}
+
+interface ActivePowerUp {
+  type: PowerUpType;
+  endsAt: number;
+}
 
 const SPEED_BY_DIFFICULTY = {
   easy: 200,
   medium: 130,
   hard: 80,
+};
+
+const POWER_UP_CONFIG: Record<PowerUpType, { emoji: string; duration: number; color: string; label: string }> = {
+  speed: { emoji: '⚡', duration: 5000, color: 'text-neon-orange', label: 'Speed Boost' },
+  invincible: { emoji: '🛡️', duration: 5000, color: 'text-neon-cyan', label: 'Invincible' },
+  slow: { emoji: '🐢', duration: 5000, color: 'text-neon-blue', label: 'Slow Mode' },
+  double: { emoji: '💎', duration: 8000, color: 'text-neon-purple', label: '2x Points' },
 };
 
 const SnakeGame: React.FC = () => {
@@ -31,32 +50,66 @@ const SnakeGame: React.FC = () => {
   const [isGameOver, setIsGameOver] = useState(false);
   const [score, setScore] = useState(0);
   const [bestScore, setBestScore] = useState<number | null>(null);
+  const [powerUp, setPowerUp] = useState<PowerUp | null>(null);
+  const [activePowerUps, setActivePowerUps] = useState<ActivePowerUp[]>([]);
   
   const directionRef = useRef(direction);
   const gameLoopRef = useRef<NodeJS.Timeout | null>(null);
+  const powerUpSpawnRef = useRef<NodeJS.Timeout | null>(null);
 
-  const speed = SPEED_BY_DIFFICULTY[difficulty];
+  const baseSpeed = SPEED_BY_DIFFICULTY[difficulty];
+  
+  // Calculate current speed based on active power-ups
+  const currentSpeed = useCallback(() => {
+    const hasSpeed = activePowerUps.some(p => p.type === 'speed');
+    const hasSlow = activePowerUps.some(p => p.type === 'slow');
+    if (hasSpeed) return Math.max(50, baseSpeed * 0.5);
+    if (hasSlow) return baseSpeed * 1.5;
+    return baseSpeed;
+  }, [activePowerUps, baseSpeed]);
 
-  const generateFood = useCallback((currentSnake: Position[]): Position => {
-    let newFood: Position;
+  const isInvincible = activePowerUps.some(p => p.type === 'invincible');
+  const hasDoublePoints = activePowerUps.some(p => p.type === 'double');
+
+  const generatePosition = useCallback((currentSnake: Position[], excludePositions: Position[] = []): Position => {
+    let pos: Position;
+    const allExcluded = [...currentSnake, ...excludePositions];
     do {
-      newFood = {
+      pos = {
         x: Math.floor(Math.random() * GRID_SIZE),
         y: Math.floor(Math.random() * GRID_SIZE),
       };
-    } while (currentSnake.some(segment => segment.x === newFood.x && segment.y === newFood.y));
-    return newFood;
+    } while (allExcluded.some(p => p.x === pos.x && p.y === pos.y));
+    return pos;
   }, []);
+
+  const spawnPowerUp = useCallback(() => {
+    if (powerUp) return;
+    
+    const types: PowerUpType[] = ['speed', 'invincible', 'slow', 'double'];
+    const type = types[Math.floor(Math.random() * types.length)];
+    const position = generatePosition(snake, [food]);
+    
+    setPowerUp({
+      type,
+      position,
+      expiresAt: Date.now() + 6000, // Power-up disappears after 6 seconds
+    });
+    
+    soundManager.playLocalSound('ding');
+  }, [powerUp, snake, food, generatePosition]);
 
   const resetGame = useCallback(() => {
     const initialSnake = [{ x: 7, y: 7 }];
     setSnake(initialSnake);
-    setFood(generateFood(initialSnake));
+    setFood(generatePosition(initialSnake));
     setDirection('RIGHT');
     directionRef.current = 'RIGHT';
     setScore(0);
     setIsGameOver(false);
-  }, [generateFood]);
+    setPowerUp(null);
+    setActivePowerUps([]);
+  }, [generatePosition]);
 
   const startGame = () => {
     resetGame();
@@ -68,9 +121,8 @@ const SnakeGame: React.FC = () => {
   const endGame = useCallback(() => {
     setIsPlaying(false);
     setIsGameOver(true);
-    if (gameLoopRef.current) {
-      clearInterval(gameLoopRef.current);
-    }
+    if (gameLoopRef.current) clearInterval(gameLoopRef.current);
+    if (powerUpSpawnRef.current) clearInterval(powerUpSpawnRef.current);
     
     soundManager.playLocalSound('lose');
     haptics.error();
@@ -80,9 +132,23 @@ const SnakeGame: React.FC = () => {
         setBestScore(score);
         celebrateBurst();
       }
-      addScore(GAME_TYPES.SNAKE_GAME || 'snake-game', playerName, score, `${snake.length} length`);
+      addScore(GAME_TYPES.SNAKE_GAME, playerName, score, `${snake.length} length`);
     }
   }, [score, bestScore, snake.length, playerName, addScore]);
+
+  const collectPowerUp = useCallback((type: PowerUpType) => {
+    const config = POWER_UP_CONFIG[type];
+    
+    // Remove existing power-up of same type and add new one
+    setActivePowerUps(prev => [
+      ...prev.filter(p => p.type !== type),
+      { type, endsAt: Date.now() + config.duration }
+    ]);
+    
+    setPowerUp(null);
+    soundManager.playLocalSound('levelup');
+    haptics.success();
+  }, []);
 
   const moveSnake = useCallback(() => {
     setSnake(currentSnake => {
@@ -105,24 +171,38 @@ const SnakeGame: React.FC = () => {
           break;
       }
 
-      // Check wall collision
+      // Check wall collision (wrap around if invincible)
       if (newHead.x < 0 || newHead.x >= GRID_SIZE || newHead.y < 0 || newHead.y >= GRID_SIZE) {
-        endGame();
-        return currentSnake;
+        if (isInvincible) {
+          // Wrap around
+          newHead.x = (newHead.x + GRID_SIZE) % GRID_SIZE;
+          newHead.y = (newHead.y + GRID_SIZE) % GRID_SIZE;
+        } else {
+          endGame();
+          return currentSnake;
+        }
       }
 
-      // Check self collision
+      // Check self collision (ignore if invincible)
       if (currentSnake.some(segment => segment.x === newHead.x && segment.y === newHead.y)) {
-        endGame();
-        return currentSnake;
+        if (!isInvincible) {
+          endGame();
+          return currentSnake;
+        }
       }
 
       const newSnake = [newHead, ...currentSnake];
 
+      // Check power-up collision
+      if (powerUp && newHead.x === powerUp.position.x && newHead.y === powerUp.position.y) {
+        collectPowerUp(powerUp.type);
+      }
+
       // Check food collision
       if (newHead.x === food.x && newHead.y === food.y) {
-        setScore(prev => prev + 10);
-        setFood(generateFood(newSnake));
+        const points = hasDoublePoints ? 20 : 10;
+        setScore(prev => prev + points);
+        setFood(generatePosition(newSnake, powerUp ? [powerUp.position] : []));
         soundManager.playLocalSound('pop');
         haptics.light();
         return newSnake;
@@ -131,19 +211,53 @@ const SnakeGame: React.FC = () => {
       newSnake.pop();
       return newSnake;
     });
-  }, [food, generateFood, endGame]);
+  }, [food, generatePosition, endGame, isInvincible, powerUp, collectPowerUp, hasDoublePoints]);
 
-  // Game loop
+  // Game loop - restart when speed changes
   useEffect(() => {
     if (!isPlaying) return;
     
-    gameLoopRef.current = setInterval(moveSnake, speed);
+    if (gameLoopRef.current) clearInterval(gameLoopRef.current);
+    gameLoopRef.current = setInterval(moveSnake, currentSpeed());
+    
     return () => {
-      if (gameLoopRef.current) {
-        clearInterval(gameLoopRef.current);
-      }
+      if (gameLoopRef.current) clearInterval(gameLoopRef.current);
     };
-  }, [isPlaying, moveSnake, speed]);
+  }, [isPlaying, moveSnake, currentSpeed]);
+
+  // Power-up spawning
+  useEffect(() => {
+    if (!isPlaying) return;
+    
+    powerUpSpawnRef.current = setInterval(() => {
+      if (Math.random() < 0.3) { // 30% chance every 5 seconds
+        spawnPowerUp();
+      }
+    }, 5000);
+    
+    return () => {
+      if (powerUpSpawnRef.current) clearInterval(powerUpSpawnRef.current);
+    };
+  }, [isPlaying, spawnPowerUp]);
+
+  // Power-up expiration
+  useEffect(() => {
+    if (!isPlaying) return;
+    
+    const interval = setInterval(() => {
+      const now = Date.now();
+      
+      // Remove expired power-up from field
+      if (powerUp && now > powerUp.expiresAt) {
+        setPowerUp(null);
+      }
+      
+      // Remove expired active power-ups
+      setActivePowerUps(prev => prev.filter(p => p.endsAt > now));
+    }, 100);
+    
+    return () => clearInterval(interval);
+  }, [isPlaying, powerUp]);
 
   // Keyboard controls
   useEffect(() => {
@@ -208,6 +322,13 @@ const SnakeGame: React.FC = () => {
     }
   };
 
+  const getSnakeColor = () => {
+    if (isInvincible) return 'bg-neon-cyan shadow-[0_0_15px_hsl(var(--neon-cyan)/0.7)]';
+    if (activePowerUps.some(p => p.type === 'speed')) return 'bg-neon-orange shadow-[0_0_15px_hsl(var(--neon-orange)/0.7)]';
+    if (activePowerUps.some(p => p.type === 'double')) return 'bg-neon-purple shadow-[0_0_15px_hsl(var(--neon-purple)/0.7)]';
+    return 'bg-neon-green shadow-[0_0_10px_hsl(var(--neon-green)/0.5)]';
+  };
+
   if (!isPlaying && !isGameOver) {
     return (
       <div className="flex flex-col items-center gap-6 animate-slide-in">
@@ -215,8 +336,18 @@ const SnakeGame: React.FC = () => {
           <div className="text-5xl animate-float">🐍</div>
           <h2 className="font-orbitron text-2xl text-foreground">Snake</h2>
           <p className="text-muted-foreground font-rajdhani max-w-sm">
-            Use arrow keys or buttons to move. Eat food to grow!
+            Eat food to grow! Collect power-ups for special abilities.
           </p>
+        </div>
+
+        {/* Power-up legend */}
+        <div className="flex flex-wrap gap-3 justify-center text-xs">
+          {Object.entries(POWER_UP_CONFIG).map(([type, config]) => (
+            <div key={type} className={`flex items-center gap-1 ${config.color}`}>
+              <span>{config.emoji}</span>
+              <span className="font-rajdhani">{config.label}</span>
+            </div>
+          ))}
         </div>
 
         {bestScore !== null && (
@@ -255,18 +386,41 @@ const SnakeGame: React.FC = () => {
   }
 
   return (
-    <div className="flex flex-col items-center gap-4 animate-slide-in">
-      {/* Score */}
-      <div className="flex items-center gap-4">
-        <span className="font-orbitron text-2xl text-neon-green">{score}</span>
-        {bestScore !== null && (
-          <span className="text-muted-foreground text-sm">Best: {bestScore}</span>
+    <div className="flex flex-col items-center gap-3 animate-slide-in">
+      {/* Score & Active Power-ups */}
+      <div className="flex flex-col items-center gap-2">
+        <div className="flex items-center gap-4">
+          <span className="font-orbitron text-2xl text-neon-green">{score}</span>
+          {bestScore !== null && (
+            <span className="text-muted-foreground text-sm">Best: {bestScore}</span>
+          )}
+        </div>
+        
+        {/* Active power-ups display */}
+        {activePowerUps.length > 0 && (
+          <div className="flex gap-2">
+            {activePowerUps.map((ap) => {
+              const config = POWER_UP_CONFIG[ap.type];
+              const remaining = Math.max(0, Math.ceil((ap.endsAt - Date.now()) / 1000));
+              return (
+                <div
+                  key={ap.type}
+                  className={`flex items-center gap-1 px-2 py-1 rounded-full bg-card border border-border text-xs ${config.color}`}
+                >
+                  <span>{config.emoji}</span>
+                  <span className="font-orbitron">{remaining}s</span>
+                </div>
+              );
+            })}
+          </div>
         )}
       </div>
 
       {/* Game Board */}
       <div 
-        className="relative bg-card border-2 border-border rounded-lg overflow-hidden"
+        className={`relative bg-card border-2 rounded-lg overflow-hidden transition-all duration-300 ${
+          isInvincible ? 'border-neon-cyan shadow-[0_0_20px_hsl(var(--neon-cyan)/0.3)]' : 'border-border'
+        }`}
         style={{ 
           width: GRID_SIZE * CELL_SIZE, 
           height: GRID_SIZE * CELL_SIZE 
@@ -290,15 +444,28 @@ const SnakeGame: React.FC = () => {
           ))}
         </div>
 
+        {/* Power-up */}
+        {powerUp && (
+          <div
+            className="absolute flex items-center justify-center text-base animate-pulse"
+            style={{
+              left: powerUp.position.x * CELL_SIZE,
+              top: powerUp.position.y * CELL_SIZE,
+              width: CELL_SIZE,
+              height: CELL_SIZE,
+            }}
+          >
+            {POWER_UP_CONFIG[powerUp.type].emoji}
+          </div>
+        )}
+
         {/* Snake */}
         {snake.map((segment, index) => (
           <div
             key={index}
             className={`absolute rounded-sm transition-all duration-75 ${
-              index === 0 
-                ? 'bg-neon-green shadow-[0_0_10px_hsl(var(--neon-green)/0.5)]' 
-                : 'bg-neon-green/70'
-            }`}
+              index === 0 ? getSnakeColor() : 'bg-neon-green/70'
+            } ${isInvincible && index === 0 ? 'animate-pulse' : ''}`}
             style={{
               left: segment.x * CELL_SIZE + 1,
               top: segment.y * CELL_SIZE + 1,
@@ -318,7 +485,7 @@ const SnakeGame: React.FC = () => {
             height: CELL_SIZE,
           }}
         >
-          🍎
+          {hasDoublePoints ? '🍇' : '🍎'}
         </div>
       </div>
 
