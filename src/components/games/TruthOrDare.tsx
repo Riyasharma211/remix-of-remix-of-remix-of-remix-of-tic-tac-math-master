@@ -1881,11 +1881,7 @@ const TruthOrDare: React.FC = () => {
 
   // Chat-style gameplay
   return (
-    <div className={`flex flex-col h-full max-w-md mx-auto bg-gradient-to-b from-pink-950/20 to-background overflow-hidden transition-all duration-200 ${
-      keyboardVisible 
-        ? 'max-h-[calc(100dvh-80px)]' 
-        : 'max-h-[calc(100dvh-200px)] sm:max-h-[calc(100dvh-140px)]'
-    }`}>
+    <div className="flex flex-col w-full h-full max-w-md mx-auto bg-gradient-to-b from-pink-950/20 to-background overflow-hidden">
       {renderFloatingHearts()}
       
       {/* WhatsApp-style Header */}
@@ -1923,11 +1919,11 @@ const TruthOrDare: React.FC = () => {
       </div>
 
       {/* Chat messages with wallpaper */}
-      <div className="relative flex-1 min-h-0">
+      <div className="relative flex-1 min-h-0 overflow-hidden">
         <div 
           ref={chatContainerRef}
           onScroll={handleScroll}
-          className="h-full overflow-y-auto px-3 py-3 space-y-1"
+          className="absolute inset-0 overflow-y-auto px-3 py-3 space-y-1"
           style={{
             backgroundImage: 'radial-gradient(circle at 20% 50%, rgba(236, 72, 153, 0.03) 0%, transparent 50%), radial-gradient(circle at 80% 80%, rgba(168, 85, 247, 0.03) 0%, transparent 50%)'
           }}
