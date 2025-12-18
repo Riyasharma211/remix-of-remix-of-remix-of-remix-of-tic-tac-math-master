@@ -363,24 +363,24 @@ const ConnectFour: React.FC = () => {
       )}
 
       {/* Board */}
-      <div className="bg-blue-600 p-2 rounded-lg">
+      <div className="bg-blue-600 p-2 rounded-lg shadow-lg shadow-blue-500/30">
         <div className="grid grid-cols-7 gap-1">
           {Array(COLS).fill(null).map((_, col) => (
             <button
               key={col}
               onClick={() => dropPiece(col)}
               disabled={winner !== null || currentPlayer !== myColor}
-              className="flex flex-col gap-1 hover:bg-blue-500/50 rounded p-0.5 transition-colors disabled:cursor-not-allowed"
+              className="flex flex-col gap-1 hover:bg-blue-500/50 rounded p-0.5 transition-all duration-200 disabled:cursor-not-allowed group"
             >
               {Array(ROWS).fill(null).map((_, row) => (
                 <div
                   key={row}
-                  className={`w-8 h-8 md:w-10 md:h-10 rounded-full border-2 border-blue-800 transition-colors ${
+                  className={`w-8 h-8 md:w-10 md:h-10 rounded-full border-2 border-blue-800 transition-all duration-300 ${
                     board[row][col] === 'red' 
-                      ? 'bg-red-500' 
+                      ? 'bg-red-500 shadow-md shadow-red-500/50 animate-scale-in' 
                       : board[row][col] === 'yellow' 
-                        ? 'bg-yellow-500' 
-                        : 'bg-blue-900'
+                        ? 'bg-yellow-500 shadow-md shadow-yellow-500/50 animate-scale-in' 
+                        : 'bg-blue-900 group-hover:bg-blue-800 group-hover:scale-105'
                   }`}
                 />
               ))}
@@ -391,12 +391,12 @@ const ConnectFour: React.FC = () => {
 
       {/* Winner Display */}
       {winner && (
-        <div className="text-center">
-          <Trophy className={`w-8 h-8 mx-auto mb-2 ${winner === myColor ? 'text-neon-green' : 'text-red-500'}`} />
-          <p className="font-orbitron text-xl font-bold">
-            {winner === myColor ? 'You Win!' : 'You Lose!'}
+        <div className="text-center animate-scale-in">
+          <Trophy className={`w-12 h-12 mx-auto mb-2 animate-[bounce_0.5s_ease-in-out_infinite] ${winner === myColor ? 'text-neon-green drop-shadow-[0_0_10px_rgba(0,255,0,0.5)]' : 'text-red-500 drop-shadow-[0_0_10px_rgba(255,0,0,0.5)]'}`} />
+          <p className="font-orbitron text-2xl font-bold animate-pulse">
+            {winner === myColor ? '🎉 You Win! 🎉' : '😢 You Lose!'}
           </p>
-          <Button onClick={restartGame} className="mt-4">
+          <Button onClick={restartGame} className="mt-4 hover:scale-105 transition-transform">
             <RotateCcw className="w-4 h-4 mr-2" /> Play Again
           </Button>
         </div>

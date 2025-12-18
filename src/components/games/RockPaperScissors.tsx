@@ -345,40 +345,41 @@ const RockPaperScissors: React.FC = () => {
         <div className="flex items-center justify-center gap-8 w-full">
           <div className="text-center">
             <p className="text-sm text-muted-foreground">You</p>
-            <p className="font-orbitron text-3xl font-bold text-neon-cyan">{gameState.myScore}</p>
+            <p className="font-orbitron text-3xl font-bold text-neon-cyan transition-all duration-300" key={gameState.myScore} style={{ animation: 'pulse 0.3s ease-out' }}>{gameState.myScore}</p>
           </div>
-          <span className="text-2xl text-muted-foreground">vs</span>
+          <span className="text-2xl text-muted-foreground animate-pulse">⚡</span>
           <div className="text-center">
             <p className="text-sm text-muted-foreground">Opponent</p>
-            <p className="font-orbitron text-3xl font-bold text-neon-orange">{gameState.opponentScore}</p>
+            <p className="font-orbitron text-3xl font-bold text-neon-orange transition-all duration-300" key={gameState.opponentScore} style={{ animation: 'pulse 0.3s ease-out' }}>{gameState.opponentScore}</p>
           </div>
         </div>
 
         {/* Choices Display */}
         {showResult ? (
           <div className="flex items-center justify-center gap-8 py-4">
-            <div className="text-center">
-              <p className="text-6xl mb-2">{choices.find(c => c.id === gameState.myChoice)?.emoji}</p>
+            <div className="text-center animate-scale-in">
+              <p className="text-6xl mb-2 animate-[bounce_0.5s_ease-in-out]">{choices.find(c => c.id === gameState.myChoice)?.emoji}</p>
               <p className="text-sm text-muted-foreground">You</p>
             </div>
-            <span className="text-2xl">⚔️</span>
-            <div className="text-center">
-              <p className="text-6xl mb-2">{choices.find(c => c.id === gameState.opponentChoice)?.emoji}</p>
+            <span className="text-2xl animate-pulse">⚔️</span>
+            <div className="text-center animate-scale-in" style={{ animationDelay: '0.2s' }}>
+              <p className="text-6xl mb-2 animate-[bounce_0.5s_ease-in-out_0.2s]">{choices.find(c => c.id === gameState.opponentChoice)?.emoji}</p>
               <p className="text-sm text-muted-foreground">Opponent</p>
             </div>
           </div>
         ) : gameState.myChoice ? (
           <div className="text-center py-8">
-            <p className="text-6xl mb-4">{choices.find(c => c.id === gameState.myChoice)?.emoji}</p>
+            <p className="text-6xl mb-4 animate-[pulse_1s_ease-in-out_infinite]">{choices.find(c => c.id === gameState.myChoice)?.emoji}</p>
             <p className="text-muted-foreground animate-pulse">Waiting for opponent...</p>
           </div>
         ) : (
           <div className="grid grid-cols-3 gap-4 w-full">
-            {choices.map((choice) => (
+            {choices.map((choice, index) => (
               <Button
                 key={choice.id}
                 variant="outline"
-                className="h-24 text-4xl hover:scale-110 transition-transform"
+                className="h-24 text-4xl hover:scale-125 hover:rotate-12 active:scale-95 transition-all duration-200 hover:shadow-lg hover:shadow-neon-orange/30 animate-fade-in"
+                style={{ animationDelay: `${index * 0.1}s` }}
                 onClick={() => makeChoice(choice.id)}
               >
                 {choice.emoji}
