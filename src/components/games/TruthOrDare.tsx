@@ -1703,12 +1703,8 @@ const TruthOrDare: React.FC = () => {
     );
   };
 
-  // Should show input bar
-  const shouldShowInput = currentInputAction && (
-    (currentInputAction === 'submit_question' && !isMyTurn) ||
-    (currentInputAction === 'submit_answer' && isMyTurn) ||
-    (currentInputAction === 'complete_dare' && isMyTurn)
-  );
+  // Should show input bar - trust determineInputAction which already validates the correct player
+  const shouldShowInput = !!currentInputAction;
 
   // Menu
   if (mode === 'menu') {
