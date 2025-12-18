@@ -318,7 +318,7 @@ const IndexContent: React.FC = () => {
   return (
     <AchievementContext.Provider value={{ showAchievements }}>
     {showSplash && <SplashScreen onComplete={handleSplashComplete} />}
-    <div className="h-screen bg-background bg-grid-pattern relative overflow-hidden flex flex-col">
+    <div className="h-screen bg-background relative overflow-hidden flex flex-col">
       {/* Achievement Notification */}
       {pendingAchievements.length > 0 && (
         <AchievementNotification 
@@ -327,10 +327,18 @@ const IndexContent: React.FC = () => {
         />
       )}
 
-      {/* Background Effects */}
+      {/* Futuristic Animated Background */}
+      <div className="absolute inset-0 bg-grid-pattern opacity-30 pointer-events-none" />
+      
+      {/* Animated Floating Orbs */}
+      <div className="absolute top-10 left-10 w-32 sm:w-64 h-32 sm:h-64 bg-neon-cyan/20 rounded-full blur-[80px] animate-orb-1 pointer-events-none" />
+      <div className="absolute top-1/3 right-10 w-40 sm:w-80 h-40 sm:h-80 bg-neon-purple/25 rounded-full blur-[100px] animate-orb-2 pointer-events-none" />
+      <div className="absolute bottom-20 left-1/3 w-36 sm:w-72 h-36 sm:h-72 bg-neon-pink/20 rounded-full blur-[90px] animate-orb-3 pointer-events-none" />
+      <div className="absolute bottom-1/4 right-1/4 w-24 sm:w-48 h-24 sm:h-48 bg-neon-green/15 rounded-full blur-[70px] animate-orb-1 pointer-events-none" style={{ animationDelay: '-5s' }} />
+      
+      {/* Gradient Overlay */}
       <div className="absolute inset-0 bg-gradient-to-br from-neon-cyan/5 via-transparent to-neon-purple/5 pointer-events-none" />
-      <div className="absolute top-0 left-1/4 w-48 sm:w-96 h-48 sm:h-96 bg-neon-cyan/10 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute bottom-0 right-1/4 w-48 sm:w-96 h-48 sm:h-96 bg-neon-purple/10 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute inset-0 bg-gradient-to-t from-background via-transparent to-transparent pointer-events-none" />
 
       {/* Mobile Header - Super Compact */}
       <header className="lg:hidden relative z-10 px-3 pt-2 pb-1 shrink-0">
@@ -390,7 +398,7 @@ const IndexContent: React.FC = () => {
       <div className="flex-1 min-h-0 relative z-10 flex flex-col lg:block">
         {/* Mobile: Game Area Takes Full Space */}
         <main 
-          className="lg:hidden flex-1 mx-2 mb-2 bg-card/50 backdrop-blur-sm rounded-2xl border border-border p-3 flex items-center justify-center overflow-auto"
+          className="lg:hidden flex-1 mx-2 mb-2 glass-neon rounded-2xl p-3 flex items-center justify-center overflow-auto"
           {...swipeHandlers}
         >
           <GameTransition gameKey={activeGame} direction={swipeDirection}>
@@ -448,7 +456,7 @@ const IndexContent: React.FC = () => {
           </aside>
 
           {/* Game Area - Desktop */}
-          <main className="bg-card/50 backdrop-blur-sm rounded-3xl border border-border p-8 flex items-center justify-center overflow-hidden">
+          <main className="glass-neon rounded-3xl p-8 flex items-center justify-center overflow-hidden">
             <GameTransition gameKey={activeGame} direction={swipeDirection}>
               {renderGame()}
             </GameTransition>
@@ -462,7 +470,7 @@ const IndexContent: React.FC = () => {
       </div>
 
       {/* Mobile Bottom Navigation - App Style with Glass Effect */}
-      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-card/80 backdrop-blur-xl backdrop-saturate-150 border-t border-white/10 px-2 py-1.5 safe-area-bottom shadow-[0_-4px_20px_rgba(0,0,0,0.3)] animate-slide-up-full">
+      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 glass-strong border-t border-neon-cyan/10 px-2 py-1.5 safe-area-bottom shadow-[0_-4px_30px_rgba(0,0,0,0.4),0_0_60px_hsl(var(--neon-cyan)/0.1)] animate-slide-up-full">
         <div className="flex gap-1 overflow-x-auto scrollbar-hide pb-1">
           {/* Multiplayer Section */}
           <div className="flex gap-1 pr-2 border-r border-border/50">
