@@ -25,6 +25,8 @@ import Leaderboard from '@/components/Leaderboard';
 import GameStatsDashboard from '@/components/GameStatsDashboard';
 import { AchievementNotification } from '@/components/AchievementNotification';
 import SplashScreen from '@/components/SplashScreen';
+import CursorParticles from '@/components/CursorParticles';
+import ParallaxOrbs from '@/components/ParallaxOrbs';
 import { Button } from '@/components/ui/button';
 import { soundManager } from '@/utils/soundManager';
 import { haptics } from '@/utils/haptics';
@@ -327,14 +329,14 @@ const IndexContent: React.FC = () => {
         />
       )}
 
+      {/* Cursor Particles - Desktop Only */}
+      <CursorParticles />
+      
       {/* Futuristic Animated Background */}
       <div className="absolute inset-0 bg-grid-pattern opacity-30 pointer-events-none" />
       
-      {/* Animated Floating Orbs */}
-      <div className="absolute top-10 left-10 w-32 sm:w-64 h-32 sm:h-64 bg-neon-cyan/20 rounded-full blur-[80px] animate-orb-1 pointer-events-none" />
-      <div className="absolute top-1/3 right-10 w-40 sm:w-80 h-40 sm:h-80 bg-neon-purple/25 rounded-full blur-[100px] animate-orb-2 pointer-events-none" />
-      <div className="absolute bottom-20 left-1/3 w-36 sm:w-72 h-36 sm:h-72 bg-neon-pink/20 rounded-full blur-[90px] animate-orb-3 pointer-events-none" />
-      <div className="absolute bottom-1/4 right-1/4 w-24 sm:w-48 h-24 sm:h-48 bg-neon-green/15 rounded-full blur-[70px] animate-orb-1 pointer-events-none" style={{ animationDelay: '-5s' }} />
+      {/* Animated Floating Orbs with Parallax */}
+      <ParallaxOrbs />
       
       {/* Gradient Overlay */}
       <div className="absolute inset-0 bg-gradient-to-br from-neon-cyan/5 via-transparent to-neon-purple/5 pointer-events-none" />
