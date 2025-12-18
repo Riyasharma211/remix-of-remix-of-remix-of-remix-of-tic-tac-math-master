@@ -177,7 +177,7 @@ const HangmanBattle: React.FC = () => {
           if (payload.gameOver) {
             if (payload.won) {
               soundManager.playLocalSound('lose');
-              haptics.error();
+              haptics.screenShake();
             } else {
               soundManager.playLocalSound('win');
               haptics.success();
@@ -312,7 +312,7 @@ const HangmanBattle: React.FC = () => {
     if (gameOver) {
       if (won) {
         soundManager.playLocalSound('lose');
-        haptics.error();
+        haptics.screenShake();
       } else {
         soundManager.playLocalSound('win');
         haptics.success();

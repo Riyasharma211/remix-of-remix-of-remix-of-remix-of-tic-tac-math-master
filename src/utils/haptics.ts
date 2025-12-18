@@ -40,5 +40,17 @@ export const haptics = {
     if ('vibrate' in navigator) {
       navigator.vibrate(pattern);
     }
+  },
+
+  // Screen shake effect for dramatic loss
+  screenShake: () => {
+    const gameContainer = document.querySelector('[data-game-container]') || document.body;
+    gameContainer.classList.add('animate-screen-shake');
+    if ('vibrate' in navigator) {
+      navigator.vibrate([100, 50, 100, 50, 100]);
+    }
+    setTimeout(() => {
+      gameContainer.classList.remove('animate-screen-shake');
+    }, 500);
   }
 };
