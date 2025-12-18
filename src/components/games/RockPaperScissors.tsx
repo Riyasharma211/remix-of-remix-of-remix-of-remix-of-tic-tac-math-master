@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Hand, Copy, Check, RotateCcw, Wifi, WifiOff, Trophy } from 'lucide-react';
@@ -10,6 +10,15 @@ import { useToast } from '@/hooks/use-toast';
 
 type Choice = 'rock' | 'paper' | 'scissors' | null;
 type GameMode = 'menu' | 'create' | 'join' | 'waiting' | 'playing' | 'result';
+
+interface FloatingEmoji {
+  id: string;
+  emoji: string;
+  x: number;
+  y: number;
+  delay: number;
+  scale: number;
+}
 
 interface GameState {
   myChoice: Choice;
@@ -25,6 +34,8 @@ const choices: { id: Choice; emoji: string; label: string }[] = [
   { id: 'paper', emoji: '📄', label: 'Paper' },
   { id: 'scissors', emoji: '✂️', label: 'Scissors' },
 ];
+
+const REACTION_EMOJIS = ['😍', '🔥', '😂', '😤', '🥵', '👏', '💯', '✨', '🎉', '💀'];
 
 const getWinner = (choice1: Choice, choice2: Choice): 'player1' | 'player2' | 'draw' => {
   if (!choice1 || !choice2) return 'draw';
@@ -57,7 +68,40 @@ const RockPaperScissors: React.FC = () => {
   });
   const [showResult, setShowResult] = useState(false);
   const [countdown, setCountdown] = useState<number | null>(null);
+  const [floatingEmojis, setFloatingEmojis] = useState<FloatingEmoji[]>([]);
   const channelRef = useRef<any>(null);
+
+  // Spawn floating emojis
+  const spawnFloatingEmojis = useCallback((emoji: string) => {
+    const newEmojis: FloatingEmoji[] = [];
+    for (let i = 0; i < 10; i++) {
+      newEmojis.push({
+        id: `${Date.now()}-${i}`,
+        emoji,
+        x: 10 + Math.random() * 80,
+        y: 60 + Math.random() * 30,
+        delay: i * 0.06,
+        scale: 0.7 + Math.random() * 0.5,
+      });
+    }
+    setFloatingEmojis(prev => [...prev, ...newEmojis]);
+    setTimeout(() => {
+      setFloatingEmojis(prev => prev.filter(e => !newEmojis.find(n => n.id === e.id)));
+    }, 2500);
+  }, []);
+
+  const handleReaction = (emoji: string) => {
+    haptics.light();
+    soundManager.playEmojiSound(emoji);
+    spawnFloatingEmojis(emoji);
+    if (channelRef.current) {
+      channelRef.current.send({
+        type: 'broadcast',
+        event: 'reaction',
+        payload: { emoji },
+      });
+    }
+  };
 
   const generateRoomCode = () => Math.random().toString(36).substring(2, 8).toUpperCase();
 
@@ -149,6 +193,12 @@ const RockPaperScissors: React.FC = () => {
             opponentChoice: null,
           }));
           setShowResult(false);
+        }
+      })
+      .on('broadcast', { event: 'reaction' }, ({ payload }) => {
+        if (payload?.emoji) {
+          soundManager.playEmojiSound(payload.emoji);
+          spawnFloatingEmojis(payload.emoji);
         }
       })
       .subscribe(async (status) => {
@@ -391,6 +441,36 @@ const RockPaperScissors: React.FC = () => {
         {!gameState.myChoice && !showResult && (
           <p className="text-center text-muted-foreground">Make your choice!</p>
         )}
+
+        {/* Reaction Bar */}
+        <div className="flex flex-wrap gap-2 justify-center max-w-xs mt-4">
+          {REACTION_EMOJIS.map((emoji) => (
+            <button
+              key={emoji}
+              onClick={() => handleReaction(emoji)}
+              className="text-xl p-1.5 rounded-full bg-muted/50 hover:bg-muted hover:scale-125 active:scale-95 transition-all duration-200"
+            >
+              {emoji}
+            </button>
+          ))}
+        </div>
+
+        {/* Floating Emojis */}
+        {floatingEmojis.map((e) => (
+          <span
+            key={e.id}
+            className="fixed text-3xl pointer-events-none animate-float-up"
+            style={{
+              left: `${e.x}%`,
+              top: `${e.y}%`,
+              animationDelay: `${e.delay}s`,
+              transform: `scale(${e.scale})`,
+              zIndex: 50,
+            }}
+          >
+            {e.emoji}
+          </span>
+        ))}
       </div>
     );
   }
