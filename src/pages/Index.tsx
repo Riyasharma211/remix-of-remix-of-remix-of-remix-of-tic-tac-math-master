@@ -18,6 +18,7 @@ import {
   Link2,
   HelpCircle,
   Maximize,
+  ExternalLink,
   Minimize,
   BarChart3,
   Shuffle,
@@ -338,6 +339,11 @@ const IndexContent: React.FC = () => {
     setShowStats(true);
   };
 
+  const openNewTab = () => {
+    haptics.light();
+    window.open(window.location.href, '_blank');
+  };
+
   // Handle game switching with confirmation if game is active
   const handleGameSwitch = useCallback(
     (newGame: GameType) => {
@@ -509,6 +515,9 @@ const IndexContent: React.FC = () => {
               <Button variant="ghost" size="icon" onClick={openLeaderboard} className="h-7 w-7">
                 <Trophy className="w-3.5 h-3.5 text-neon-orange" />
               </Button>
+              <Button variant="ghost" size="icon" onClick={openNewTab} className="h-7 w-7" title="Open new tab for testing">
+                <ExternalLink className="w-3.5 h-3.5 text-neon-green" />
+              </Button>
               <ThemeToggle />
             </div>
           </div>
@@ -541,6 +550,9 @@ const IndexContent: React.FC = () => {
               ) : (
                 <Maximize className="w-5 h-5 text-neon-purple" />
               )}
+            </MagneticButton>
+            <MagneticButton variant="ghost" size="icon" onClick={openNewTab} className="h-10 w-10" title="Open new tab for testing multiplayer">
+              <ExternalLink className="w-5 h-5 text-neon-green" />
             </MagneticButton>
             <ThemeToggle />
           </div>
