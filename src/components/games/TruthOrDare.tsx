@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { supabase } from '@/integrations/supabase/client';
-import { Heart, Copy, Users, ArrowLeft, Sparkles, Send, Loader2, Camera, X, Check, CheckCheck } from 'lucide-react';
+import { Heart, Copy, Users, ArrowLeft, Sparkles, Send, Loader2, Camera, X, Check, CheckCheck, ChevronDown } from 'lucide-react';
 import { toast } from 'sonner';
 import { haptics } from '@/utils/haptics';
 import { RealtimeChannel } from '@supabase/supabase-js';
@@ -130,6 +130,17 @@ const TruthOrDare: React.FC = () => {
 
   // Keyboard-aware behavior for mobile
   const [keyboardVisible, setKeyboardVisible] = useState(false);
+  
+  // Track if user has scrolled up from bottom
+  const [showScrollButton, setShowScrollButton] = useState(false);
+  
+  const handleScroll = useCallback(() => {
+    if (!chatContainerRef.current) return;
+    const { scrollTop, scrollHeight, clientHeight } = chatContainerRef.current;
+    // Show button if scrolled more than 100px from bottom
+    const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
+    setShowScrollButton(!isNearBottom);
+  }, []);
   
   useEffect(() => {
     // Use visualViewport API for mobile keyboard detection
@@ -1880,13 +1891,15 @@ const TruthOrDare: React.FC = () => {
       </div>
 
       {/* Chat messages with wallpaper */}
-      <div 
-        ref={chatContainerRef}
-        className="flex-1 overflow-y-auto px-3 py-3 space-y-1 min-h-0"
-        style={{
-          backgroundImage: 'radial-gradient(circle at 20% 50%, rgba(236, 72, 153, 0.03) 0%, transparent 50%), radial-gradient(circle at 80% 80%, rgba(168, 85, 247, 0.03) 0%, transparent 50%)'
-        }}
-      >
+      <div className="relative flex-1 min-h-0">
+        <div 
+          ref={chatContainerRef}
+          onScroll={handleScroll}
+          className="h-full overflow-y-auto px-3 py-3 space-y-1"
+          style={{
+            backgroundImage: 'radial-gradient(circle at 20% 50%, rgba(236, 72, 153, 0.03) 0%, transparent 50%), radial-gradient(circle at 80% 80%, rgba(168, 85, 247, 0.03) 0%, transparent 50%)'
+          }}
+        >
         {messages.map(msg => renderMessage(msg))}
         
         {/* Typing indicator - WhatsApp style */}
@@ -1906,6 +1919,20 @@ const TruthOrDare: React.FC = () => {
               }} />
             </div>
           </div>
+        )}
+        </div>
+
+        {/* Scroll to bottom floating button */}
+        {showScrollButton && (
+          <button
+            onClick={() => {
+              scrollToBottom();
+              haptics.light();
+            }}
+            className="absolute bottom-3 right-3 w-10 h-10 rounded-full bg-gradient-to-r from-pink-500 to-rose-500 shadow-lg shadow-pink-500/30 flex items-center justify-center animate-bounce-gentle hover:scale-110 transition-transform z-10"
+          >
+            <ChevronDown className="w-5 h-5 text-white" />
+          </button>
         )}
       </div>
 
