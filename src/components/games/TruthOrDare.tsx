@@ -25,6 +25,8 @@ interface ChatMessage {
     text?: string;
     subtext?: string;
     forPlayerId?: string; // Who should see the buttons
+    forPlayerName?: string; // Name of player who should type
+    targetPlayerName?: string; // Name of player being asked
     buttons?: { label: string; value: string; icon?: string; variant?: 'truth' | 'dare' | 'end' | 'default' }[];
     inputPlaceholder?: string;
     inputAction?: string;
@@ -451,24 +453,32 @@ const TruthOrDare: React.FC = () => {
         }
       };
 
+      // Get partner name for the prompt
+      const partnerIdx = myPlayerIndex === 0 ? 1 : 0;
+      const partnerPlayerName = gameState.players[partnerIdx]?.name || 'Partner';
+
       // Save input prompt message for opponent - include questionType for sync
       const inputMsg: Omit<ChatMessage, 'id' | 'created_at'> = {
         sender: 'system',
         message_type: 'input',
         content: {
-          text: buttonValue === 'truth' ? '💬 TRUTH' : '🔥 DARE',
-          subtext: `Type your ${buttonValue} ${buttonValue === 'truth' ? 'question' : 'challenge'} for ${currentPlayer?.name || ''}:`,
+          text: buttonValue === 'truth' ? '💬 TRUTH QUESTION' : '🔥 DARE CHALLENGE',
+          subtext: buttonValue === 'truth' 
+            ? `${partnerPlayerName}, ask a truth question to ${playerName}:` 
+            : `${partnerPlayerName}, give a dare challenge to ${playerName}:`,
           inputPlaceholder: buttonValue === 'truth' 
-            ? 'Ask something interesting or fun...' 
-            : 'Give a fun dare...',
+            ? `Type your truth question for ${playerName}...` 
+            : `Type a dare challenge for ${playerName}...`,
           inputAction: 'submit_question',
-          questionType: buttonValue as 'truth' | 'dare'  // Store the type for sync
+          questionType: buttonValue as 'truth' | 'dare',
+          forPlayerName: partnerPlayerName,
+          targetPlayerName: playerName
         }
       };
 
       await saveMessages([choiceMsg, inputMsg], roomId);
       setGameState(newState);
-      setCurrentInputAction('submit_question');
+      setCurrentInputAction(null); // I chose, so I wait for partner to ask
 
       // Update game state in room
       await supabase
@@ -476,11 +486,20 @@ const TruthOrDare: React.FC = () => {
         .update({ game_state: JSON.parse(JSON.stringify(newState)) })
         .eq('id', roomId);
 
-      // Broadcast state change
+      // Broadcast state change with notification info
       channelRef.current?.send({
         type: 'broadcast',
         event: 'game_state',
-        payload: { gameState: newState }
+        payload: { 
+          gameState: newState,
+          notification: {
+            title: buttonValue === 'truth' ? `${playerName} chose TRUTH! 💬` : `${playerName} chose DARE! 🔥`,
+            message: buttonValue === 'truth' 
+              ? `Ask ${playerName} a truth question!` 
+              : `Give ${playerName} a dare challenge!`,
+            icon: buttonValue === 'truth' ? '💬' : '🔥'
+          }
+        }
       });
 
     } else if (buttonValue === 'end') {
@@ -509,7 +528,11 @@ const TruthOrDare: React.FC = () => {
       const lastInputMsg = [...messagesRef.current].reverse().find(m => m.message_type === 'input' && m.content.questionType);
       const questionType = lastInputMsg?.content.questionType || gameStateRef.current.currentType || 'truth';
       
-      console.log('Submitting question, type:', questionType);
+      // Get target player (the one who chose truth/dare)
+      const targetPlayer = gameStateRef.current.players[gameStateRef.current.currentPlayerIndex];
+      const targetPlayerName = targetPlayer?.name || 'Friend';
+      
+      console.log('Submitting question, type:', questionType, 'to:', targetPlayerName);
 
       // Save question message
       const questionMsg: Omit<ChatMessage, 'id' | 'created_at'> = {
@@ -519,24 +542,36 @@ const TruthOrDare: React.FC = () => {
         content: { text: validation.value! }
       };
 
-      // Save answer input message for current player - use questionType from message
+      // Save answer input message for target player
       const answerInputMsg: Omit<ChatMessage, 'id' | 'created_at'> = {
         sender: 'system',
         message_type: 'input',
         content: {
           text: questionType === 'truth' ? '💬 TRUTH QUESTION' : '🔥 DARE CHALLENGE',
-          subtext: `From ${playerName}:`,
+          subtext: `${playerName} asks:`,
           question: validation.value!,
-          inputPlaceholder: questionType === 'truth' ? 'Type your answer...' : undefined,
+          inputPlaceholder: questionType === 'truth' ? 'Type your honest answer...' : undefined,
           inputAction: questionType === 'truth' ? 'submit_answer' : 'complete_dare',
-          questionType: questionType
+          questionType: questionType,
+          targetPlayerName: targetPlayerName
         }
       };
 
       await saveMessages([questionMsg, answerInputMsg], roomId);
-      setCurrentInputAction(questionType === 'truth' ? 'submit_answer' : 'complete_dare');
+      setCurrentInputAction(null); // I asked, now I wait for their answer
       setInputValue('');
-      toast.success('Sent! 💕');
+      toast.success('Question sent! 💕');
+      
+      // Broadcast notification to target player
+      channelRef.current?.send({
+        type: 'broadcast',
+        event: 'question_sent',
+        payload: {
+          questionType,
+          fromPlayer: playerName,
+          question: validation.value!
+        }
+      });
 
     } else if (currentInputAction === 'submit_answer') {
       const validation = validateAnswer(inputValue);
@@ -1334,6 +1369,18 @@ const TruthOrDare: React.FC = () => {
           setGameState(payload.gameState);
           gameStateRef.current = payload.gameState;
           
+          // Show notification if included (e.g., when partner chose truth/dare)
+          if (payload?.notification) {
+            haptics.medium();
+            soundManager.playLocalSound('ding');
+            showIOSNotification({
+              title: payload.notification.title,
+              message: payload.notification.message,
+              icon: payload.notification.icon,
+              variant: 'love',
+            });
+          }
+          
           // Reload messages from DB to ensure sync (postgres_changes might be delayed)
           const currentRoomId = roomIdRef.current;
           if (currentRoomId) {
@@ -1342,6 +1389,32 @@ const TruthOrDare: React.FC = () => {
             setMessages(loadedMessages);
             const action = determineInputAction(loadedMessages, payload.gameState, playerIdRef.current);
             console.log('Updated input action after game_state broadcast:', action);
+            setCurrentInputAction(action);
+          }
+        }
+      })
+      .on('broadcast', { event: 'question_sent' }, async ({ payload }) => {
+        // Partner sent a question/dare - show notification to the player who needs to answer
+        if (payload?.fromPlayer && payload?.questionType) {
+          haptics.medium();
+          soundManager.playLocalSound('ding');
+          showIOSNotification({
+            title: payload.questionType === 'truth' 
+              ? `${payload.fromPlayer} asked you a TRUTH! 💬` 
+              : `${payload.fromPlayer} gave you a DARE! 🔥`,
+            message: payload.questionType === 'truth'
+              ? 'Answer honestly!'
+              : 'Complete the challenge!',
+            icon: payload.questionType === 'truth' ? '💬' : '🔥',
+            variant: 'love',
+          });
+          
+          // Reload messages to get the question
+          const currentRoomId = roomIdRef.current;
+          if (currentRoomId) {
+            const loadedMessages = await loadMessages(currentRoomId);
+            setMessages(loadedMessages);
+            const action = determineInputAction(loadedMessages, gameStateRef.current, playerIdRef.current);
             setCurrentInputAction(action);
           }
         }
@@ -1582,14 +1655,18 @@ const TruthOrDare: React.FC = () => {
               {msg.message_type === 'input' && (
                 <div className="space-y-3">
                   <div className="flex items-center justify-center gap-2">
-                    <span className="text-lg">{msg.content.text?.includes('TRUTH') ? '💬' : '🔥'}</span>
+                    <span className="text-lg">{msg.content.questionType === 'truth' ? '💬' : '🔥'}</span>
                     <p className={`text-sm font-bold uppercase tracking-wide ${
-                      msg.content.text?.includes('TRUTH') ? 'text-pink-400' : 'text-orange-400'
-                    }`}>{msg.content.text?.includes('TRUTH') ? 'TRUTH QUESTION' : 'DARE CHALLENGE'}</p>
+                      msg.content.questionType === 'truth' ? 'text-pink-400' : 'text-orange-400'
+                    }`}>{msg.content.questionType === 'truth' ? 'TRUTH QUESTION' : 'DARE CHALLENGE'}</p>
                   </div>
+                  
+                  {/* Show prompt text - who needs to type */}
                   {msg.content.subtext && (
-                    <p className="text-xs text-center text-muted-foreground">{msg.content.subtext}</p>
+                    <p className="text-sm text-center font-medium text-foreground/80">{msg.content.subtext}</p>
                   )}
+                  
+                  {/* Show the question/dare if it exists */}
                   {msg.content.question && (
                     <div className={`p-3 rounded-xl ${
                       msg.content.questionType === 'truth' 
@@ -1598,6 +1675,11 @@ const TruthOrDare: React.FC = () => {
                     }`}>
                       <p className="text-center text-base font-medium">{msg.content.question}</p>
                     </div>
+                  )}
+                  
+                  {/* Show hint for input placeholder when no question yet */}
+                  {!msg.content.question && msg.content.inputPlaceholder && (
+                    <p className="text-xs text-center text-muted-foreground italic">{msg.content.inputPlaceholder}</p>
                   )}
                 </div>
               )}
