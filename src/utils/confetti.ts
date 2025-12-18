@@ -142,3 +142,89 @@ export const celebrateHearts = () => {
     });
   }, 200);
 };
+
+// Epic victory celebration for multiplayer wins
+export const celebrateEpicVictory = () => {
+  const colors = ['#00ffff', '#a855f7', '#ec4899', '#22c55e', '#f97316', '#ffd700'];
+  
+  // Initial big burst from center
+  confetti({
+    particleCount: 150,
+    spread: 100,
+    origin: { y: 0.5, x: 0.5 },
+    colors,
+    startVelocity: 45,
+    gravity: 0.8,
+  });
+
+  // Side cannons
+  setTimeout(() => {
+    confetti({
+      particleCount: 80,
+      angle: 60,
+      spread: 70,
+      origin: { x: 0, y: 0.7 },
+      colors,
+      startVelocity: 40,
+    });
+    confetti({
+      particleCount: 80,
+      angle: 120,
+      spread: 70,
+      origin: { x: 1, y: 0.7 },
+      colors,
+      startVelocity: 40,
+    });
+  }, 200);
+
+  // Stars burst
+  setTimeout(() => {
+    confetti({
+      particleCount: 50,
+      spread: 360,
+      origin: { y: 0.4, x: 0.5 },
+      colors: ['#ffd700', '#ffec8b', '#fff8dc'],
+      shapes: ['star'],
+      scalar: 1.5,
+      gravity: 0.5,
+      startVelocity: 25,
+    });
+  }, 400);
+
+  // Continuous rain effect
+  const duration = 2500;
+  const end = Date.now() + duration;
+
+  (function frame() {
+    confetti({
+      particleCount: 4,
+      angle: 60,
+      spread: 55,
+      origin: { x: 0 },
+      colors,
+    });
+    confetti({
+      particleCount: 4,
+      angle: 120,
+      spread: 55,
+      origin: { x: 1 },
+      colors,
+    });
+
+    if (Date.now() < end) {
+      requestAnimationFrame(frame);
+    }
+  })();
+
+  // Final big burst
+  setTimeout(() => {
+    confetti({
+      particleCount: 100,
+      spread: 180,
+      origin: { y: 0.6, x: 0.5 },
+      colors,
+      startVelocity: 35,
+      shapes: ['circle', 'square'],
+    });
+  }, 1500);
+};

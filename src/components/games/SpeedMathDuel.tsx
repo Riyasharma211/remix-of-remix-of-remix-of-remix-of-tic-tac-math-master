@@ -5,7 +5,7 @@ import { Calculator, Copy, Check, Wifi, WifiOff, Trophy, RotateCcw, Timer } from
 import { supabase } from '@/integrations/supabase/client';
 import { soundManager } from '@/utils/soundManager';
 import { haptics } from '@/utils/haptics';
-import { celebrateWin } from '@/utils/confetti';
+import { celebrateWin, celebrateEpicVictory, celebrateStars } from '@/utils/confetti';
 import { useToast } from '@/hooks/use-toast';
 
 type GameMode = 'menu' | 'create' | 'join' | 'waiting' | 'playing' | 'ended';
@@ -304,7 +304,9 @@ const SpeedMathDuel: React.FC = () => {
     }
 
     if (myScore > opponentScore) {
-      celebrateWin();
+      celebrateEpicVictory();
+      spawnFloatingEmojis('🏆');
+      setTimeout(() => spawnFloatingEmojis('🎉'), 300);
     }
   };
 

@@ -5,7 +5,7 @@ import { Type, Copy, Check, Wifi, WifiOff, Trophy, RotateCcw } from 'lucide-reac
 import { supabase } from '@/integrations/supabase/client';
 import { soundManager } from '@/utils/soundManager';
 import { haptics } from '@/utils/haptics';
-import { celebrateWin } from '@/utils/confetti';
+import { celebrateWin, celebrateEpicVictory, celebrateStars } from '@/utils/confetti';
 import { useToast } from '@/hooks/use-toast';
 
 type GameMode = 'menu' | 'create' | 'join' | 'waiting' | 'set-word' | 'playing' | 'ended';
@@ -181,7 +181,8 @@ const HangmanBattle: React.FC = () => {
             } else {
               soundManager.playLocalSound('win');
               haptics.success();
-              celebrateWin();
+              celebrateEpicVictory();
+              spawnFloatingEmojis('🏆');
             }
             setScores(payload.scores);
             
@@ -315,7 +316,8 @@ const HangmanBattle: React.FC = () => {
       } else {
         soundManager.playLocalSound('win');
         haptics.success();
-        celebrateWin();
+        celebrateEpicVictory();
+        spawnFloatingEmojis('🏆');
       }
 
       if (round >= maxRounds) {
