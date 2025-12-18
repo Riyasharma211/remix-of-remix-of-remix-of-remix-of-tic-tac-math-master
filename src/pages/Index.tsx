@@ -28,6 +28,7 @@ import SplashScreen from '@/components/SplashScreen';
 import CursorParticles from '@/components/CursorParticles';
 import ParallaxOrbs from '@/components/ParallaxOrbs';
 import { Button } from '@/components/ui/button';
+import MagneticButton from '@/components/MagneticButton';
 import { soundManager } from '@/utils/soundManager';
 import { haptics } from '@/utils/haptics';
 import { DifficultyProvider } from '@/contexts/DifficultyContext';
@@ -376,18 +377,18 @@ const IndexContent: React.FC = () => {
             <span className="text-neon-cyan text-glow-cyan">MIND</span>
             <span className="text-neon-purple text-glow-purple">GAMES</span>
           </h1>
-          <Button variant="ghost" size="icon" onClick={toggleSound} className="h-10 w-10">
+          <MagneticButton variant="ghost" size="icon" onClick={toggleSound} className="h-10 w-10">
             {soundEnabled ? <Volume2 className="w-5 h-5 text-neon-green" /> : <VolumeX className="w-5 h-5 text-muted-foreground" />}
-          </Button>
-          <Button variant="ghost" size="icon" onClick={openStats} className="h-10 w-10">
+          </MagneticButton>
+          <MagneticButton variant="ghost" size="icon" onClick={openStats} className="h-10 w-10">
             <BarChart3 className="w-5 h-5 text-neon-blue" />
-          </Button>
-          <Button variant="ghost" size="icon" onClick={openLeaderboard} className="h-10 w-10">
+          </MagneticButton>
+          <MagneticButton variant="ghost" size="icon" onClick={openLeaderboard} className="h-10 w-10">
             <Trophy className="w-5 h-5 text-neon-orange" />
-          </Button>
-          <Button variant="ghost" size="icon" onClick={toggleFullscreen} className="h-10 w-10">
+          </MagneticButton>
+          <MagneticButton variant="ghost" size="icon" onClick={toggleFullscreen} className="h-10 w-10">
             {isFullscreen ? <Minimize className="w-5 h-5 text-neon-purple" /> : <Maximize className="w-5 h-5 text-neon-purple" />}
-          </Button>
+          </MagneticButton>
           <ThemeToggle />
         </div>
         <p className="text-muted-foreground font-rajdhani text-lg max-w-md mx-auto mb-4">
