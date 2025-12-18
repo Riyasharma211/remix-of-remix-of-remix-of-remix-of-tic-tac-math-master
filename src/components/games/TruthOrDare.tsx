@@ -118,6 +118,11 @@ const TruthOrDare: React.FC = () => {
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
+  // Refs for realtime callbacks (to avoid stale closures)
+  const playerIdRef = useRef(playerId);
+  const roomIdRef = useRef(roomId);
+  const playerNameRef = useRef(playerName);
+  
   const REACTION_EMOJIS = ['😍', '💕', '🔥', '😂', '😤', '🥵', '💋', '😘', '🙈', '👏', '💯', '✨'];
   const DARE_TIME_LIMIT = 60; // seconds
   const MAX_FILE_SIZE = 2 * 1024 * 1024; // 2MB
@@ -889,14 +894,14 @@ const TruthOrDare: React.FC = () => {
     toast.success("Skipped! Your turn passes to your friend 💫");
   };
 
-  // Broadcast typing
+  // Broadcast typing - use ref for playerId
   const broadcastTyping = useCallback(() => {
     channelRef.current?.send({
       type: 'broadcast',
       event: 'typing',
-      payload: { playerId }
+      payload: { playerId: playerIdRef.current }
     });
-  }, [playerId]);
+  }, []);
 
   // Send reaction
   const sendReaction = (messageId: string, emoji: string) => {
@@ -1075,7 +1080,9 @@ const TruthOrDare: React.FC = () => {
     
     // Load messages after saving
     const loadedMessages = await loadMessages(data.id);
-    setMessages(adjustMessagesForPlayer(loadedMessages, currentState, playerId));
+    setMessages(loadedMessages);
+    const action = determineInputAction(loadedMessages, currentState, playerId);
+    setCurrentInputAction(action);
     
     setMode('playing');
 
@@ -1182,13 +1189,26 @@ const TruthOrDare: React.FC = () => {
     messagesRef.current = messages;
   }, [messages]);
 
-  // Realtime subscription
+  // Keep refs updated for realtime callbacks
+  useEffect(() => {
+    roomIdRef.current = roomId;
+  }, [roomId]);
+  
+  useEffect(() => {
+    playerIdRef.current = playerId;
+  }, [playerId]);
+  
+  useEffect(() => {
+    playerNameRef.current = playerName;
+  }, [playerName]);
+
+  // Realtime subscription - only depends on roomCode, roomId, mode
   useEffect(() => {
     if (!roomCode || !roomId || (mode !== 'waiting' && mode !== 'playing')) return;
 
-    console.log('Setting up realtime for room:', roomId);
+    console.log('Setting up realtime for room:', roomId, 'mode:', mode);
 
-    // Subscribe to chat_messages realtime
+    // Subscribe to chat_messages realtime using postgres_changes
     const messagesChannel = supabase
       .channel(`messages-${roomId}`)
       .on(
@@ -1200,7 +1220,7 @@ const TruthOrDare: React.FC = () => {
           filter: `room_id=eq.${roomId}`
         },
         (payload) => {
-          console.log('New message received:', payload.new);
+          console.log('Realtime INSERT received:', payload.new);
           const newMsg = payload.new as unknown as ChatMessage;
           
           setMessages(prev => {
@@ -1210,16 +1230,12 @@ const TruthOrDare: React.FC = () => {
               return prev;
             }
             
-            // Get latest game state from ref
-            const currentGameState = gameStateRef.current;
+            console.log('Adding new message to state');
+            const newMessages = [...prev, newMsg];
             
-            // Adjust for current player
-            const adjusted = adjustMessagesForPlayer([newMsg], currentGameState, playerId);
-            const newMessages = [...prev, ...adjusted];
-            
-            // Determine input action from new messages
-            const action = determineInputAction(newMessages, currentGameState, playerId);
-            console.log('New input action:', action);
+            // Determine input action from new messages using ref
+            const action = determineInputAction(newMessages, gameStateRef.current, playerIdRef.current);
+            console.log('New input action from realtime:', action);
             setCurrentInputAction(action);
             
             return newMessages;
@@ -1238,7 +1254,7 @@ const TruthOrDare: React.FC = () => {
         },
         (payload) => {
           const updatedMsg = payload.new as unknown as ChatMessage;
-          console.log('Message updated:', updatedMsg.id, updatedMsg);
+          console.log('Realtime UPDATE received:', updatedMsg.id);
           // Sync full message content
           setMessages(prev => prev.map(m => 
             m.id === updatedMsg.id 
@@ -1270,7 +1286,7 @@ const TruthOrDare: React.FC = () => {
       })
       .on('broadcast', { event: 'player_joined' }, async ({ payload }) => {
         console.log('Player joined event:', payload);
-        if (payload?.playerName && payload.playerId !== playerId) {
+        if (payload?.playerName && payload.playerId !== playerIdRef.current) {
           setPartnerName(payload.playerName);
           if (payload.gameState) {
             setGameState(payload.gameState);
@@ -1278,11 +1294,11 @@ const TruthOrDare: React.FC = () => {
           }
           
           // Load all messages
-          if (roomId) {
-            const loadedMessages = await loadMessages(roomId);
-            const adjustedMessages = adjustMessagesForPlayer(loadedMessages, payload.gameState || gameStateRef.current, playerId);
-            setMessages(adjustedMessages);
-            const action = determineInputAction(loadedMessages, payload.gameState || gameStateRef.current, playerId);
+          const currentRoomId = roomIdRef.current;
+          if (currentRoomId) {
+            const loadedMessages = await loadMessages(currentRoomId);
+            setMessages(loadedMessages);
+            const action = determineInputAction(loadedMessages, payload.gameState || gameStateRef.current, playerIdRef.current);
             setCurrentInputAction(action);
           }
           
@@ -1299,24 +1315,22 @@ const TruthOrDare: React.FC = () => {
         }
       })
       .on('broadcast', { event: 'game_state' }, async ({ payload }) => {
-        console.log('Game state update:', payload);
+        console.log('Game state broadcast received:', payload);
         if (payload?.gameState) {
           setGameState(payload.gameState);
           gameStateRef.current = payload.gameState;
           
-          // Reload messages from DB to ensure we have latest messages
-          if (roomId) {
-            const loadedMessages = await loadMessages(roomId);
-            const adjustedMessages = adjustMessagesForPlayer(loadedMessages, payload.gameState, playerId);
-            setMessages(adjustedMessages);
-            const action = determineInputAction(adjustedMessages, payload.gameState, playerId);
-            console.log('Updated input action after game state change:', action);
+          // Re-determine input action with updated game state
+          setMessages(prev => {
+            const action = determineInputAction(prev, payload.gameState, playerIdRef.current);
+            console.log('Updated input action after game_state broadcast:', action);
             setCurrentInputAction(action);
-          }
+            return prev;
+          });
         }
       })
       .on('broadcast', { event: 'typing' }, ({ payload }) => {
-        if (payload?.playerId !== playerId) {
+        if (payload?.playerId !== playerIdRef.current) {
           setPartnerIsTyping(true);
           if (typingTimeoutRef.current) {
             clearTimeout(typingTimeoutRef.current);
@@ -1359,11 +1373,11 @@ const TruthOrDare: React.FC = () => {
       })
       .on('broadcast', { event: 'read_receipt' }, ({ payload }) => {
         // Partner has read messages up to this ID
-        if (payload?.lastReadMessageId && payload?.playerId !== playerId) {
+        if (payload?.lastReadMessageId && payload?.playerId !== playerIdRef.current) {
           setReadReceipts(prev => {
             const updated = { ...prev };
-            // Mark all messages up to this one as read
-            messages.forEach(msg => {
+            // Mark all messages as read
+            messagesRef.current.forEach(msg => {
               if (msg.sender !== 'system') {
                 updated[msg.id] = 'read';
               }
@@ -1374,10 +1388,10 @@ const TruthOrDare: React.FC = () => {
       })
       .on('broadcast', { event: 'partner_online' }, ({ payload }) => {
         // Partner is online, mark messages as delivered
-        if (payload?.playerId !== playerId) {
+        if (payload?.playerId !== playerIdRef.current) {
           setReadReceipts(prev => {
             const updated = { ...prev };
-            messages.forEach(msg => {
+            messagesRef.current.forEach(msg => {
               if (msg.sender !== 'system' && prev[msg.id] === 'sent') {
                 updated[msg.id] = 'delivered';
               }
@@ -1393,7 +1407,7 @@ const TruthOrDare: React.FC = () => {
           broadcastChannel.send({
             type: 'broadcast',
             event: 'partner_online',
-            payload: { playerId }
+            payload: { playerId: playerIdRef.current }
           });
         }
       });
@@ -1401,6 +1415,7 @@ const TruthOrDare: React.FC = () => {
     channelRef.current = broadcastChannel;
 
     return () => {
+      console.log('Cleaning up realtime channels');
       supabase.removeChannel(messagesChannel);
       supabase.removeChannel(broadcastChannel);
       channelRef.current = null;
@@ -1408,7 +1423,7 @@ const TruthOrDare: React.FC = () => {
         clearTimeout(typingTimeoutRef.current);
       }
     };
-  }, [roomCode, roomId, mode, playerId, gameState]);
+  }, [roomCode, roomId, mode, determineInputAction, spawnFloatingEmoji]);
 
   const leaveGame = async () => {
     // Broadcast to other player that we're leaving
