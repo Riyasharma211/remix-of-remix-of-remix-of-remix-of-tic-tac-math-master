@@ -49,6 +49,10 @@ class SoundManager {
   private isEnabled: boolean = true;
   private audioContext: AudioContext | null = null;
 
+  // If ElevenLabs SFX is misconfigured (e.g. missing permissions), disable calls to avoid repeated 500s.
+  private elevenLabsSfxAvailable: boolean = true;
+  private elevenLabsSfxDisabledReason: string | null = null;
+
   private constructor() {}
 
   static getInstance(): SoundManager {
@@ -564,6 +568,13 @@ class SoundManager {
   async generateAndPlaySFX(prompt: string, duration: number = 1): Promise<void> {
     if (!this.isEnabled) return;
 
+    // If we already detected ElevenLabs is not usable, don't spam the backend.
+    if (!this.elevenLabsSfxAvailable) {
+      // Fall back to local sound
+      this.playLocalSound('click');
+      return;
+    }
+
     // Check cache first
     const cacheKey = `${prompt}-${duration}`;
     if (this.audioCache.has(cacheKey)) {
@@ -573,43 +584,59 @@ class SoundManager {
       return;
     }
 
-    // Check if Supabase is configured
+    // Check if backend is configured
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
     const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
-    
-    if (!supabaseUrl || !supabaseKey || 
-        supabaseUrl === 'https://placeholder.supabase.co' ||
-        supabaseKey === 'placeholder-key') {
-      // Fall back to local sound if Supabase is not configured
+
+    if (
+      !supabaseUrl ||
+      !supabaseKey ||
+      supabaseUrl === 'https://placeholder.supabase.co' ||
+      supabaseKey === 'placeholder-key'
+    ) {
+      // Fall back to local sound if backend is not configured
       this.playLocalSound('click');
       return;
     }
 
     try {
-      const response = await fetch(
-        `${supabaseUrl}/functions/v1/elevenlabs-sfx`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'apikey': supabaseKey,
-            'Authorization': `Bearer ${supabaseKey}`,
-          },
-          body: JSON.stringify({ prompt, duration }),
-        }
-      );
+      const response = await fetch(`${supabaseUrl}/functions/v1/elevenlabs-sfx`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          apikey: supabaseKey,
+          Authorization: `Bearer ${supabaseKey}`,
+        },
+        body: JSON.stringify({ prompt, duration }),
+      });
 
       if (!response.ok) {
-        throw new Error(`SFX request failed: ${response.status}`);
+        // Try to pull a useful message (edge function returns JSON with { error })
+        let details: string | undefined;
+        try {
+          const maybeJson = await response.clone().json();
+          if (maybeJson?.error) details = String(maybeJson.error);
+        } catch {
+          // ignore
+        }
+
+        // Common case: ElevenLabs key exists but lacks sound_generation permission.
+        if (response.status === 401) {
+          this.elevenLabsSfxAvailable = false;
+          this.elevenLabsSfxDisabledReason = details || 'Unauthorized (401)';
+          console.warn('Disabling ElevenLabs SFX due to authorization error:', this.elevenLabsSfxDisabledReason);
+        }
+
+        throw new Error(details ? `SFX request failed: ${details}` : `SFX request failed: ${response.status}`);
       }
 
       const audioBlob = await response.blob();
       const audioUrl = URL.createObjectURL(audioBlob);
       const audio = new Audio(audioUrl);
-      
+
       // Cache the audio
       this.audioCache.set(cacheKey, audio);
-      
+
       await audio.play();
     } catch (error) {
       console.error('Failed to play SFX:', error);
