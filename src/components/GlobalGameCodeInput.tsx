@@ -109,12 +109,11 @@ const GlobalGameCodeInput: React.FC<GlobalGameCodeInputProps> = ({ onJoinGame, c
       sessionStorage.setItem('pendingJoinGameType', gameType);
       sessionStorage.setItem('pendingJoinRoomId', data.id);
       
-      // Store creator/host info for auto-friend feature
-      // Check multiple possible fields for creator info
-      const creatorId = data.created_by || data.host_id || data.creator_id;
-      const creatorName = data.host_name || data.created_by_name || data.creator_name || 
-                         (data.game_state?.playerNames?.player1) || 
-                         (data.game_state?.players?.[0]?.name) || 'Unknown';
+      // Store creator/host info for auto-friend feature from game_state
+      const gameState = data.game_state as Record<string, any> | null;
+      const creatorId = gameState?.hostId || gameState?.creatorId;
+      const creatorName = gameState?.hostName || gameState?.playerNames?.player1 || 
+                         gameState?.players?.[0]?.name || 'Unknown';
       
       if (creatorId) {
         sessionStorage.setItem('pendingJoinCreatorId', creatorId);
