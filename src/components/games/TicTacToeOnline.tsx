@@ -9,6 +9,7 @@ import { haptics } from '@/utils/haptics';
 import { celebrateWin } from '@/utils/confetti';
 import { useToast } from '@/hooks/use-toast';
 import { usePendingJoin } from '@/hooks/usePendingJoin';
+import { useGameChannel } from '@/contexts/GameChannelContext';
 
 type Player = 'X' | 'O' | null;
 type Board = Player[];
@@ -75,7 +76,9 @@ const saveStats = (stats: GameStats) => {
 const TicTacToeOnline: React.FC = () => {
   const { toast } = useToast();
   const pendingJoin = usePendingJoin();
+  const { setChannelRef, setPlayerName, setRoomId } = useGameChannel();
   const [mode, setMode] = useState<GameMode>('menu');
+  const [localRoomId, setLocalRoomId] = useState<string | null>(null);
   const [gridSize, setGridSize] = useState<GridSize>(3);
   const [board, setBoard] = useState<Board>(Array(9).fill(null));
   const [currentPlayer, setCurrentPlayer] = useState<'X' | 'O'>('X');
@@ -220,14 +223,16 @@ const TicTacToeOnline: React.FC = () => {
     setTimeLeft(TURN_TIME);
     
     try {
-      const { error } = await supabase.from('game_rooms').insert({
+      const { data, error } = await supabase.from('game_rooms').insert({
         room_code: code,
         game_type: 'tictactoe',
         game_state: { board: Array(selectedSize * selectedSize).fill(null), currentPlayer: 'X', scores: { X: 0, O: 0 }, gridSize: selectedSize },
         status: 'waiting'
-      });
+      }).select().single();
 
       if (error) throw error;
+      setLocalRoomId(data.id);
+      setRoomId(data.id);
       setMode('online-waiting');
       toast({ title: 'Room Created!', description: 'Share the code with a friend' });
     } catch (error) {
@@ -261,6 +266,8 @@ const TicTacToeOnline: React.FC = () => {
       const size = gameState.gridSize || 3;
       
       setRoomCode(code);
+      setLocalRoomId(data.id);
+      setRoomId(data.id);
       setMySymbol('O');
       setGridSize(size);
       setBoard(gameState.board || Array(size * size).fill(null));
@@ -268,7 +275,10 @@ const TicTacToeOnline: React.FC = () => {
       setTimeLeft(TURN_TIME);
       setMode('online-playing');
       setIsConnected(true);
-      setGameStarted(true); // Game starts NOW
+      setGameStarted(true);
+      
+      // Update global context for chat/reactions
+      setRoomId(data.id); // Game starts NOW
       
       // Instant broadcast to host
       const channel = supabase.channel(`ttt-${code}`);
@@ -337,6 +347,8 @@ const TicTacToeOnline: React.FC = () => {
               const size = gameState.gridSize || 3;
               
               setRoomCode(code);
+              setLocalRoomId(data.id);
+              setRoomId(data.id);
               setMySymbol('O');
               setGridSize(size);
               setBoard(gameState.board || Array(size * size).fill(null));

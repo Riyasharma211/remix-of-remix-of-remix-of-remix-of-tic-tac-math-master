@@ -62,12 +62,15 @@ import ParallaxOrbs from "@/components/ParallaxOrbs";
 import LeaveGameDialog from "@/components/LeaveGameDialog";
 import UniversalGameCodeInput from "@/components/UniversalGameCodeInput";
 import GlobalGameCodeInput from "@/components/GlobalGameCodeInput";
+import FloatingReactions from "@/components/FloatingReactions";
+import FloatingChat from "@/components/FloatingChat";
 import { Button } from "@/components/ui/button";
 import MagneticButton from "@/components/MagneticButton";
 import { soundManager } from "@/utils/soundManager";
 import { haptics } from "@/utils/haptics";
 import { DifficultyProvider } from "@/contexts/DifficultyContext";
 import { ActiveGameProvider, useActiveGame } from "@/contexts/ActiveGameContext";
+import { GameChannelProvider, useGameChannel } from "@/contexts/GameChannelContext";
 import { Achievement } from "@/hooks/useGameStats";
 
 // Achievement notification context
@@ -277,6 +280,9 @@ const IndexContent: React.FC = () => {
   const [showLeaveDialog, setShowLeaveDialog] = useState(false);
   const [pendingGameSwitch, setPendingGameSwitch] = useState<GameType | null>(null);
   const [showUniversalCodeInput, setShowUniversalCodeInput] = useState(false);
+  const [globalChannelRef, setGlobalChannelRef] = useState<any>(null);
+  const [currentPlayerName, setCurrentPlayerName] = useState('');
+  const [currentRoomId, setCurrentRoomId] = useState<string | null>(null);
   const [showSplash, setShowSplash] = useState(() => {
     // Only show splash on mobile and on first load
     const isMobile = window.innerWidth < 1024;
@@ -515,6 +521,16 @@ const IndexContent: React.FC = () => {
 
         {/* Global Game Code Input - Always Visible */}
         <GlobalGameCodeInput onJoinGame={handleJoinGameByCode} />
+
+        {/* Floating Reactions - Available in all games */}
+        <FloatingReactions channelRef={globalChannelRef} />
+
+        {/* Floating Chat - Available in all games */}
+        <FloatingChat 
+          channelRef={globalChannelRef} 
+          playerName={currentPlayerName || 'Player'}
+          roomId={currentRoomId || undefined}
+        />
 
         {/* Mobile Header - Super Compact */}
         <header className="lg:hidden relative z-10 px-3 pt-2 pb-1 shrink-0">
@@ -777,7 +793,9 @@ const IndexContent: React.FC = () => {
 const Index: React.FC = () => (
   <DifficultyProvider>
     <ActiveGameProvider>
-      <IndexContent />
+      <GameChannelProvider>
+        <IndexContent />
+      </GameChannelProvider>
     </ActiveGameProvider>
   </DifficultyProvider>
 );

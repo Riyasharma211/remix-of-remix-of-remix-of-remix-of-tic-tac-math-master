@@ -10,6 +10,7 @@ import { haptics } from '@/utils/haptics';
 import { celebrateFireworks } from '@/utils/confetti';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { usePendingJoin } from '@/hooks/usePendingJoin';
+import { useGameChannel } from '@/contexts/GameChannelContext';
 
 type GameMode = 'menu' | 'create' | 'join' | 'waiting' | 'playing' | 'ended';
 
@@ -44,6 +45,7 @@ const COLORS = ['#000000', '#FF0000', '#00FF00', '#0000FF', '#FFFF00', '#FF00FF'
 
 const DrawingGame: React.FC = () => {
   const pendingJoin = usePendingJoin();
+  const { setChannelRef, setPlayerName: setGlobalPlayerName, setRoomId: setGlobalRoomId } = useGameChannel();
   const [mode, setMode] = useState<GameMode>('menu');
   const [roomCode, setRoomCode] = useState('');
   const [inputCode, setInputCode] = useState('');
@@ -81,14 +83,25 @@ const DrawingGame: React.FC = () => {
   // Auto-join if pending join code exists
   useEffect(() => {
     if (pendingJoin && pendingJoin.gameType === 'drawing' && mode === 'menu') {
+      // If no player name, set a default or prompt
+      if (!playerName.trim()) {
+        const defaultName = `Player${Math.floor(Math.random() * 1000)}`;
+        setPlayerName(defaultName);
+      }
       setInputCode(pendingJoin.code);
-      // Trigger join after a short delay
+      // Trigger join after a short delay to ensure state is set
       const timer = setTimeout(() => {
-        joinRoom();
-      }, 300);
+        if (playerName.trim() || document.querySelector('input[placeholder*="name"]')) {
+          // If name input exists, wait for user to enter name
+          // Otherwise use the default name we set
+          const finalName = playerName.trim() || `Player${Math.floor(Math.random() * 1000)}`;
+          setPlayerName(finalName);
+          setTimeout(() => joinRoom(), 200);
+        }
+      }, 500);
       return () => clearTimeout(timer);
     }
-  }, [pendingJoin, mode]);
+  }, [pendingJoin, mode, playerName]);
 
   // Initialize canvas and make it responsive
   useEffect(() => {
@@ -306,11 +319,31 @@ const DrawingGame: React.FC = () => {
       .subscribe();
 
     channelRef.current = channel;
+    
+    // Update global channel ref for FloatingReactions and FloatingChat
+    setChannelRef(channelRef);
+    setGlobalPlayerName(playerName);
+    setGlobalRoomId(roomId);
+    
+    // Listen for reactions and chat from global components
+    channel.on('broadcast', { event: 'reaction' }, ({ payload }) => {
+      if (payload?.emoji) {
+        window.dispatchEvent(new CustomEvent('game-reaction', { detail: { emoji: payload.emoji } }));
+      }
+    });
+    
+    channel.on('broadcast', { event: 'chat' }, ({ payload }) => {
+      if (payload?.type === 'chat' && payload?.message && payload?.playerName) {
+        window.dispatchEvent(new CustomEvent('game-chat', { detail: payload }));
+      }
+    });
 
     return () => {
       supabase.removeChannel(channel);
+      setChannelRef(null);
+      setGlobalRoomId(null);
     };
-  }, [roomId, mode, playerName]);
+  }, [roomId, mode, playerName, setChannelRef, setGlobalPlayerName, setGlobalRoomId]);
 
   const redrawCanvas = useCallback((lines: DrawingPoint[][]) => {
     const canvas = canvasRef.current;

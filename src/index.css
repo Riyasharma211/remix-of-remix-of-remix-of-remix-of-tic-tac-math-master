@@ -196,6 +196,21 @@
 }
 
 /* Floating hearts animation */
+@keyframes float-emoji {
+  0% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-100px) scale(0.5);
+  }
+}
+
+.animate-float-emoji {
+  animation: float-emoji 3s ease-out forwards;
+}
+
 @keyframes float-up {
   0% {
     transform: translateY(0) scale(1);
