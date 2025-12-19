@@ -275,6 +275,7 @@ const IndexContent: React.FC = () => {
   const [swipeDirection, setSwipeDirection] = useState<"left" | "right" | null>(null);
   const [showLeaveDialog, setShowLeaveDialog] = useState(false);
   const [pendingGameSwitch, setPendingGameSwitch] = useState<GameType | null>(null);
+  const [showUniversalCodeInput, setShowUniversalCodeInput] = useState(false);
   const [showSplash, setShowSplash] = useState(() => {
     // Only show splash on mobile and on first load
     const isMobile = window.innerWidth < 1024;
