@@ -531,15 +531,27 @@ class SoundManager {
       return;
     }
 
+    // Check if Supabase is configured
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+    
+    if (!supabaseUrl || !supabaseKey || 
+        supabaseUrl === 'https://placeholder.supabase.co' ||
+        supabaseKey === 'placeholder-key') {
+      // Fall back to local sound if Supabase is not configured
+      this.playLocalSound('click');
+      return;
+    }
+
     try {
       const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/elevenlabs-sfx`,
+        `${supabaseUrl}/functions/v1/elevenlabs-sfx`,
         {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+            'apikey': supabaseKey,
+            'Authorization': `Bearer ${supabaseKey}`,
           },
           body: JSON.stringify({ prompt, duration }),
         }

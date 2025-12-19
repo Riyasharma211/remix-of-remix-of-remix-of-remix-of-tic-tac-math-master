@@ -1,8 +1,24 @@
-# Welcome to your Lovable project
+# Mind Games - Multiplayer Game Collection
+
+A collection of 20 brain-training games with real-time multiplayer support, built with React, TypeScript, and Supabase.
 
 ## Project info
 
 **URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
+
+## Environment Setup
+
+This project requires Supabase for multiplayer features. To set up:
+
+1. Copy `.env.example` to `.env`
+2. Get your Supabase credentials from [Supabase Dashboard](https://app.supabase.com)
+3. Fill in the following variables:
+   ```
+   VITE_SUPABASE_URL=your_supabase_project_url
+   VITE_SUPABASE_PUBLISHABLE_KEY=your_supabase_anon_key
+   ```
+
+**Note**: The app will work in single-player mode without Supabase configuration, but multiplayer features require these environment variables.
 
 ## How can I edit this code?
 

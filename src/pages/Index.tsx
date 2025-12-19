@@ -411,10 +411,10 @@ const IndexContent: React.FC = () => {
     [activeGame, allGames, isGameActive],
   );
 
-  // Swipe navigation disabled for better mobile UX
+  // Swipe navigation for mobile
   const swipeHandlers = useSwipe({
-    onSwipeLeft: () => {},
-    onSwipeRight: () => {},
+    onSwipeLeft: () => navigateGame("next"),
+    onSwipeRight: () => navigateGame("prev"),
     threshold: 60,
   });
 

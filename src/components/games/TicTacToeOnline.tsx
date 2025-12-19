@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Grid3X3, Users, Copy, Check, RotateCcw, Wifi, WifiOff, Timer, Trophy, BarChart3 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { checkSupabaseConfig } from '@/utils/supabaseHelpers';
 import { soundManager } from '@/utils/soundManager';
 import { haptics } from '@/utils/haptics';
 import { celebrateWin } from '@/utils/confetti';
@@ -76,6 +77,7 @@ const TicTacToeOnline: React.FC = () => {
   const [gridSize, setGridSize] = useState<GridSize>(3);
   const [board, setBoard] = useState<Board>(Array(9).fill(null));
   const [currentPlayer, setCurrentPlayer] = useState<'X' | 'O'>('X');
+  const [isLoading, setIsLoading] = useState(false);
   const [winner, setWinner] = useState<Player>(null);
   const [winningLine, setWinningLine] = useState<number[] | null>(null);
   const [scores, setScores] = useState({ X: 0, O: 0 });
@@ -204,6 +206,9 @@ const TicTacToeOnline: React.FC = () => {
   }, [winner, isDraw, gridSize, mode, roomCode, scores]);
 
   const createRoom = async (selectedSize: GridSize) => {
+    if (!checkSupabaseConfig()) return;
+    
+    setIsLoading(true);
     const code = generateRoomCode();
     setRoomCode(code);
     setMySymbol('X');
@@ -225,12 +230,16 @@ const TicTacToeOnline: React.FC = () => {
     } catch (error) {
       console.error('Error creating room:', error);
       toast({ variant: 'destructive', title: 'Error', description: 'Failed to create room' });
+    } finally {
+      setIsLoading(false);
     }
   };
 
   const joinRoom = async () => {
     if (!joinCode.trim()) return;
+    if (!checkSupabaseConfig()) return;
 
+    setIsLoading(true);
     try {
       const { data, error } = await supabase
         .from('game_rooms')
@@ -240,6 +249,7 @@ const TicTacToeOnline: React.FC = () => {
 
       if (error || !data) {
         toast({ variant: 'destructive', title: 'Error', description: 'Room not found' });
+        setIsLoading(false);
         return;
       }
 
@@ -279,6 +289,8 @@ const TicTacToeOnline: React.FC = () => {
     } catch (error) {
       console.error('Error joining room:', error);
       toast({ variant: 'destructive', title: 'Error', description: 'Failed to join room' });
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -592,9 +604,10 @@ const TicTacToeOnline: React.FC = () => {
               variant="outline"
               size="lg"
               onClick={() => createRoom(size)}
+              disabled={isLoading}
               className="w-20 h-20 text-2xl font-orbitron hover:border-neon-cyan hover:text-neon-cyan"
             >
-              {size}×{size}
+              {isLoading ? '...' : `${size}×${size}`}
             </Button>
           ))}
         </div>
@@ -616,7 +629,9 @@ const TicTacToeOnline: React.FC = () => {
             className="font-orbitron text-center uppercase"
             maxLength={6}
           />
-          <Button variant="neon" onClick={joinRoom}>Join</Button>
+          <Button variant="neon" onClick={joinRoom} disabled={isLoading}>
+            {isLoading ? 'Joining...' : 'Join'}
+          </Button>
         </div>
         <Button variant="ghost" onClick={() => setMode('menu')}>Back</Button>
       </div>
