@@ -12,11 +12,13 @@ interface FloatingActionPanelProps {
   onJoinGame: (gameType: string, roomCode: string) => void;
 }
 
-const FAB_SIZE = 56; // 14 * 4 = 56px (w-14)
+const FAB_SIZE = 56;
 const EDGE_MARGIN = 16;
-const SNAP_THRESHOLD = 0.5; // Snap to nearest edge if within 50% of screen
+const SNAP_THRESHOLD = 0.5;
+const MAGNETIC_ZONE = 80; // Pixels from edge where magnetic effect kicks in
+const MAGNETIC_STRENGTH = 0.4; // How strong the pull is (0-1)
 
-// Get safe area insets (for notches, home indicators, etc.)
+// Get safe area insets
 const getSafeAreaInsets = () => {
   const style = getComputedStyle(document.documentElement);
   return {
@@ -25,6 +27,16 @@ const getSafeAreaInsets = () => {
     bottom: parseInt(style.getPropertyValue('--sab') || '0', 10) || 0,
     left: parseInt(style.getPropertyValue('--sal') || '0', 10) || 0,
   };
+};
+
+// Calculate magnetic pull factor (0 = no pull, 1 = full pull to edge)
+const getMagneticPull = (pos: number, edgePos: number, isNearEdge: boolean): number => {
+  if (!isNearEdge) return 0;
+  const distance = Math.abs(pos - edgePos);
+  if (distance > MAGNETIC_ZONE) return 0;
+  // Exponential curve for smoother feel
+  const normalizedDistance = distance / MAGNETIC_ZONE;
+  return Math.pow(1 - normalizedDistance, 2) * MAGNETIC_STRENGTH;
 };
 
 const FloatingActionPanel: React.FC<FloatingActionPanelProps> = ({
@@ -37,8 +49,10 @@ const FloatingActionPanel: React.FC<FloatingActionPanelProps> = ({
   const [position, setPosition] = useState({ x: EDGE_MARGIN, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const [isSnapping, setIsSnapping] = useState(false);
+  const [magneticEdge, setMagneticEdge] = useState<'left' | 'right' | null>(null);
   const dragRef = useRef<{ startX: number; startY: number; startPosX: number; startPosY: number } | null>(null);
   const buttonRef = useRef<HTMLDivElement>(null);
+  const lastHapticRef = useRef<number>(0);
 
   // Initialize position with safe area consideration
   useEffect(() => {
@@ -110,19 +124,51 @@ const FloatingActionPanel: React.FC<FloatingActionPanelProps> = ({
     if (!isDragging || !dragRef.current) return;
 
     const insets = getSafeAreaInsets();
+    const screenWidth = window.innerWidth;
     const deltaX = clientX - dragRef.current.startX;
     const deltaY = clientY - dragRef.current.startY;
     
     const minX = EDGE_MARGIN + insets.left;
-    const maxX = window.innerWidth - FAB_SIZE - EDGE_MARGIN - insets.right;
+    const maxX = screenWidth - FAB_SIZE - EDGE_MARGIN - insets.right;
     const minY = EDGE_MARGIN + Math.max(insets.top, 20);
     const maxY = window.innerHeight - FAB_SIZE - EDGE_MARGIN - Math.max(insets.bottom, 20);
     
-    const newX = Math.max(minX, Math.min(maxX, dragRef.current.startPosX + deltaX));
-    const newY = Math.max(minY, Math.min(maxY, dragRef.current.startPosY + deltaY));
+    let rawX = dragRef.current.startPosX + deltaX;
+    const rawY = dragRef.current.startPosY + deltaY;
+    
+    // Calculate distance to edges
+    const distToLeft = rawX - minX;
+    const distToRight = maxX - rawX;
+    
+    // Apply magnetic pull
+    const leftPull = getMagneticPull(rawX, minX, distToLeft < MAGNETIC_ZONE);
+    const rightPull = getMagneticPull(rawX, maxX, distToRight < MAGNETIC_ZONE);
+    
+    // Determine which edge is magnetic
+    let newMagneticEdge: 'left' | 'right' | null = null;
+    if (leftPull > 0) {
+      rawX = rawX - (rawX - minX) * leftPull;
+      newMagneticEdge = 'left';
+    } else if (rightPull > 0) {
+      rawX = rawX + (maxX - rawX) * rightPull;
+      newMagneticEdge = 'right';
+    }
+    
+    // Trigger haptic when entering magnetic zone
+    if (newMagneticEdge !== magneticEdge) {
+      const now = Date.now();
+      if (newMagneticEdge && now - lastHapticRef.current > 100) {
+        haptics.light();
+        lastHapticRef.current = now;
+      }
+      setMagneticEdge(newMagneticEdge);
+    }
+    
+    const newX = Math.max(minX, Math.min(maxX, rawX));
+    const newY = Math.max(minY, Math.min(maxY, rawY));
     
     setPosition({ x: newX, y: newY });
-  }, [isDragging]);
+  }, [isDragging, magneticEdge]);
 
   const handleEnd = useCallback(() => {
     if (isDragging && dragRef.current) {
@@ -138,13 +184,14 @@ const FloatingActionPanel: React.FC<FloatingActionPanelProps> = ({
         setIsSnapping(true);
         const snappedPos = snapToEdge(position.x, position.y);
         setPosition(snappedPos);
-        haptics.light();
+        haptics.medium(); // Stronger haptic on snap
         
         // Clear snapping state after animation
         setTimeout(() => setIsSnapping(false), 300);
       }
     }
     setIsDragging(false);
+    setMagneticEdge(null);
     dragRef.current = null;
   }, [isDragging, position, isExpanded, snapToEdge]);
 
@@ -218,9 +265,16 @@ const FloatingActionPanel: React.FC<FloatingActionPanelProps> = ({
         <div
           onMouseDown={handleMouseDown}
           onTouchStart={handleTouchStart}
-          className={`w-14 h-14 rounded-full bg-gradient-to-br from-neon-cyan to-neon-purple shadow-lg shadow-neon-cyan/30 flex items-center justify-center cursor-grab active:cursor-grabbing transition-transform ${
-            isDragging ? 'scale-110 shadow-xl shadow-neon-cyan/50' : 'hover:scale-105'
+          className={`w-14 h-14 rounded-full bg-gradient-to-br from-neon-cyan to-neon-purple flex items-center justify-center cursor-grab active:cursor-grabbing transition-all duration-150 ${
+            isDragging ? 'scale-110' : 'hover:scale-105'
           } ${isExpanded ? 'rotate-45' : ''}`}
+          style={{
+            boxShadow: magneticEdge
+              ? `0 0 30px hsl(var(--neon-cyan) / 0.8), 0 0 60px hsl(var(--neon-purple) / 0.5), 0 0 80px hsl(var(--neon-cyan) / 0.3)`
+              : isDragging
+                ? '0 10px 40px hsl(var(--neon-cyan) / 0.5)'
+                : '0 4px 20px hsl(var(--neon-cyan) / 0.3)',
+          }}
         >
           {isExpanded ? (
             <X className="w-6 h-6 text-white" />
@@ -229,9 +283,15 @@ const FloatingActionPanel: React.FC<FloatingActionPanelProps> = ({
           )}
         </div>
 
-        {/* Drag indicator when dragging */}
-        {isDragging && (
-          <div className="absolute inset-0 rounded-full border-2 border-dashed border-white/50 animate-pulse pointer-events-none" />
+        {/* Magnetic zone indicator */}
+        {magneticEdge && isDragging && (
+          <div 
+            className="absolute inset-0 rounded-full animate-pulse pointer-events-none"
+            style={{
+              boxShadow: `0 0 20px hsl(var(--neon-cyan) / 0.6), inset 0 0 15px hsl(var(--neon-cyan) / 0.3)`,
+              border: '2px solid hsl(var(--neon-cyan) / 0.8)',
+            }}
+          />
         )}
 
         {/* Expanded Panel - positioned based on which side FAB is on */}
