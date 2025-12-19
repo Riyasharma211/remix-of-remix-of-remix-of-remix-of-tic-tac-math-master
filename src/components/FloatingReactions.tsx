@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Smile, Heart, Fire, ThumbsUp, Clap, PartyPopper, Rocket, Star } from 'lucide-react';
+import { Smile, Heart, Flame, ThumbsUp, HandMetal, PartyPopper, Rocket, Star } from 'lucide-react';
 import { soundManager } from '@/utils/soundManager';
 import { haptics } from '@/utils/haptics';
 
@@ -22,9 +22,9 @@ interface FloatingReactionsProps {
 const REACTION_EMOJIS = [
   { emoji: '😀', icon: Smile, label: 'Happy' },
   { emoji: '❤️', icon: Heart, label: 'Love' },
-  { emoji: '🔥', icon: Fire, label: 'Fire' },
+  { emoji: '🔥', icon: Flame, label: 'Fire' },
   { emoji: '👍', icon: ThumbsUp, label: 'Thumbs Up' },
-  { emoji: '👏', icon: Clap, label: 'Clap' },
+  { emoji: '👏', icon: HandMetal, label: 'Clap' },
   { emoji: '🎉', icon: PartyPopper, label: 'Party' },
   { emoji: '🚀', icon: Rocket, label: 'Rocket' },
   { emoji: '⭐', icon: Star, label: 'Star' },
