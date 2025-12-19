@@ -10,8 +10,8 @@ echo.
 echo Committing changes...
 git commit -m "Fix errors and implement missing features: Add error handling, Error Boundary, Supabase validation, loading states, and swipe navigation"
 echo.
-echo Pushing to GitHub...
-git push origin main
+echo Pushing to GitHub (with force)...
+git push --force origin main
 echo.
 echo Done!
 pause
