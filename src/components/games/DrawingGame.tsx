@@ -9,6 +9,7 @@ import { soundManager } from '@/utils/soundManager';
 import { haptics } from '@/utils/haptics';
 import { celebrateFireworks } from '@/utils/confetti';
 import { RealtimeChannel } from '@supabase/supabase-js';
+import { usePendingJoin } from '@/hooks/usePendingJoin';
 
 type GameMode = 'menu' | 'create' | 'join' | 'waiting' | 'playing' | 'ended';
 
@@ -42,6 +43,7 @@ const WORDS = [
 const COLORS = ['#000000', '#FF0000', '#00FF00', '#0000FF', '#FFFF00', '#FF00FF', '#00FFFF', '#FF6B00'];
 
 const DrawingGame: React.FC = () => {
+  const pendingJoin = usePendingJoin();
   const [mode, setMode] = useState<GameMode>('menu');
   const [roomCode, setRoomCode] = useState('');
   const [inputCode, setInputCode] = useState('');
@@ -75,6 +77,18 @@ const DrawingGame: React.FC = () => {
 
   const generateRoomCode = () => Math.random().toString(36).substring(2, 6).toUpperCase();
   const getRandomWord = () => WORDS[Math.floor(Math.random() * WORDS.length)];
+
+  // Auto-join if pending join code exists
+  useEffect(() => {
+    if (pendingJoin && pendingJoin.gameType === 'drawing' && mode === 'menu') {
+      setInputCode(pendingJoin.code);
+      // Trigger join after a short delay
+      const timer = setTimeout(() => {
+        joinRoom();
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [pendingJoin, mode]);
 
   // Initialize canvas and make it responsive
   useEffect(() => {

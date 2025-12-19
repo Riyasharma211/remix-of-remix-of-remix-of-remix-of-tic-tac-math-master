@@ -61,6 +61,7 @@ import CursorParticles from "@/components/CursorParticles";
 import ParallaxOrbs from "@/components/ParallaxOrbs";
 import LeaveGameDialog from "@/components/LeaveGameDialog";
 import UniversalGameCodeInput from "@/components/UniversalGameCodeInput";
+import GlobalGameCodeInput from "@/components/GlobalGameCodeInput";
 import { Button } from "@/components/ui/button";
 import MagneticButton from "@/components/MagneticButton";
 import { soundManager } from "@/utils/soundManager";
@@ -511,6 +512,9 @@ const IndexContent: React.FC = () => {
         {/* Gradient Overlay */}
         <div className="absolute inset-0 bg-gradient-to-br from-neon-cyan/5 via-transparent to-neon-purple/5 pointer-events-none" />
         <div className="absolute inset-0 bg-gradient-to-t from-background via-transparent to-transparent pointer-events-none" />
+
+        {/* Global Game Code Input - Always Visible */}
+        <GlobalGameCodeInput onJoinGame={handleJoinGameByCode} />
 
         {/* Mobile Header - Super Compact */}
         <header className="lg:hidden relative z-10 px-3 pt-2 pb-1 shrink-0">
