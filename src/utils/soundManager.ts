@@ -2,11 +2,13 @@
 type SoundType = 'click' | 'win' | 'lose' | 'correct' | 'wrong' | 'tick' | 'notification' | 'start' | 'reaction' | 'flip' | 'match' | 'combo' | 'levelup' | 'countdown' | 'whoosh' | 'pop' | 'ding';
 type EmojiSound = 'laugh' | 'cry' | 'love' | 'fire' | 'angry' | 'kiss' | 'clap' | 'sparkle' | 'shy';
 
-// Map emojis to sound types
+// Map emojis to sound types and ElevenLabs prompts
 const emojiSoundMap: Record<string, EmojiSound> = {
   '😂': 'laugh',
+  '🤣': 'laugh',
   '😍': 'love',
   '💕': 'love',
+  '❤️': 'love',
   '🔥': 'fire',
   '😤': 'angry',
   '🥵': 'fire',
@@ -16,6 +18,29 @@ const emojiSoundMap: Record<string, EmojiSound> = {
   '👏': 'clap',
   '💯': 'fire',
   '✨': 'sparkle',
+  '😭': 'cry',
+  '🎉': 'clap',
+  '🤔': 'sparkle',
+  '😱': 'sparkle',
+  '💀': 'angry',
+  '✔️': 'sparkle',
+  '👍': 'clap',
+};
+
+// Map emojis to ElevenLabs sound prompts
+const emojiElevenLabsMap: Record<string, string> = {
+  '😂': 'joyful laughter, happy giggling sound, cheerful laugh',
+  '❤️': 'romantic heart beat, love sound effect, soft heartbeat',
+  '🤣': 'hysterical laughter, rolling on floor laughing, uncontrollable giggling',
+  '👍': 'approval sound, positive affirmation, thumbs up beep',
+  '😭': 'crying sound, sad weeping, emotional tears',
+  '🎉': 'party celebration, confetti pop sound, festive celebration',
+  '🔥': 'fire crackling, flames burning, fire whoosh',
+  '🤔': 'thinking sound, contemplation, pondering effect',
+  '😱': 'gasping sound, surprised gasp, shocked reaction',
+  '💀': 'spooky sound, eerie effect, skeleton rattle',
+  '💯': 'perfect score sound, achievement unlocked, success chime',
+  '✔️': 'check mark sound, confirmation beep, success ding',
 };
 
 class SoundManager {
@@ -102,8 +127,25 @@ class SoundManager {
     });
   }
 
-  // Play emoji-specific sound
-  playEmojiSound(emoji: string) {
+  // Play emoji-specific sound with ElevenLabs integration
+  playEmojiSound(emoji: string, useElevenLabs: boolean = false) {
+    if (!this.isEnabled) return;
+    
+    // Try ElevenLabs first if enabled and available
+    if (useElevenLabs && emojiElevenLabsMap[emoji]) {
+      this.generateAndPlaySFX(emojiElevenLabsMap[emoji], 0.8).catch(() => {
+        // Fallback to local sound if ElevenLabs fails
+        this.playEmojiSoundLocal(emoji);
+      });
+      return;
+    }
+    
+    // Play local sound
+    this.playEmojiSoundLocal(emoji);
+  }
+
+  // Play emoji-specific local sound (synchronous)
+  private playEmojiSoundLocal(emoji: string) {
     if (!this.isEnabled) return;
     
     const soundType = emojiSoundMap[emoji] || 'sparkle';

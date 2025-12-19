@@ -587,98 +587,153 @@ const IndexContent: React.FC = () => {
           onJoinGame={handleJoinGameByCode}
         />
 
-        {/* Mobile Header - Super Compact */}
-        <header className="lg:hidden relative z-10 px-3 pt-2 pb-1 shrink-0">
+        {/* Mobile Header - Modern App-like Design */}
+        <header className="lg:hidden relative z-10 px-4 pt-3 pb-2 shrink-0 safe-area-top">
           <div className="flex items-center justify-between">
             <button
               onClick={openUserProfile}
-              className="flex items-center gap-1.5 hover:opacity-80 transition-opacity"
+              className="flex items-center gap-2 hover:opacity-80 transition-all active:scale-95"
             >
-              <Gamepad2 className="w-5 h-5 text-neon-cyan" />
-              <span className="font-orbitron text-base font-bold">
-                <span className="text-neon-cyan">MIND</span>
-                <span className="text-neon-purple">GAMES</span>
+              <div className="relative">
+                <Gamepad2 className="w-6 h-6 text-neon-cyan drop-shadow-lg" />
+                <div className="absolute inset-0 bg-neon-cyan/20 blur-xl rounded-full" />
+              </div>
+              <span className="font-orbitron text-lg font-bold">
+                <span className="text-neon-cyan drop-shadow-lg">MIND</span>
+                <span className="text-neon-purple drop-shadow-lg">GAMES</span>
               </span>
             </button>
-            <div className="flex items-center gap-0.5">
+            <div className="flex items-center gap-1">
               <DifficultySelector />
-              <Button variant="ghost" size="icon" onClick={toggleSound} className="h-7 w-7">
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                onClick={toggleSound} 
+                className="h-9 w-9 rounded-xl hover:bg-neon-green/10 active:scale-95 transition-all"
+              >
                 {soundEnabled ? (
-                  <Volume2 className="w-3.5 h-3.5 text-neon-green" />
+                  <Volume2 className="w-4 h-4 text-neon-green" />
                 ) : (
-                  <VolumeX className="w-3.5 h-3.5 text-muted-foreground" />
+                  <VolumeX className="w-4 h-4 text-muted-foreground" />
                 )}
               </Button>
-              <Button variant="ghost" size="icon" onClick={openStats} className="h-7 w-7">
-                <BarChart3 className="w-3.5 h-3.5 text-neon-blue" />
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                onClick={openStats} 
+                className="h-9 w-9 rounded-xl hover:bg-neon-cyan/10 active:scale-95 transition-all"
+              >
+                <BarChart3 className="w-4 h-4 text-neon-cyan" />
               </Button>
-              <Button variant="ghost" size="icon" onClick={openLeaderboard} className="h-7 w-7">
-                <Trophy className="w-3.5 h-3.5 text-neon-orange" />
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                onClick={openLeaderboard} 
+                className="h-9 w-9 rounded-xl hover:bg-neon-orange/10 active:scale-95 transition-all"
+              >
+                <Trophy className="w-4 h-4 text-neon-orange" />
               </Button>
-              <Button variant="ghost" size="icon" onClick={openRoomsBrowser} className="h-7 w-7" title="Browse public game rooms">
-                <Wifi className="w-3.5 h-3.5 text-neon-blue" />
-              </Button>
-              <Button variant="ghost" size="icon" onClick={openUniversalCodeInput} className="h-7 w-7" title="Join any game with code">
-                <Gamepad2 className="w-3.5 h-3.5 text-neon-purple" />
-              </Button>
-              <Button variant="ghost" size="icon" onClick={openNewTab} className="h-7 w-7" title="Open new tab for testing">
-                <ExternalLink className="w-3.5 h-3.5 text-neon-green" />
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                onClick={openRoomsBrowser} 
+                className="h-9 w-9 rounded-xl hover:bg-neon-purple/10 active:scale-95 transition-all" 
+                title="Browse public game rooms"
+              >
+                <Wifi className="w-4 h-4 text-neon-purple" />
               </Button>
               <ThemeToggle />
             </div>
           </div>
         </header>
 
-        {/* Desktop Header */}
-        <header className="hidden lg:block text-center py-4 animate-slide-in shrink-0 relative z-10">
-          <div className="flex items-center justify-center gap-3 mb-4">
-            <Gamepad2 className="w-10 h-10 text-neon-cyan animate-float" />
-            <h1 className="font-orbitron text-4xl md:text-5xl font-bold text-foreground">
-              <span className="text-neon-cyan text-glow-cyan">MIND</span>
-              <span className="text-neon-purple text-glow-purple">GAMES</span>
+        {/* Desktop Header - Enhanced Modern Design */}
+        <header className="hidden lg:block text-center py-6 animate-slide-in shrink-0 relative z-10">
+          <div className="flex items-center justify-center gap-4 mb-4">
+            <div className="relative">
+              <Gamepad2 className="w-12 h-12 text-neon-cyan animate-float drop-shadow-lg" />
+              <div className="absolute inset-0 bg-neon-cyan/30 blur-2xl rounded-full animate-pulse" />
+            </div>
+            <h1 className="font-orbitron text-5xl md:text-6xl font-bold text-foreground">
+              <span className="text-neon-cyan text-glow-cyan drop-shadow-lg">MIND</span>
+              <span className="mx-2">•</span>
+              <span className="text-neon-purple text-glow-purple drop-shadow-lg">GAMES</span>
             </h1>
-            <MagneticButton variant="ghost" size="icon" onClick={toggleSound} className="h-10 w-10">
+            <MagneticButton 
+              variant="ghost" 
+              size="icon" 
+              onClick={toggleSound} 
+              className="h-11 w-11 rounded-xl hover:bg-neon-green/10 transition-all"
+            >
               {soundEnabled ? (
                 <Volume2 className="w-5 h-5 text-neon-green" />
               ) : (
                 <VolumeX className="w-5 h-5 text-muted-foreground" />
               )}
             </MagneticButton>
-            <MagneticButton variant="ghost" size="icon" onClick={openStats} className="h-10 w-10">
-              <BarChart3 className="w-5 h-5 text-neon-blue" />
+            <MagneticButton 
+              variant="ghost" 
+              size="icon" 
+              onClick={openStats} 
+              className="h-11 w-11 rounded-xl hover:bg-neon-cyan/10 transition-all"
+            >
+              <BarChart3 className="w-5 h-5 text-neon-cyan" />
             </MagneticButton>
-            <MagneticButton variant="ghost" size="icon" onClick={openLeaderboard} className="h-10 w-10">
+            <MagneticButton 
+              variant="ghost" 
+              size="icon" 
+              onClick={openLeaderboard} 
+              className="h-11 w-11 rounded-xl hover:bg-neon-orange/10 transition-all"
+            >
               <Trophy className="w-5 h-5 text-neon-orange" />
             </MagneticButton>
-            <MagneticButton variant="ghost" size="icon" onClick={toggleFullscreen} className="h-10 w-10">
+            <MagneticButton 
+              variant="ghost" 
+              size="icon" 
+              onClick={toggleFullscreen} 
+              className="h-11 w-11 rounded-xl hover:bg-neon-purple/10 transition-all"
+            >
               {isFullscreen ? (
                 <Minimize className="w-5 h-5 text-neon-purple" />
               ) : (
                 <Maximize className="w-5 h-5 text-neon-purple" />
               )}
             </MagneticButton>
-            <MagneticButton variant="ghost" size="icon" onClick={openRoomsBrowser} className="h-10 w-10" title="Browse public game rooms">
-              <Wifi className="w-5 h-5 text-neon-blue" />
-            </MagneticButton>
-            <MagneticButton variant="ghost" size="icon" onClick={openUniversalCodeInput} className="h-10 w-10" title="Join any game with code">
-              <Gamepad2 className="w-5 h-5 text-neon-purple" />
-            </MagneticButton>
-            <MagneticButton variant="ghost" size="icon" onClick={openNewTab} className="h-10 w-10" title="Open new tab for testing multiplayer">
-              <ExternalLink className="w-5 h-5 text-neon-green" />
+            <MagneticButton 
+              variant="ghost" 
+              size="icon" 
+              onClick={openRoomsBrowser} 
+              className="h-11 w-11 rounded-xl hover:bg-neon-purple/10 transition-all" 
+              title="Browse public game rooms"
+            >
+              <Wifi className="w-5 h-5 text-neon-purple" />
             </MagneticButton>
             <ThemeToggle />
           </div>
-          <p className="text-muted-foreground font-rajdhani text-lg max-w-md mx-auto mb-4">
-            20 games • Real-time multiplayer • Mind training
+          <p className="text-muted-foreground font-rajdhani text-base max-w-md mx-auto mb-4 flex items-center justify-center gap-2">
+            <span className="flex items-center gap-1">
+              <Gamepad2 className="w-4 h-4 text-neon-cyan" />
+              <span>20 Games</span>
+            </span>
+            <span>•</span>
+            <span className="flex items-center gap-1">
+              <Wifi className="w-4 h-4 text-neon-purple" />
+              <span>Multiplayer</span>
+            </span>
+            <span>•</span>
+            <span className="flex items-center gap-1">
+              <Brain className="w-4 h-4 text-neon-pink" />
+              <span>Mind Training</span>
+            </span>
           </p>
           <DifficultySelector />
         </header>
 
         {/* Main Content Area */}
         <div className="flex-1 min-h-0 relative z-10 flex flex-col lg:block">
-          {/* Mobile: Game Area Takes Full Space */}
+          {/* Mobile: Game Area Takes Full Space - Modern Design */}
           <main
-            className="lg:hidden flex-1 mx-2 mb-2 glass-neon rounded-2xl p-3 flex items-center justify-center overflow-auto"
+            className="lg:hidden flex-1 mx-3 mb-2 glass-neon rounded-3xl p-4 flex items-center justify-center overflow-auto shadow-app-lg"
             {...swipeHandlers}
           >
             <GameTransition gameKey={activeGame} direction={swipeDirection}>
@@ -718,9 +773,9 @@ const IndexContent: React.FC = () => {
 
               {/* Single Player Games */}
               <div>
-                <h2 className="font-orbitron text-xs text-muted-foreground uppercase tracking-widest mb-3 flex items-center gap-2">
+                <h2 className="font-orbitron text-sm text-muted-foreground uppercase tracking-widest mb-4 flex items-center gap-2 px-2">
                   <Brain className="w-4 h-4" />
-                  Solo Games
+                  <span>Solo Games</span>
                 </h2>
                 <div className="space-y-3">
                   {singlePlayerGames.map((game, index) => (
@@ -747,51 +802,66 @@ const IndexContent: React.FC = () => {
               </div>
             </aside>
 
-            {/* Game Area - Desktop */}
-            <main className="glass-neon rounded-3xl p-8 flex items-center justify-center overflow-hidden">
+            {/* Game Area - Desktop - Enhanced */}
+            <main className="glass-neon rounded-3xl p-8 flex items-center justify-center overflow-hidden shadow-app-lg border border-border/50">
               <GameTransition gameKey={activeGame} direction={swipeDirection}>
                 {renderGame()}
               </GameTransition>
             </main>
           </div>
 
-          {/* Desktop Footer */}
-          <footer className="hidden lg:block text-center mt-4 text-muted-foreground font-rajdhani text-sm py-2">
-            <p>Train your brain • Challenge friends • Have fun! 🎮</p>
+          {/* Desktop Footer - Enhanced */}
+          <footer className="hidden lg:block text-center mt-6 text-muted-foreground font-rajdhani text-sm py-4">
+            <p className="flex items-center justify-center gap-2">
+              <span className="flex items-center gap-1">
+                <Brain className="w-4 h-4 text-neon-cyan" />
+                <span>Train your brain</span>
+              </span>
+              <span>•</span>
+              <span className="flex items-center gap-1">
+                <Swords className="w-4 h-4 text-neon-purple" />
+                <span>Challenge friends</span>
+              </span>
+              <span>•</span>
+              <span className="flex items-center gap-1">
+                <Gamepad2 className="w-4 h-4 text-neon-pink" />
+                <span>Have fun!</span>
+              </span>
+            </p>
           </footer>
         </div>
 
-          {/* Mobile: Universal Code Input Button */}
-          <div className="lg:hidden fixed bottom-20 right-4 z-40">
+          {/* Mobile: Universal Code Input Button - Enhanced */}
+          <div className="lg:hidden fixed bottom-24 right-4 z-40">
             <Button
               onClick={openUniversalCodeInput}
               size="icon"
-              className="h-12 w-12 rounded-full bg-neon-purple/20 border border-neon-purple text-neon-purple shadow-lg hover:bg-neon-purple/30 animate-float"
+              className="h-14 w-14 rounded-full bg-gradient-to-br from-neon-purple/30 to-neon-pink/30 border-2 border-neon-purple/50 text-neon-purple shadow-app-lg hover:bg-neon-purple/40 hover:scale-110 active:scale-95 transition-all animate-float"
             >
-              <Gamepad2 className="w-6 h-6" />
+              <Gamepad2 className="w-7 h-7 drop-shadow-lg" />
             </Button>
           </div>
 
-          {/* Mobile Bottom Navigation - App Style with Glass Effect */}
-        <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 glass-strong border-t border-neon-cyan/10 px-2 py-1.5 safe-area-bottom shadow-[0_-4px_30px_rgba(0,0,0,0.4),0_0_60px_hsl(var(--neon-cyan)/0.1)] animate-slide-up-full">
-          <div className="flex gap-1 overflow-x-auto scrollbar-hide pb-1">
+          {/* Mobile Bottom Navigation - Modern App Style */}
+        <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 glass-strong border-t border-neon-cyan/20 px-3 py-2 safe-area-bottom shadow-[0_-8px_32px_rgba(0,0,0,0.5),0_0_80px_hsl(var(--neon-cyan)/0.15)] animate-slide-up-full">
+          <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1">
             {/* Multiplayer Section */}
-            <div className="flex gap-1 pr-2 border-r border-border/50">
+            <div className="flex gap-2 pr-3 border-r border-border/30">
               {multiplayerGames.map((game) => (
                 <button
                   key={game.id}
                   onClick={() => handleGameSwitch(game.id)}
-                  className={`flex flex-col items-center justify-center p-1.5 rounded-lg min-w-[52px] transition-all duration-200 active:scale-95 ${
+                  className={`flex flex-col items-center justify-center p-2 rounded-xl min-w-[56px] transition-all duration-300 active:scale-90 hover:scale-105 ${
                     activeGame === game.id
-                      ? `bg-neon-${game.color}/20 border border-neon-${game.color}/50`
-                      : "bg-transparent"
+                      ? `bg-neon-${game.color}/20 border-2 border-neon-${game.color}/60 shadow-app`
+                      : "bg-transparent border-2 border-transparent hover:bg-muted/20"
                   }`}
                 >
                   <game.icon
-                    className={`w-5 h-5 ${activeGame === game.id ? `text-neon-${game.color}` : "text-muted-foreground"}`}
+                    className={`w-5 h-5 transition-all ${activeGame === game.id ? `text-neon-${game.color} drop-shadow-lg` : "text-muted-foreground"}`}
                   />
                   <span
-                    className={`text-[8px] font-orbitron mt-0.5 truncate max-w-[48px] ${activeGame === game.id ? `text-neon-${game.color}` : "text-muted-foreground"}`}
+                    className={`text-[9px] font-orbitron mt-1 truncate max-w-[52px] font-semibold transition-all ${activeGame === game.id ? `text-neon-${game.color}` : "text-muted-foreground"}`}
                   >
                     {game.title.split(" ")[0]}
                   </span>
@@ -799,22 +869,22 @@ const IndexContent: React.FC = () => {
               ))}
             </div>
             {/* Solo Section */}
-            <div className="flex gap-1 pl-1">
+            <div className="flex gap-2 pl-2">
               {singlePlayerGames.map((game) => (
                 <button
                   key={game.id}
                   onClick={() => handleGameSwitch(game.id)}
-                  className={`flex flex-col items-center justify-center p-1.5 rounded-lg min-w-[52px] transition-all duration-200 active:scale-95 ${
+                  className={`flex flex-col items-center justify-center p-2 rounded-xl min-w-[56px] transition-all duration-300 active:scale-90 hover:scale-105 ${
                     activeGame === game.id
-                      ? `bg-neon-${game.color}/20 border border-neon-${game.color}/50`
-                      : "bg-transparent"
+                      ? `bg-neon-${game.color}/20 border-2 border-neon-${game.color}/60 shadow-app`
+                      : "bg-transparent border-2 border-transparent hover:bg-muted/20"
                   }`}
                 >
                   <game.icon
-                    className={`w-5 h-5 ${activeGame === game.id ? `text-neon-${game.color}` : "text-muted-foreground"}`}
+                    className={`w-5 h-5 transition-all ${activeGame === game.id ? `text-neon-${game.color} drop-shadow-lg` : "text-muted-foreground"}`}
                   />
                   <span
-                    className={`text-[8px] font-orbitron mt-0.5 truncate max-w-[48px] ${activeGame === game.id ? `text-neon-${game.color}` : "text-muted-foreground"}`}
+                    className={`text-[9px] font-orbitron mt-1 truncate max-w-[52px] font-semibold transition-all ${activeGame === game.id ? `text-neon-${game.color}` : "text-muted-foreground"}`}
                   >
                     {game.title.split(" ")[0]}
                   </span>
@@ -822,9 +892,9 @@ const IndexContent: React.FC = () => {
               ))}
             </div>
           </div>
-          {/* iOS Home Indicator */}
-          <div className="flex justify-center pt-1 pb-0.5">
-            <div className="w-32 h-1 bg-foreground/30 rounded-full" />
+          {/* iOS Home Indicator - Modern */}
+          <div className="flex justify-center pt-2 pb-1">
+            <div className="w-36 h-1 bg-foreground/20 rounded-full" />
           </div>
         </nav>
 

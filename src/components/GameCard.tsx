@@ -62,10 +62,10 @@ const GameCard: React.FC<GameCardProps> = ({
   return (
     <button
       onClick={handleClick}
-      className={`relative p-3 sm:p-4 lg:p-5 rounded-xl sm:rounded-2xl border-2 transition-all duration-300 text-left w-full
+      className={`relative p-4 sm:p-5 rounded-2xl border-2 transition-all duration-300 text-left w-full hover-lift
         ${isActive 
-          ? `${colors.border} ${colors.bg} ${colors.glow}` 
-          : 'border-border bg-card hover:border-primary/50 hover:bg-muted/50'
+          ? `${colors.border} ${colors.bg} ${colors.glow} shadow-app-lg scale-[1.02]` 
+          : 'border-border/50 bg-card/50 hover:border-primary/50 hover:bg-muted/30 hover:shadow-app'
         }
       `}
     >
