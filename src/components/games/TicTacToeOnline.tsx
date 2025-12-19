@@ -220,6 +220,7 @@ const TicTacToeOnline: React.FC = () => {
     if (!checkSupabaseConfig()) return;
     
     setIsLoading(true);
+    haptics.light();
     const code = generateRoomCode();
     setRoomCode(code);
     setMySymbol('X');
@@ -233,14 +234,28 @@ const TicTacToeOnline: React.FC = () => {
       const userId = userProfile.id || `user_${Math.random().toString(36).substring(2, 10)}`;
       const userName = localPlayerName || userProfile.displayName || `Player ${Math.random().toString(36).substring(2, 6)}`;
       
-      const { data, error } = await supabase.from('game_rooms').insert({
+      // Add timeout to prevent hanging
+      const insertPromise = supabase.from('game_rooms').insert({
         room_code: code,
         game_type: 'tictactoe',
         game_state: { board: Array(selectedSize * selectedSize).fill(null), currentPlayer: 'X', scores: { X: 0, O: 0 }, gridSize: selectedSize, hostId: userId, hostName: userName },
         status: 'waiting',
       }).select().single();
+      
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Request timeout')), 10000)
+      );
+      
+      const { data, error } = await Promise.race([insertPromise, timeoutPromise]) as any;
 
-      if (error) throw error;
+      if (error) {
+        throw error;
+      }
+      
+      if (!data) {
+        throw new Error('Room creation failed - no data returned');
+      }
+      
       setLocalRoomId(data.id);
       setRoomId(data.id);
       const defaultName = localPlayerName || localStorage.getItem('mindgames-player-name') || `Player ${Math.random().toString(36).substring(2, 6)}`;
@@ -250,10 +265,20 @@ const TicTacToeOnline: React.FC = () => {
         localStorage.setItem('mindgames-player-name', defaultName);
       }
       setMode('online-waiting');
-      toast({ title: 'Room Created!', description: 'Share the code with a friend' });
-    } catch (error) {
+      haptics.success();
+      soundManager.playLocalSound('correct');
+      toast({ title: 'Room Created!', description: `Share code: ${code}` });
+    } catch (error: any) {
       console.error('Error creating room:', error);
-      toast({ variant: 'destructive', title: 'Error', description: 'Failed to create room' });
+      toast({ 
+        variant: 'destructive', 
+        title: 'Connection Error', 
+        description: error?.message?.includes('timeout') 
+          ? 'Request timed out. Please check your connection and try again.' 
+          : 'Failed to create room. Please try again.' 
+      });
+      soundManager.playLocalSound('wrong');
+      haptics.error();
     } finally {
       setIsLoading(false);
     }
@@ -264,40 +289,69 @@ const TicTacToeOnline: React.FC = () => {
     if (!checkSupabaseConfig()) return;
 
     setIsLoading(true);
+    haptics.light();
+    
     try {
-      const { data, error } = await supabase
+      // Add timeout to prevent hanging
+      const queryPromise = supabase
         .from('game_rooms')
         .select('*')
         .eq('room_code', joinCode.toUpperCase())
         .single();
+      
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Request timeout')), 10000)
+      );
+      
+      const { data, error } = await Promise.race([queryPromise, timeoutPromise]) as any;
 
       if (error || !data) {
-        toast({ variant: 'destructive', title: 'Error', description: 'Room not found' });
+        toast({ 
+          variant: 'destructive', 
+          title: 'Room Not Found', 
+          description: error?.message || 'No room found with this code. Please check and try again.' 
+        });
         setIsLoading(false);
+        soundManager.playLocalSound('wrong');
+        haptics.error();
+        return;
+      }
+
+      // Check if room is full
+      if (data.player_count >= (data.max_players || 2)) {
+        toast({ 
+          variant: 'destructive', 
+          title: 'Room Full', 
+          description: 'This room is already full. Try another code.' 
+        });
+        setIsLoading(false);
+        soundManager.playLocalSound('wrong');
+        haptics.error();
+        return;
+      }
+
+      // Check if room is ended
+      if (data.status === 'ended') {
+        toast({ 
+          variant: 'destructive', 
+          title: 'Game Ended', 
+          description: 'This game has already ended. Please join a new game.' 
+        });
+        setIsLoading(false);
+        soundManager.playLocalSound('wrong');
+        haptics.error();
         return;
       }
 
       const code = joinCode.toUpperCase();
       const gameState = data.game_state as any;
-      const size = gameState.gridSize || 3;
+      const size = gameState?.gridSize || 3;
       
       // Store creator info for auto-friend feature from game_state
       if (gameState?.hostId) {
         sessionStorage.setItem('pendingJoinCreatorId', gameState.hostId);
         sessionStorage.setItem('pendingJoinCreatorName', gameState.hostName || 'Unknown');
       }
-      
-      setRoomCode(code);
-      setLocalRoomId(data.id);
-      setRoomId(data.id);
-      setMySymbol('O');
-      setGridSize(size);
-      setBoard(gameState.board || Array(size * size).fill(null));
-      setScores(gameState.scores || { X: 0, O: 0 });
-      setTimeLeft(TURN_TIME);
-      setMode('online-playing');
-      setIsConnected(true);
-      setGameStarted(true);
       
       // Set player name if not set
       const defaultName = localPlayerName || localStorage.getItem('mindgames-player-name') || `Player ${Math.random().toString(36).substring(2, 6)}`;
@@ -307,31 +361,58 @@ const TicTacToeOnline: React.FC = () => {
         localStorage.setItem('mindgames-player-name', defaultName);
       }
       
+      // Update room status quickly
+      await supabase
+        .from('game_rooms')
+        .update({ player_count: 2, status: 'playing' })
+        .eq('room_code', code);
+      
+      // Set game state
+      setRoomCode(code);
+      setLocalRoomId(data.id);
+      setRoomId(data.id);
+      setMySymbol('O');
+      setGridSize(size);
+      setBoard(gameState?.board || Array(size * size).fill(null));
+      setScores(gameState?.scores || { X: 0, O: 0 });
+      setTimeLeft(TURN_TIME);
+      setMode('online-playing');
+      setIsConnected(true);
+      setGameStarted(true);
+      
       // Update global context for chat/reactions
       setRoomId(data.id);
       
-      // Instant broadcast to host
+      // Setup channel and broadcast (non-blocking)
       const channel = supabase.channel(`ttt-${code}`);
       channel.subscribe(async (status) => {
         if (status === 'SUBSCRIBED') {
-          await channel.send({
-            type: 'broadcast',
-            event: 'game_update',
-            payload: { player_joined: true }
-          });
+          try {
+            await channel.send({
+              type: 'broadcast',
+              event: 'game_update',
+              payload: { player_joined: true }
+            });
+          } catch (err) {
+            console.log('Broadcast error (non-critical):', err);
+          }
         }
       });
 
-      supabase.from('game_rooms')
-        .update({ player_count: 2, status: 'playing' })
-        .eq('room_code', code)
-        .then();
-
       haptics.success();
+      soundManager.playLocalSound('correct');
       toast({ title: 'Joined!', description: 'Game starting!' });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error joining room:', error);
-      toast({ variant: 'destructive', title: 'Error', description: 'Failed to join room' });
+      toast({ 
+        variant: 'destructive', 
+        title: 'Connection Error', 
+        description: error?.message?.includes('timeout') 
+          ? 'Request timed out. Please check your connection and try again.' 
+          : 'Failed to join room. Please try again.' 
+      });
+      soundManager.playLocalSound('wrong');
+      haptics.error();
     } finally {
       setIsLoading(false);
     }
@@ -343,90 +424,22 @@ const TicTacToeOnline: React.FC = () => {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // Auto-join if pending join code exists
+  // Auto-join if pending join code exists - Optimized and Fast
   useEffect(() => {
     if (pendingJoin && pendingJoin.gameType === 'tictactoe' && mode === 'menu' && !isLoading) {
       setJoinCode(pendingJoin.code);
-      // Trigger join after state update
+      // Clear pending join immediately to prevent re-triggering
+      sessionStorage.removeItem('pendingJoinCode');
+      sessionStorage.removeItem('pendingJoinGameType');
+      sessionStorage.removeItem('pendingJoinRoomId');
+      
+      // Use the existing joinRoom function directly with minimal delay
       const timer = setTimeout(() => {
-        if (joinRoom) {
-          // Use the existing joinRoom function
-          const event = new Event('auto-join');
-          (window as any).__autoJoinTicTacToe = pendingJoin.code;
-          // Directly call join logic
-          const autoJoin = async () => {
-            if (!pendingJoin.code.trim()) return;
-            if (!checkSupabaseConfig()) return;
-
-            setIsLoading(true);
-            try {
-              const { data, error } = await supabase
-                .from('game_rooms')
-                .select('*')
-                .eq('room_code', pendingJoin.code.toUpperCase())
-                .single();
-
-              if (error || !data) {
-                toast({ variant: 'destructive', title: 'Error', description: 'Room not found' });
-                setIsLoading(false);
-                return;
-              }
-
-              const code = pendingJoin.code.toUpperCase();
-              const gameState = data.game_state as any;
-              const size = gameState.gridSize || 3;
-              
-              // Set player name if not set
-              const defaultName = localPlayerName || localStorage.getItem('mindgames-player-name') || `Player ${Math.random().toString(36).substring(2, 6)}`;
-              setLocalPlayerName(defaultName);
-              setPlayerName(defaultName);
-              if (!localPlayerName) {
-                localStorage.setItem('mindgames-player-name', defaultName);
-              }
-              
-              setRoomCode(code);
-              setLocalRoomId(data.id);
-              setRoomId(data.id);
-              setMySymbol('O');
-              setGridSize(size);
-              setBoard(gameState.board || Array(size * size).fill(null));
-              setScores(gameState.scores || { X: 0, O: 0 });
-              setTimeLeft(TURN_TIME);
-              setMode('online-playing');
-              setIsConnected(true);
-              setGameStarted(true);
-              
-              const channel = supabase.channel(`ttt-${code}`);
-              channel.subscribe(async (status) => {
-                if (status === 'SUBSCRIBED') {
-                  await channel.send({
-                    type: 'broadcast',
-                    event: 'game_update',
-                    payload: { player_joined: true }
-                  });
-                }
-              });
-
-              supabase.from('game_rooms')
-                .update({ player_count: 2, status: 'playing' })
-                .eq('room_code', code)
-                .then();
-
-              haptics.success();
-              toast({ title: 'Joined!', description: 'Game starting!' });
-            } catch (error) {
-              console.error('Error joining room:', error);
-              toast({ variant: 'destructive', title: 'Error', description: 'Failed to join room' });
-            } finally {
-              setIsLoading(false);
-            }
-          };
-          autoJoin();
-        }
-      }, 300);
+        joinRoom();
+      }, 50);
       return () => clearTimeout(timer);
     }
-  }, [pendingJoin, mode, isLoading]);
+  }, [pendingJoin, mode, isLoading, joinRoom]);
 
   // Subscribe to room changes
   useEffect(() => {

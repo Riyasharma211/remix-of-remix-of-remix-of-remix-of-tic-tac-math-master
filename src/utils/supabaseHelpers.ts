@@ -17,36 +17,45 @@ export const checkSupabaseConfig = (): boolean => {
 };
 
 /**
- * Safely execute a Supabase operation with error handling
+ * Safely execute a Supabase operation with error handling and timeout
  */
 export const safeSupabaseOperation = async <T>(
   operation: () => Promise<{ data: T | null; error: any }>,
-  errorMessage: string = 'Operation failed'
+  errorMessage: string = 'Operation failed',
+  timeout: number = 10000
 ): Promise<T | null> => {
   if (!checkSupabaseConfig()) {
     return null;
   }
 
   try {
-    const { data, error } = await operation();
+    // Add timeout to prevent hanging
+    const operationPromise = operation();
+    const timeoutPromise = new Promise<never>((_, reject) => 
+      setTimeout(() => reject(new Error('Request timeout')), timeout)
+    );
+    
+    const { data, error } = await Promise.race([operationPromise, timeoutPromise]);
     
     if (error) {
       console.error('Supabase error:', error);
       toast({
         variant: 'destructive',
         title: 'Error',
-        description: errorMessage,
+        description: error.message || errorMessage,
       });
       return null;
     }
     
     return data;
-  } catch (error) {
+  } catch (error: any) {
     console.error('Unexpected error:', error);
     toast({
       variant: 'destructive',
-      title: 'Error',
-      description: errorMessage,
+      title: 'Connection Error',
+      description: error?.message?.includes('timeout') 
+        ? 'Request timed out. Please check your connection.' 
+        : errorMessage,
     });
     return null;
   }

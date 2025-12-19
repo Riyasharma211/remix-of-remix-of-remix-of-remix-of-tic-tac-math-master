@@ -46,18 +46,26 @@ const GlobalGameCodeInput: React.FC<GlobalGameCodeInputProps> = ({ onJoinGame, c
     haptics.light();
 
     try {
-      // Search for room by code
-      const { data, error } = await supabase
+      // Add timeout to prevent hanging
+      const queryPromise = supabase
         .from('game_rooms')
         .select('*')
         .eq('room_code', code.toUpperCase().trim())
         .single();
+      
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Request timeout')), 10000)
+      );
+      
+      const { data, error } = await Promise.race([queryPromise, timeoutPromise]) as any;
 
       if (error || !data) {
         toast({ 
           variant: 'destructive', 
           title: 'Room Not Found', 
-          description: 'No game found with this code. Please check and try again.' 
+          description: error?.message?.includes('timeout') 
+            ? 'Request timed out. Please check your connection.' 
+            : 'No game found with this code. Please check and try again.' 
         });
         soundManager.playLocalSound('wrong');
         haptics.error();
@@ -133,12 +141,14 @@ const GlobalGameCodeInput: React.FC<GlobalGameCodeInputProps> = ({ onJoinGame, c
       setIsExpanded(false);
       onJoinGame(gameType, code.toUpperCase().trim());
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error joining room:', error);
       toast({ 
         variant: 'destructive', 
-        title: 'Error', 
-        description: 'Failed to join room. Please try again.' 
+        title: 'Connection Error', 
+        description: error?.message?.includes('timeout') 
+          ? 'Request timed out. Please check your connection and try again.' 
+          : 'Failed to join room. Please try again.' 
       });
       soundManager.playLocalSound('wrong');
       haptics.error();
