@@ -128,8 +128,8 @@ const FloatingReactions: React.FC<FloatingReactionsProps> = ({ channelRef, onRea
         ))}
       </div>
 
-      {/* Reaction Button - Positioned to not overlap with chat */}
-      <div className="fixed bottom-32 lg:bottom-20 right-4 z-50 pointer-events-auto">
+      {/* Reaction Button - Positioned above chat button */}
+      <div className="fixed bottom-52 lg:bottom-32 right-4 z-50 pointer-events-auto">
         <Popover>
           <PopoverTrigger asChild>
             <Button

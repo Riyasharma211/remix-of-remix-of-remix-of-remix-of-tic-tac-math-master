@@ -55,15 +55,18 @@ import DifficultySelector from "@/components/DifficultySelector";
 import ThemeToggle from "@/components/ThemeToggle";
 import Leaderboard from "@/components/Leaderboard";
 import GameStatsDashboard from "@/components/GameStatsDashboard";
+import DailyChallenges from "@/components/DailyChallenges";
+import UserProfile from "@/components/UserProfile";
+import GameRoomsBrowser from "@/components/GameRoomsBrowser";
+import FriendsList from "@/components/FriendsList";
+import Tournament from "@/components/Tournament";
 import { AchievementNotification } from "@/components/AchievementNotification";
 import SplashScreen from "@/components/SplashScreen";
 import CursorParticles from "@/components/CursorParticles";
 import ParallaxOrbs from "@/components/ParallaxOrbs";
 import LeaveGameDialog from "@/components/LeaveGameDialog";
 import UniversalGameCodeInput from "@/components/UniversalGameCodeInput";
-import GlobalGameCodeInput from "@/components/GlobalGameCodeInput";
-import FloatingReactions from "@/components/FloatingReactions";
-import FloatingChat from "@/components/FloatingChat";
+import FloatingActionPanel from "@/components/FloatingActionPanel";
 import { Button } from "@/components/ui/button";
 import MagneticButton from "@/components/MagneticButton";
 import { soundManager } from "@/utils/soundManager";
@@ -274,6 +277,14 @@ const IndexContent: React.FC = () => {
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
   const [showStats, setShowStats] = useState(false);
+  const [showDailyChallenges, setShowDailyChallenges] = useState(false);
+  const [showUserProfile, setShowUserProfile] = useState(false);
+  const [showRoomsBrowser, setShowRoomsBrowser] = useState(false);
+  const [showFriends, setShowFriends] = useState(false);
+  const [showTournament, setShowTournament] = useState(false);
+  const [showGameHistory, setShowGameHistory] = useState(false);
+  const [showPowerUpsShop, setShowPowerUpsShop] = useState(false);
+  const [showInstallPrompt, setShowInstallPrompt] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [pendingAchievements, setPendingAchievements] = useState<Achievement[]>([]);
   const [swipeDirection, setSwipeDirection] = useState<"left" | "right" | null>(null);
@@ -287,6 +298,11 @@ const IndexContent: React.FC = () => {
     // Only show splash on mobile and on first load
     const isMobile = window.innerWidth < 1024;
     const hasSeenSplash = sessionStorage.getItem("hasSeenSplash");
+    
+    // Check for PWA install prompt
+    if (!isPWAInstalled() && isInstallable()) {
+      setTimeout(() => setShowInstallPrompt(true), 3000);
+    }
     return isMobile && !hasSeenSplash;
   });
 
@@ -346,6 +362,41 @@ const IndexContent: React.FC = () => {
   const openStats = () => {
     haptics.light();
     setShowStats(true);
+  };
+
+  const openDailyChallenges = () => {
+    haptics.light();
+    setShowDailyChallenges(true);
+  };
+
+  const openUserProfile = () => {
+    haptics.light();
+    setShowUserProfile(true);
+  };
+
+  const openRoomsBrowser = () => {
+    haptics.light();
+    setShowRoomsBrowser(true);
+  };
+
+  const openFriends = () => {
+    haptics.light();
+    setShowFriends(true);
+  };
+
+  const openTournament = () => {
+    haptics.light();
+    setShowTournament(true);
+  };
+
+  const openGameHistory = () => {
+    haptics.light();
+    setShowGameHistory(true);
+  };
+
+  const openPowerUpsShop = () => {
+    haptics.light();
+    setShowPowerUpsShop(true);
   };
 
   const openNewTab = () => {
@@ -519,29 +570,27 @@ const IndexContent: React.FC = () => {
         <div className="absolute inset-0 bg-gradient-to-br from-neon-cyan/5 via-transparent to-neon-purple/5 pointer-events-none" />
         <div className="absolute inset-0 bg-gradient-to-t from-background via-transparent to-transparent pointer-events-none" />
 
-        {/* Global Game Code Input - Always Visible */}
-        <GlobalGameCodeInput onJoinGame={handleJoinGameByCode} />
-
-        {/* Floating Reactions - Available in all games */}
-        <FloatingReactions channelRef={globalChannelRef} />
-
-        {/* Floating Chat - Available in all games */}
-        <FloatingChat 
-          channelRef={globalChannelRef} 
-          playerName={currentPlayerName || 'Player'}
+        {/* Floating Action Panel - Slideable sidebar with all actions */}
+        <FloatingActionPanel
+          channelRef={globalChannelRef}
+          playerName={currentPlayerName || undefined}
           roomId={currentRoomId || undefined}
+          onJoinGame={handleJoinGameByCode}
         />
 
         {/* Mobile Header - Super Compact */}
         <header className="lg:hidden relative z-10 px-3 pt-2 pb-1 shrink-0">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-1.5">
+            <button
+              onClick={openUserProfile}
+              className="flex items-center gap-1.5 hover:opacity-80 transition-opacity"
+            >
               <Gamepad2 className="w-5 h-5 text-neon-cyan" />
               <span className="font-orbitron text-base font-bold">
                 <span className="text-neon-cyan">MIND</span>
                 <span className="text-neon-purple">GAMES</span>
               </span>
-            </div>
+            </button>
             <div className="flex items-center gap-0.5">
               <DifficultySelector />
               <Button variant="ghost" size="icon" onClick={toggleSound} className="h-7 w-7">
@@ -556,6 +605,9 @@ const IndexContent: React.FC = () => {
               </Button>
               <Button variant="ghost" size="icon" onClick={openLeaderboard} className="h-7 w-7">
                 <Trophy className="w-3.5 h-3.5 text-neon-orange" />
+              </Button>
+              <Button variant="ghost" size="icon" onClick={openRoomsBrowser} className="h-7 w-7" title="Browse public game rooms">
+                <Wifi className="w-3.5 h-3.5 text-neon-blue" />
               </Button>
               <Button variant="ghost" size="icon" onClick={openUniversalCodeInput} className="h-7 w-7" title="Join any game with code">
                 <Gamepad2 className="w-3.5 h-3.5 text-neon-purple" />
@@ -595,6 +647,9 @@ const IndexContent: React.FC = () => {
               ) : (
                 <Maximize className="w-5 h-5 text-neon-purple" />
               )}
+            </MagneticButton>
+            <MagneticButton variant="ghost" size="icon" onClick={openRoomsBrowser} className="h-10 w-10" title="Browse public game rooms">
+              <Wifi className="w-5 h-5 text-neon-blue" />
             </MagneticButton>
             <MagneticButton variant="ghost" size="icon" onClick={openUniversalCodeInput} className="h-10 w-10" title="Join any game with code">
               <Gamepad2 className="w-5 h-5 text-neon-purple" />
@@ -770,6 +825,69 @@ const IndexContent: React.FC = () => {
         {/* Modals */}
         <Leaderboard isOpen={showLeaderboard} onClose={() => setShowLeaderboard(false)} />
         <GameStatsDashboard isOpen={showStats} onClose={() => setShowStats(false)} />
+        <DailyChallenges isOpen={showDailyChallenges} onClose={() => setShowDailyChallenges(false)} />
+        <UserProfile isOpen={showUserProfile} onClose={() => setShowUserProfile(false)} />
+        <GameRoomsBrowser
+          isOpen={showRoomsBrowser}
+          onClose={() => setShowRoomsBrowser(false)}
+          onJoinRoom={handleJoinGameByCode}
+        />
+        <FriendsList
+          isOpen={showFriends}
+          onClose={() => setShowFriends(false)}
+          onInviteFriend={(friendId) => {
+            // TODO: Implement friend invite to game
+            toast({
+              title: 'Invite Sent',
+              description: 'Friend invite sent!',
+            });
+          }}
+        />
+        <Tournament isOpen={showTournament} onClose={() => setShowTournament(false)} />
+        <GameHistory isOpen={showGameHistory} onClose={() => setShowGameHistory(false)} />
+        <PowerUpsShop isOpen={showPowerUpsShop} onClose={() => setShowPowerUpsShop(false)} />
+        
+        {/* PWA Install Prompt */}
+        {showInstallPrompt && !isPWAInstalled() && (
+          <div className="fixed bottom-4 left-4 right-4 lg:left-auto lg:right-4 lg:w-96 z-50 animate-slide-in">
+            <div className="bg-card border-2 border-neon-cyan rounded-xl p-4 shadow-2xl">
+              <div className="flex items-start gap-3">
+                <div className="text-3xl">📱</div>
+                <div className="flex-1">
+                  <h3 className="font-orbitron text-sm font-semibold text-foreground mb-1">
+                    Install Mind Games
+                  </h3>
+                  <p className="text-xs text-muted-foreground font-rajdhani mb-3">
+                    Install for a better experience with offline support!
+                  </p>
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        installPWA();
+                        setShowInstallPrompt(false);
+                        haptics.success();
+                      }}
+                      className="bg-neon-cyan/20 border border-neon-cyan text-neon-cyan hover:bg-neon-cyan/30 flex-1"
+                    >
+                      Install
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => {
+                        setShowInstallPrompt(false);
+                        haptics.light();
+                      }}
+                    >
+                      Later
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Leave Game Confirmation Dialog */}
         <LeaveGameDialog
@@ -794,7 +912,13 @@ const Index: React.FC = () => (
   <DifficultyProvider>
     <ActiveGameProvider>
       <GameChannelProvider>
-        <IndexContent />
+        <ChallengeProvider>
+          <UserProfileProvider>
+            <PowerUpsProvider>
+              <IndexContent />
+            </PowerUpsProvider>
+          </UserProfileProvider>
+        </ChallengeProvider>
       </GameChannelProvider>
     </ActiveGameProvider>
   </DifficultyProvider>

@@ -209,6 +209,10 @@ export const useGameStats = () => {
     playTime: number,
     specialConditions?: { reactionTime?: number; mathScore?: number; patternLevel?: number }
   ) => {
+    // Dispatch event for profile and challenges to listen
+    window.dispatchEvent(new CustomEvent('game-recorded', {
+      detail: { gameType, result, score, playTime }
+    }));
     const currentStats = stats[gameType] || {
       gamesPlayed: 0,
       wins: 0,

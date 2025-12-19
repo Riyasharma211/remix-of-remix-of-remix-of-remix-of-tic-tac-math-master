@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { Trophy, Medal, Star, Trash2, X, Calendar, Gamepad2 } from 'lucide-react';
+import { Trophy, Medal, Star, Trash2, X, Calendar, Gamepad2, Share2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useLeaderboard, GAME_NAMES, GAME_TYPES } from '@/hooks/useLeaderboard';
 import { haptics } from '@/utils/haptics';
+import { shareScoreCard } from '@/utils/socialShare';
 
 interface LeaderboardProps {
   isOpen: boolean;
@@ -151,12 +152,29 @@ const Leaderboard: React.FC<LeaderboardProps> = ({ isOpen, onClose }) => {
                     )}
                   </div>
                   
-                  <div className="flex-shrink-0 text-right">
-                    <div className="font-orbitron text-lg text-neon-cyan">{entry.score.toLocaleString()}</div>
-                    <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                      <Calendar className="w-3 h-3" />
-                      {formatDate(entry.date)}
+                  <div className="flex-shrink-0 text-right flex items-center gap-2">
+                    <div>
+                      <div className="font-orbitron text-lg text-neon-cyan">{entry.score.toLocaleString()}</div>
+                      <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                        <Calendar className="w-3 h-3" />
+                        {formatDate(entry.date)}
+                      </div>
                     </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
+                      onClick={async () => {
+                        await shareScoreCard(
+                          GAME_NAMES[entry.gameType] || entry.gameType,
+                          entry.score,
+                          { wins: 1 }
+                        );
+                        haptics.light();
+                      }}
+                    >
+                      <Share2 className="w-3 h-3" />
+                    </Button>
                   </div>
                 </div>
               ))}

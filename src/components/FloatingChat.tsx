@@ -17,9 +17,10 @@ interface FloatingChatProps {
   channelRef?: React.MutableRefObject<any>;
   playerName?: string;
   roomId?: string;
+  compact?: boolean;
 }
 
-const FloatingChat: React.FC<FloatingChatProps> = ({ channelRef, playerName = 'You', roomId }) => {
+const FloatingChat: React.FC<FloatingChatProps> = ({ channelRef, playerName = 'You', roomId, compact = false }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -115,11 +116,93 @@ const FloatingChat: React.FC<FloatingChatProps> = ({ channelRef, playerName = 'Y
     }
   };
 
+  // Compact mode - for use in slideable panel
+  if (compact) {
+    return (
+      <div className="space-y-2">
+        {!isOpen ? (
+          <Button
+            onClick={() => {
+              setIsOpen(true);
+              setIsMinimized(false);
+              haptics.light();
+            }}
+            className="w-full bg-neon-cyan/20 border border-neon-cyan text-neon-cyan hover:bg-neon-cyan/30"
+            size="sm"
+          >
+            <MessageCircle className="w-4 h-4 mr-2" />
+            <span className="font-orbitron text-xs">Chat</span>
+            {messages.length > 0 && (
+              <span className="ml-2 h-5 w-5 rounded-full bg-neon-pink text-white text-xs flex items-center justify-center font-bold">
+                {messages.length > 9 ? '9+' : messages.length}
+              </span>
+            )}
+          </Button>
+        ) : (
+          <div className="bg-card/50 border border-neon-cyan rounded-lg p-2 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="font-orbitron text-xs text-foreground">Chat</span>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6"
+                onClick={() => {
+                  setIsOpen(false);
+                  haptics.light();
+                }}
+              >
+                <X className="w-3 h-3" />
+              </Button>
+            </div>
+            <div className="h-32 overflow-y-auto space-y-1">
+              {messages.map((msg) => (
+                <div
+                  key={msg.id}
+                  className={`text-xs p-1.5 rounded ${
+                    msg.isOwn
+                      ? 'bg-neon-cyan/20 text-right'
+                      : 'bg-muted/50 text-left'
+                  }`}
+                >
+                  <div className="font-rajdhani font-semibold text-[10px] text-muted-foreground">
+                    {msg.playerName}
+                  </div>
+                  <div className="font-rajdhani">{msg.message}</div>
+                </div>
+              ))}
+              <div ref={messagesEndRef} />
+            </div>
+            <div className="flex gap-1">
+              <Input
+                ref={inputRef}
+                value={inputMessage}
+                onChange={(e) => setInputMessage(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Type message..."
+                className="text-xs flex-1 h-8"
+                maxLength={100}
+              />
+              <Button
+                onClick={sendMessage}
+                disabled={!inputMessage.trim()}
+                className="bg-neon-cyan/20 border border-neon-cyan text-neon-cyan hover:bg-neon-cyan/30 h-8 px-2"
+                size="sm"
+              >
+                <Send className="w-3 h-3" />
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Full mode - floating button
   return (
     <>
-      {/* Chat Button */}
+      {/* Chat Button - Positioned above join button */}
       {!isOpen && (
-        <div className="fixed bottom-20 lg:bottom-20 right-4 z-50 pointer-events-auto">
+        <div className="fixed bottom-36 lg:bottom-20 right-4 z-50 pointer-events-auto">
           <Button
             size="icon"
             onClick={() => {
@@ -144,8 +227,8 @@ const FloatingChat: React.FC<FloatingChatProps> = ({ channelRef, playerName = 'Y
         <div
           className={`fixed right-2 lg:right-4 z-50 pointer-events-auto transition-all duration-300 ${
             isMinimized
-              ? 'bottom-20 w-56 lg:w-64'
-              : 'bottom-20 w-72 lg:w-80 h-80 lg:h-96'
+              ? 'bottom-36 lg:bottom-20 w-56 lg:w-64'
+              : 'bottom-36 lg:bottom-20 w-72 lg:w-80 h-72 lg:h-80'
           }`}
         >
           <div className="bg-card/95 backdrop-blur-md border-2 border-neon-cyan rounded-xl shadow-2xl flex flex-col h-full">

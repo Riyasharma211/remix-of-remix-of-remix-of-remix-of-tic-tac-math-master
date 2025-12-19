@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
-import { X, Trophy, Clock, Target, Flame, Gamepad2, Award, TrendingUp, BarChart3 } from 'lucide-react';
+import { X, Trophy, Clock, Target, Flame, Gamepad2, Award, TrendingUp, BarChart3, Share2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useGameStats, Achievement } from '@/hooks/useGameStats';
 import { GAME_NAMES } from '@/hooks/useLeaderboard';
 import { haptics } from '@/utils/haptics';
+import { shareScoreCard, shareAchievement } from '@/utils/socialShare';
 
 interface GameStatsDashboardProps {
   isOpen: boolean;
@@ -68,11 +69,26 @@ const GameStatsDashboard: React.FC<GameStatsDashboardProps> = ({ isOpen, onClose
           </div>
         )}
       </div>
-      {!locked && (
-        <div className="text-neon-green">
-          <Award className="w-5 h-5" />
-        </div>
-      )}
+      <div className="flex items-center gap-2">
+        {!locked && (
+          <div className="text-neon-green">
+            <Award className="w-5 h-5" />
+          </div>
+        )}
+        {!locked && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6"
+            onClick={async () => {
+              await shareAchievement(achievement.name, achievement.description);
+              haptics.light();
+            }}
+          >
+            <Share2 className="w-3 h-3" />
+          </Button>
+        )}
+      </div>
     </div>
   );
 
@@ -175,9 +191,29 @@ const GameStatsDashboard: React.FC<GameStatsDashboardProps> = ({ isOpen, onClose
                       <h3 className="font-semibold text-foreground">
                         {GAME_NAMES[gameType] || gameType}
                       </h3>
-                      <span className="text-xs text-muted-foreground">
-                        {gameStats.gamesPlayed} games
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-muted-foreground">
+                          {gameStats.gamesPlayed} games
+                        </span>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6"
+                          onClick={async () => {
+                            await shareScoreCard(
+                              GAME_NAMES[gameType] || gameType,
+                              gameStats.highScore,
+                              {
+                                wins: gameStats.wins,
+                                losses: gameStats.losses,
+                              }
+                            );
+                            haptics.light();
+                          }}
+                        >
+                          <Share2 className="w-3 h-3" />
+                        </Button>
+                      </div>
                     </div>
                     
                     <div className="grid grid-cols-4 gap-2 text-center text-xs">

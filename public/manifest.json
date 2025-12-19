@@ -1,0 +1,42 @@
+{
+  "name": "Mind Games",
+  "short_name": "MindGames",
+  "description": "Train your brain with fun multiplayer and single-player games",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0a0a",
+  "theme_color": "#00ffff",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["games", "entertainment", "education"],
+  "screenshots": [],
+  "shortcuts": [
+    {
+      "name": "Play Tic Tac Toe",
+      "short_name": "TicTacToe",
+      "description": "Quick start Tic Tac Toe",
+      "url": "/?game=tictactoe",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Daily Challenges",
+      "short_name": "Challenges",
+      "description": "View daily challenges",
+      "url": "/?challenges=true",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    }
+  ]
+}

@@ -10,6 +10,7 @@ import { celebrateWin } from '@/utils/confetti';
 import { useToast } from '@/hooks/use-toast';
 import { usePendingJoin } from '@/hooks/usePendingJoin';
 import { useGameChannel } from '@/contexts/GameChannelContext';
+import { useChallengeContext } from '@/contexts/ChallengeContext';
 
 type Player = 'X' | 'O' | null;
 type Board = Player[];
@@ -434,6 +435,8 @@ const TicTacToeOnline: React.FC = () => {
               haptics.success();
               celebrateWin();
               updateStats('win');
+              // Update daily challenges
+              updateChallengeProgress('win', 'tictactoe');
             }
           }
           

@@ -10,6 +10,7 @@ import { haptics } from '@/utils/haptics';
 
 interface GlobalGameCodeInputProps {
   onJoinGame: (gameType: string, roomCode: string) => void;
+  compact?: boolean;
 }
 
 // Map game_type from database to GameType
@@ -26,7 +27,7 @@ const GAME_TYPE_MAP: Record<string, string> = {
   'speedmath': 'speedmath',
 };
 
-const GlobalGameCodeInput: React.FC<GlobalGameCodeInputProps> = ({ onJoinGame }) => {
+const GlobalGameCodeInput: React.FC<GlobalGameCodeInputProps> = ({ onJoinGame, compact = false }) => {
   const [code, setCode] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
@@ -153,34 +154,92 @@ const GlobalGameCodeInput: React.FC<GlobalGameCodeInputProps> = ({ onJoinGame })
     }
   }, [isExpanded]);
 
+  // Compact mode - for use in slideable panel
+  if (compact) {
+    return (
+      <div className="space-y-2">
+        {!isExpanded ? (
+          <Button
+            onClick={() => setIsExpanded(true)}
+            className="w-full bg-neon-purple/20 border border-neon-purple text-neon-purple hover:bg-neon-purple/30"
+            size="sm"
+          >
+            <Gamepad2 className="w-4 h-4 mr-2" />
+            <span className="font-orbitron text-xs">Join Game</span>
+          </Button>
+        ) : (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <Input
+                id="global-game-code-input"
+                value={code}
+                onChange={(e) => setCode(e.target.value.toUpperCase())}
+                onKeyDown={handleKeyDown}
+                placeholder="Enter code..."
+                className="text-center text-xs font-orbitron tracking-widest uppercase flex-1"
+                maxLength={8}
+                disabled={isLoading}
+                autoFocus
+              />
+              <Button
+                onClick={handleJoin}
+                disabled={!code.trim() || isLoading}
+                className="bg-neon-cyan/20 border border-neon-cyan text-neon-cyan hover:bg-neon-cyan/30 disabled:opacity-50 px-2"
+                size="sm"
+              >
+                {isLoading ? (
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                ) : (
+                  <span className="font-orbitron text-xs">Join</span>
+                )}
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => {
+                  setIsExpanded(false);
+                  setCode('');
+                }}
+              >
+                <X className="w-3 h-3" />
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Full mode - floating button
   return (
-    <div className="fixed top-16 lg:top-20 left-1/2 transform -translate-x-1/2 z-50 w-full max-w-md px-4 pointer-events-auto">
+    <div className="fixed bottom-24 lg:bottom-4 right-4 z-40 pointer-events-auto">
       {!isExpanded ? (
-        // Collapsed state - just a button
+        // Collapsed state - compact icon button
         <Button
           onClick={() => setIsExpanded(true)}
-          className="w-full bg-neon-purple/20 border-2 border-neon-purple text-neon-purple hover:bg-neon-purple/30 shadow-lg animate-float backdrop-blur-sm"
-          size="lg"
+          className="h-12 w-12 rounded-full bg-neon-purple/20 border-2 border-neon-purple text-neon-purple hover:bg-neon-purple/30 shadow-lg backdrop-blur-sm p-0"
+          size="icon"
+          title="Join Game by Code"
         >
-          <Gamepad2 className="w-5 h-5 mr-2" />
-          <span className="font-orbitron">Enter Game Code to Join</span>
+          <Gamepad2 className="w-5 h-5" />
         </Button>
       ) : (
-        // Expanded state - input box
-        <div className="bg-card/95 backdrop-blur-md border-2 border-neon-cyan rounded-xl p-3 lg:p-4 shadow-2xl animate-slide-in">
+        // Expanded state - input box (positioned above the button)
+        <div className="absolute bottom-full right-0 mb-2 w-72 bg-card/95 backdrop-blur-md border-2 border-neon-cyan rounded-xl p-3 shadow-2xl animate-slide-in">
           <div className="flex items-center gap-2 mb-3">
-            <Gamepad2 className="w-4 h-4 lg:w-5 lg:h-5 text-neon-cyan" />
-            <h3 className="font-orbitron text-xs lg:text-sm text-foreground">Join Any Game</h3>
+            <Gamepad2 className="w-4 h-4 text-neon-cyan" />
+            <h3 className="font-orbitron text-xs text-foreground">Join Any Game</h3>
             <Button
               variant="ghost"
               size="icon"
-              className="ml-auto h-6 w-6"
+              className="ml-auto h-5 w-5"
               onClick={() => {
                 setIsExpanded(false);
                 setCode('');
               }}
             >
-              <X className="w-3 h-3 lg:w-4 lg:h-4" />
+              <X className="w-3 h-3" />
             </Button>
           </div>
           
@@ -191,7 +250,7 @@ const GlobalGameCodeInput: React.FC<GlobalGameCodeInputProps> = ({ onJoinGame })
               onChange={(e) => setCode(e.target.value.toUpperCase())}
               onKeyDown={handleKeyDown}
               placeholder="Enter code..."
-              className="text-center text-lg lg:text-xl font-orbitron tracking-widest uppercase flex-1"
+              className="text-center text-sm font-orbitron tracking-widest uppercase flex-1"
               maxLength={8}
               disabled={isLoading}
               autoFocus
@@ -199,17 +258,17 @@ const GlobalGameCodeInput: React.FC<GlobalGameCodeInputProps> = ({ onJoinGame })
             <Button
               onClick={handleJoin}
               disabled={!code.trim() || isLoading}
-              className="bg-neon-cyan/20 border border-neon-cyan text-neon-cyan hover:bg-neon-cyan/30 disabled:opacity-50 px-4"
+              className="bg-neon-cyan/20 border border-neon-cyan text-neon-cyan hover:bg-neon-cyan/30 disabled:opacity-50 px-3"
             >
               {isLoading ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
               ) : (
-                <span className="font-orbitron text-sm">Join</span>
+                <span className="font-orbitron text-xs">Join</span>
               )}
             </Button>
           </div>
-          <p className="text-[10px] lg:text-xs text-muted-foreground text-center mt-2 font-rajdhani">
-            Press Enter to join • Works with all multiplayer games
+          <p className="text-[10px] text-muted-foreground text-center mt-2 font-rajdhani">
+            Press Enter to join
           </p>
         </div>
       )}
