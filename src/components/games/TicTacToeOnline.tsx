@@ -104,7 +104,7 @@ const TicTacToeOnline: React.FC = () => {
   const [copied, setCopied] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const channelRef = useRef<any>(null);
-  const [playerName, setPlayerName] = useState(() => {
+  const [localPlayerName, setLocalPlayerName] = useState(() => {
     return localStorage.getItem('mindgames-player-name') || '';
   });
 
@@ -231,24 +231,22 @@ const TicTacToeOnline: React.FC = () => {
       // Get user ID from localStorage (from UserProfile)
       const userProfile = JSON.parse(localStorage.getItem('mindgames-user-profile') || '{}');
       const userId = userProfile.id || `user_${Math.random().toString(36).substring(2, 10)}`;
-      const userName = playerName || userProfile.displayName || `Player ${Math.random().toString(36).substring(2, 6)}`;
+      const userName = localPlayerName || userProfile.displayName || `Player ${Math.random().toString(36).substring(2, 6)}`;
       
       const { data, error } = await supabase.from('game_rooms').insert({
         room_code: code,
         game_type: 'tictactoe',
-        game_state: { board: Array(selectedSize * selectedSize).fill(null), currentPlayer: 'X', scores: { X: 0, O: 0 }, gridSize: selectedSize },
+        game_state: { board: Array(selectedSize * selectedSize).fill(null), currentPlayer: 'X', scores: { X: 0, O: 0 }, gridSize: selectedSize, hostId: userId, hostName: userName },
         status: 'waiting',
-        created_by: userId,
-        host_id: userId,
-        host_name: userName,
       }).select().single();
 
       if (error) throw error;
       setLocalRoomId(data.id);
       setRoomId(data.id);
-      const defaultName = playerName || localStorage.getItem('mindgames-player-name') || `Player ${Math.random().toString(36).substring(2, 6)}`;
+      const defaultName = localPlayerName || localStorage.getItem('mindgames-player-name') || `Player ${Math.random().toString(36).substring(2, 6)}`;
+      setLocalPlayerName(defaultName);
       setPlayerName(defaultName);
-      if (!playerName) {
+      if (!localPlayerName) {
         localStorage.setItem('mindgames-player-name', defaultName);
       }
       setMode('online-waiting');
@@ -283,10 +281,10 @@ const TicTacToeOnline: React.FC = () => {
       const gameState = data.game_state as any;
       const size = gameState.gridSize || 3;
       
-      // Store creator info for auto-friend feature
-      if (data.created_by || data.host_id) {
-        sessionStorage.setItem('pendingJoinCreatorId', data.created_by || data.host_id);
-        sessionStorage.setItem('pendingJoinCreatorName', data.host_name || data.created_by_name || 'Unknown');
+      // Store creator info for auto-friend feature from game_state
+      if (gameState?.hostId) {
+        sessionStorage.setItem('pendingJoinCreatorId', gameState.hostId);
+        sessionStorage.setItem('pendingJoinCreatorName', gameState.hostName || 'Unknown');
       }
       
       setRoomCode(code);
@@ -302,9 +300,10 @@ const TicTacToeOnline: React.FC = () => {
       setGameStarted(true);
       
       // Set player name if not set
-      const defaultName = playerName || localStorage.getItem('mindgames-player-name') || `Player ${Math.random().toString(36).substring(2, 6)}`;
+      const defaultName = localPlayerName || localStorage.getItem('mindgames-player-name') || `Player ${Math.random().toString(36).substring(2, 6)}`;
+      setLocalPlayerName(defaultName);
       setPlayerName(defaultName);
-      if (!playerName) {
+      if (!localPlayerName) {
         localStorage.setItem('mindgames-player-name', defaultName);
       }
       
@@ -378,9 +377,10 @@ const TicTacToeOnline: React.FC = () => {
               const size = gameState.gridSize || 3;
               
               // Set player name if not set
-              const defaultName = playerName || localStorage.getItem('mindgames-player-name') || `Player ${Math.random().toString(36).substring(2, 6)}`;
+              const defaultName = localPlayerName || localStorage.getItem('mindgames-player-name') || `Player ${Math.random().toString(36).substring(2, 6)}`;
+              setLocalPlayerName(defaultName);
               setPlayerName(defaultName);
-              if (!playerName) {
+              if (!localPlayerName) {
                 localStorage.setItem('mindgames-player-name', defaultName);
               }
               
@@ -524,7 +524,7 @@ const TicTacToeOnline: React.FC = () => {
     
     // Update global context for chat/reactions
     setChannelRef(channelRef);
-    setPlayerName(playerName || `Player ${mySymbol}`);
+    setPlayerName(localPlayerName || `Player ${mySymbol}`);
     setRoomId(localRoomId || null);
     
     // Listen for reactions and chat from global components
@@ -546,7 +546,7 @@ const TicTacToeOnline: React.FC = () => {
       setChannelRef(null);
       setRoomId(null);
     };
-  }, [roomCode, mode, mySymbol, gridSize, checkWinner, updateStats, localRoomId, playerName, setChannelRef, setPlayerName, setRoomId]);
+  }, [roomCode, mode, mySymbol, gridSize, checkWinner, updateStats, localRoomId, localPlayerName, setChannelRef, setPlayerName, setRoomId]);
 
   const handleClick = async (index: number) => {
     if (board[index] || winner || isDraw) return;
@@ -810,9 +810,9 @@ const TicTacToeOnline: React.FC = () => {
         <div className="w-full space-y-2">
           <label className="text-xs text-muted-foreground font-rajdhani">Your Name (for chat)</label>
           <Input
-            value={playerName}
+            value={localPlayerName}
             onChange={(e) => {
-              setPlayerName(e.target.value);
+              setLocalPlayerName(e.target.value);
               localStorage.setItem('mindgames-player-name', e.target.value);
             }}
             placeholder="Enter your name"
@@ -831,7 +831,7 @@ const TicTacToeOnline: React.FC = () => {
                 variant="outline"
                 size="lg"
                 onClick={() => createRoom(size)}
-                disabled={isLoading || !playerName.trim()}
+                disabled={isLoading || !localPlayerName.trim()}
                 className="h-20 text-2xl font-orbitron hover:border-neon-purple hover:text-neon-purple hover:bg-neon-purple/10 transition-all"
               >
                 {isLoading ? (
@@ -849,7 +849,7 @@ const TicTacToeOnline: React.FC = () => {
           </div>
         </div>
         
-        {!playerName.trim() && (
+        {!localPlayerName.trim() && (
           <div className="bg-amber-500/10 border border-amber-500/50 rounded-lg p-3 w-full">
             <p className="text-xs text-amber-500 font-rajdhani text-center">
               ⚠️ Please enter your name to create a room
@@ -994,7 +994,7 @@ const TicTacToeOnline: React.FC = () => {
         <div className="bg-card/50 rounded-xl p-3 border border-border w-full">
           <div className="flex items-center justify-between">
             <span className="text-xs text-muted-foreground font-rajdhani">Your Name:</span>
-            <span className="font-orbitron text-sm text-foreground">{playerName || 'Player X'}</span>
+            <span className="font-orbitron text-sm text-foreground">{localPlayerName || 'Player X'}</span>
           </div>
         </div>
         
@@ -1043,10 +1043,10 @@ const TicTacToeOnline: React.FC = () => {
               <span className="font-orbitron text-neon-cyan">{roomCode}</span>
               <span className="mx-2">•</span>
               <span>You: <span className="font-orbitron text-foreground">{mySymbol}</span></span>
-              {playerName && (
+              {localPlayerName && (
                 <>
                   <span className="mx-2">•</span>
-                  <span className="text-foreground">{playerName}</span>
+                  <span className="text-foreground">{localPlayerName}</span>
                 </>
               )}
             </span>
