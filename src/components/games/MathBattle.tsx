@@ -6,6 +6,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { soundManager } from '@/utils/soundManager';
 import { haptics } from '@/utils/haptics';
 import { celebrateFireworks } from '@/utils/confetti';
+import { useGameChannel } from '@/contexts/GameChannelContext';
 import { useToast } from '@/hooks/use-toast';
 import { RealtimeChannel } from '@supabase/supabase-js';
 
@@ -74,6 +75,7 @@ const generateOptions = (answer: number): number[] => {
 
 const MathBattle: React.FC = () => {
   const { toast } = useToast();
+  const { setChannelRef, setPlayerName: setGlobalPlayerName, setRoomId: setGlobalRoomId } = useGameChannel();
   const [mode, setMode] = useState<GameMode>('menu');
   const [roomCode, setRoomCode] = useState('');
   const [roomId, setRoomId] = useState<string | null>(null);
