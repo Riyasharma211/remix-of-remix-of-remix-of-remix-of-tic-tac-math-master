@@ -74,6 +74,7 @@ const saveStats = (stats: GameStats) => {
 
 const TicTacToeOnline: React.FC = () => {
   const { toast } = useToast();
+  const pendingJoin = usePendingJoin();
   const [mode, setMode] = useState<GameMode>('menu');
   const [gridSize, setGridSize] = useState<GridSize>(3);
   const [board, setBoard] = useState<Board>(Array(9).fill(null));
