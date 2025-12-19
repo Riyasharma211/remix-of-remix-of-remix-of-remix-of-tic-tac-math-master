@@ -104,6 +104,9 @@ const TicTacToeOnline: React.FC = () => {
   const [copied, setCopied] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const channelRef = useRef<any>(null);
+  const [playerName, setPlayerName] = useState(() => {
+    return localStorage.getItem('mindgames-player-name') || '';
+  });
 
   const generateRoomCode = () => {
     return Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -235,6 +238,11 @@ const TicTacToeOnline: React.FC = () => {
       if (error) throw error;
       setLocalRoomId(data.id);
       setRoomId(data.id);
+      const defaultName = playerName || localStorage.getItem('mindgames-player-name') || `Player ${Math.random().toString(36).substring(2, 6)}`;
+      setPlayerName(defaultName);
+      if (!playerName) {
+        localStorage.setItem('mindgames-player-name', defaultName);
+      }
       setMode('online-waiting');
       toast({ title: 'Room Created!', description: 'Share the code with a friend' });
     } catch (error) {
@@ -279,8 +287,15 @@ const TicTacToeOnline: React.FC = () => {
       setIsConnected(true);
       setGameStarted(true);
       
+      // Set player name if not set
+      const defaultName = playerName || localStorage.getItem('mindgames-player-name') || `Player ${Math.random().toString(36).substring(2, 6)}`;
+      setPlayerName(defaultName);
+      if (!playerName) {
+        localStorage.setItem('mindgames-player-name', defaultName);
+      }
+      
       // Update global context for chat/reactions
-      setRoomId(data.id); // Game starts NOW
+      setRoomId(data.id);
       
       // Instant broadcast to host
       const channel = supabase.channel(`ttt-${code}`);
@@ -347,6 +362,13 @@ const TicTacToeOnline: React.FC = () => {
               const code = pendingJoin.code.toUpperCase();
               const gameState = data.game_state as any;
               const size = gameState.gridSize || 3;
+              
+              // Set player name if not set
+              const defaultName = playerName || localStorage.getItem('mindgames-player-name') || `Player ${Math.random().toString(36).substring(2, 6)}`;
+              setPlayerName(defaultName);
+              if (!playerName) {
+                localStorage.setItem('mindgames-player-name', defaultName);
+              }
               
               setRoomCode(code);
               setLocalRoomId(data.id);
@@ -485,12 +507,32 @@ const TicTacToeOnline: React.FC = () => {
       });
 
     channelRef.current = channel;
-
+    
+    // Update global context for chat/reactions
+    setChannelRef(channelRef);
+    setPlayerName(playerName || `Player ${mySymbol}`);
+    setRoomId(localRoomId || null);
+    
+    // Listen for reactions and chat from global components
+    channel.on('broadcast', { event: 'reaction' }, ({ payload }) => {
+      if (payload?.emoji) {
+        window.dispatchEvent(new CustomEvent('game-reaction', { detail: { emoji: payload.emoji } }));
+      }
+    });
+    
+    channel.on('broadcast', { event: 'chat' }, ({ payload }) => {
+      if (payload?.type === 'chat' && payload?.message && payload?.playerName) {
+        window.dispatchEvent(new CustomEvent('game-chat', { detail: payload }));
+      }
+    });
+    
     return () => {
       supabase.removeChannel(channel);
       channelRef.current = null;
+      setChannelRef(null);
+      setRoomId(null);
     };
-  }, [roomCode, mode, mySymbol, gridSize, checkWinner, updateStats]);
+  }, [roomCode, mode, mySymbol, gridSize, checkWinner, updateStats, localRoomId, playerName, setChannelRef, setPlayerName, setRoomId]);
 
   const handleClick = async (index: number) => {
     if (board[index] || winner || isDraw) return;
@@ -612,51 +654,103 @@ const TicTacToeOnline: React.FC = () => {
   // Menu
   if (mode === 'menu') {
     return (
-      <div className="flex flex-col items-center gap-6 animate-slide-in">
-        <Grid3X3 className="w-16 h-16 text-neon-cyan animate-float" />
-        <h2 className="font-orbitron text-2xl text-foreground">Tic Tac Toe</h2>
-        
-        {/* Stats Card */}
-        <div className="w-full max-w-xs p-4 bg-card rounded-xl border border-border">
-          <div className="flex items-center justify-between mb-3">
-            <span className="font-rajdhani text-muted-foreground flex items-center gap-2">
-              <BarChart3 className="w-4 h-4" /> Your Stats
-            </span>
-            <span className="font-orbitron text-neon-cyan">{winRate}% Win</span>
+      <div className="flex flex-col items-center gap-4 sm:gap-6 animate-slide-in w-full max-w-md mx-auto px-4">
+        {/* Game Icon & Title */}
+        <div className="flex flex-col items-center gap-3">
+          <div className="relative">
+            <Grid3X3 className="w-20 h-20 sm:w-24 sm:h-24 text-neon-cyan animate-float" />
+            <div className="absolute inset-0 bg-neon-cyan/20 blur-2xl rounded-full" />
           </div>
-          <div className="grid grid-cols-4 gap-2 text-center">
-            <div>
-              <p className="font-orbitron text-lg text-foreground">{stats.totalGames}</p>
-              <p className="text-xs text-muted-foreground">Games</p>
+          <h2 className="font-orbitron text-3xl sm:text-4xl text-foreground">Tic Tac Toe</h2>
+          <p className="text-sm text-muted-foreground font-rajdhani text-center">
+            Classic strategy game • Play locally or online
+          </p>
+        </div>
+        
+        {/* Stats Card - Enhanced Design */}
+        <div className="w-full p-4 sm:p-5 bg-gradient-to-br from-neon-cyan/10 via-neon-purple/10 to-neon-pink/10 rounded-2xl border-2 border-neon-cyan/30 shadow-lg backdrop-blur-sm">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <BarChart3 className="w-5 h-5 text-neon-cyan" />
+              <span className="font-orbitron text-sm sm:text-base text-foreground">Your Stats</span>
             </div>
-            <div>
-              <p className="font-orbitron text-lg text-neon-green">{stats.wins}</p>
-              <p className="text-xs text-muted-foreground">Wins</p>
+            <div className="flex items-center gap-2">
+              <span className={`font-orbitron text-lg sm:text-xl ${winRate >= 50 ? 'text-neon-green' : winRate >= 30 ? 'text-neon-orange' : 'text-muted-foreground'}`}>
+                {winRate}%
+              </span>
+              <Trophy className={`w-4 h-4 ${winRate >= 50 ? 'text-neon-green' : 'text-muted-foreground'}`} />
             </div>
-            <div>
-              <p className="font-orbitron text-lg text-destructive">{stats.losses}</p>
-              <p className="text-xs text-muted-foreground">Losses</p>
+          </div>
+          <div className="grid grid-cols-4 gap-3 text-center">
+            <div className="bg-card/50 rounded-lg p-2 sm:p-3 border border-border/50">
+              <p className="font-orbitron text-xl sm:text-2xl text-foreground">{stats.totalGames}</p>
+              <p className="text-xs text-muted-foreground font-rajdhani mt-1">Games</p>
             </div>
-            <div>
-              <p className="font-orbitron text-lg text-neon-purple">{stats.draws}</p>
-              <p className="text-xs text-muted-foreground">Draws</p>
+            <div className="bg-card/50 rounded-lg p-2 sm:p-3 border border-neon-green/30">
+              <p className="font-orbitron text-xl sm:text-2xl text-neon-green">{stats.wins}</p>
+              <p className="text-xs text-muted-foreground font-rajdhani mt-1">Wins</p>
+            </div>
+            <div className="bg-card/50 rounded-lg p-2 sm:p-3 border border-destructive/30">
+              <p className="font-orbitron text-xl sm:text-2xl text-destructive">{stats.losses}</p>
+              <p className="text-xs text-muted-foreground font-rajdhani mt-1">Losses</p>
+            </div>
+            <div className="bg-card/50 rounded-lg p-2 sm:p-3 border border-neon-purple/30">
+              <p className="font-orbitron text-xl sm:text-2xl text-neon-purple">{stats.draws}</p>
+              <p className="text-xs text-muted-foreground font-rajdhani mt-1">Draws</p>
             </div>
           </div>
         </div>
         
-        <div className="flex flex-col gap-4 w-full max-w-xs">
-          <Button variant="neon" size="lg" onClick={() => setMode('local')}>
-            <Users className="w-5 h-5" />
-            Local 2 Players
+        {/* Action Buttons - Enhanced Design */}
+        <div className="flex flex-col gap-3 w-full">
+          {/* Local 2 Players */}
+          <Button 
+            variant="outline" 
+            size="lg" 
+            onClick={() => setMode('local')}
+            className="w-full h-14 bg-card/50 border-2 border-neon-cyan/50 hover:border-neon-cyan hover:bg-neon-cyan/10 transition-all group"
+          >
+            <div className="flex items-center justify-between w-full">
+              <div className="flex items-center gap-3">
+                <Users className="w-5 h-5 text-neon-cyan group-hover:scale-110 transition-transform" />
+                <span className="font-orbitron text-base">Local 2 Players</span>
+              </div>
+              <span className="text-xs text-muted-foreground font-rajdhani">Offline</span>
+            </div>
           </Button>
           
-          <Button variant="neon-purple" size="lg" onClick={() => setMode('online-create')}>
-            <Wifi className="w-5 h-5" />
-            Create Online Room
+          {/* Create Online Room */}
+          <Button 
+            variant="outline" 
+            size="lg" 
+            onClick={() => setMode('online-create')}
+            className="w-full h-14 bg-gradient-to-r from-neon-purple/20 to-neon-pink/20 border-2 border-neon-purple/50 hover:border-neon-purple hover:bg-neon-purple/20 transition-all group"
+          >
+            <div className="flex items-center justify-between w-full">
+              <div className="flex items-center gap-3">
+                <Wifi className="w-5 h-5 text-neon-purple group-hover:scale-110 transition-transform" />
+                <span className="font-orbitron text-base">Create Online Room</span>
+              </div>
+              <span className="text-xs text-muted-foreground font-rajdhani">Host</span>
+            </div>
           </Button>
           
-          <Button variant="outline" size="lg" onClick={() => setMode('online-join')}>
-            Join Online Room
+          {/* Join Online Room */}
+          <Button 
+            variant="outline" 
+            size="lg" 
+            onClick={() => setMode('online-join')}
+            className="w-full h-14 bg-card/50 border-2 border-neon-cyan/50 hover:border-neon-cyan hover:bg-neon-cyan/10 transition-all group relative overflow-hidden"
+          >
+            <div className="flex items-center justify-between w-full relative z-10">
+              <div className="flex items-center gap-3">
+                <div className="relative">
+                  <Wifi className="w-5 h-5 text-neon-cyan group-hover:scale-110 transition-transform" />
+                </div>
+                <span className="font-orbitron text-base">Join Online Room</span>
+              </div>
+              <span className="text-xs text-muted-foreground font-rajdhani">Enter Code</span>
+            </div>
           </Button>
         </div>
       </div>
@@ -689,23 +783,69 @@ const TicTacToeOnline: React.FC = () => {
   // Online Create - Grid Selection
   if (mode === 'online-create') {
     return (
-      <div className="flex flex-col items-center gap-6 animate-slide-in">
-        <h2 className="font-orbitron text-xl text-foreground">Select Grid Size</h2>
-        <div className="flex gap-4">
-          {([3, 4, 5] as GridSize[]).map(size => (
-            <Button
-              key={size}
-              variant="outline"
-              size="lg"
-              onClick={() => createRoom(size)}
-              disabled={isLoading}
-              className="w-20 h-20 text-2xl font-orbitron hover:border-neon-cyan hover:text-neon-cyan"
-            >
-              {isLoading ? '...' : `${size}×${size}`}
-            </Button>
-          ))}
+      <div className="flex flex-col items-center gap-6 animate-slide-in w-full max-w-md mx-auto px-4">
+        <div className="text-center space-y-2">
+          <Wifi className="w-16 h-16 text-neon-purple mx-auto animate-pulse" />
+          <h2 className="font-orbitron text-2xl sm:text-3xl text-foreground">Create Online Room</h2>
+          <p className="text-sm text-muted-foreground font-rajdhani">
+            Choose grid size and wait for a friend to join
+          </p>
         </div>
-        <Button variant="ghost" onClick={() => setMode('menu')}>Back</Button>
+        
+        {/* Player Name Input */}
+        <div className="w-full space-y-2">
+          <label className="text-xs text-muted-foreground font-rajdhani">Your Name (for chat)</label>
+          <Input
+            value={playerName}
+            onChange={(e) => {
+              setPlayerName(e.target.value);
+              localStorage.setItem('mindgames-player-name', e.target.value);
+            }}
+            placeholder="Enter your name"
+            className="font-rajdhani"
+            maxLength={20}
+          />
+        </div>
+        
+        {/* Grid Size Selection */}
+        <div className="w-full">
+          <label className="text-xs text-muted-foreground font-rajdhani mb-3 block">Select Grid Size</label>
+          <div className="grid grid-cols-3 gap-3">
+            {([3, 4, 5] as GridSize[]).map(size => (
+              <Button
+                key={size}
+                variant="outline"
+                size="lg"
+                onClick={() => createRoom(size)}
+                disabled={isLoading || !playerName.trim()}
+                className="h-20 text-2xl font-orbitron hover:border-neon-purple hover:text-neon-purple hover:bg-neon-purple/10 transition-all"
+              >
+                {isLoading ? (
+                  <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <div className="flex flex-col items-center gap-1">
+                    <span>{size}×{size}</span>
+                    <span className="text-xs font-rajdhani text-muted-foreground">
+                      {size === 3 ? 'Classic' : size === 4 ? 'Medium' : 'Large'}
+                    </span>
+                  </div>
+                )}
+              </Button>
+            ))}
+          </div>
+        </div>
+        
+        {!playerName.trim() && (
+          <div className="bg-amber-500/10 border border-amber-500/50 rounded-lg p-3 w-full">
+            <p className="text-xs text-amber-500 font-rajdhani text-center">
+              ⚠️ Please enter your name to create a room
+            </p>
+          </div>
+        )}
+        
+        <Button variant="ghost" onClick={() => setMode('menu')} className="text-muted-foreground">
+          ← Back to Menu
+        </Button>
       </div>
     );
   }
@@ -713,21 +853,66 @@ const TicTacToeOnline: React.FC = () => {
   // Online Join
   if (mode === 'online-join') {
     return (
-      <div className="flex flex-col items-center gap-6 animate-slide-in">
-        <h2 className="font-orbitron text-xl text-foreground">Join Online Room</h2>
-        <div className="flex gap-3 w-full max-w-xs">
-          <Input
-            value={joinCode}
-            onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
-            placeholder="Enter room code"
-            className="font-orbitron text-center uppercase"
-            maxLength={6}
-          />
-          <Button variant="neon" onClick={joinRoom} disabled={isLoading}>
-            {isLoading ? 'Joining...' : 'Join'}
+      <div className="flex flex-col items-center gap-6 animate-slide-in w-full max-w-md mx-auto px-4">
+        <div className="text-center space-y-2">
+          <Wifi className="w-16 h-16 text-neon-cyan mx-auto animate-pulse" />
+          <h2 className="font-orbitron text-2xl sm:text-3xl text-foreground">Join Online Room</h2>
+          <p className="text-sm text-muted-foreground font-rajdhani">
+            Enter the room code shared by your friend
+          </p>
+        </div>
+        
+        <div className="w-full space-y-4">
+          <div className="relative">
+            <Input
+              value={joinCode}
+              onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+              placeholder="Enter 6-digit code"
+              className="font-orbitron text-center text-xl sm:text-2xl tracking-widest uppercase h-16 border-2 border-neon-cyan/50 focus:border-neon-cyan"
+              maxLength={6}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && joinCode.trim() && !isLoading) {
+                  joinRoom();
+                }
+              }}
+            />
+            {joinCode.length > 0 && (
+              <div className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground font-rajdhani">
+                {joinCode.length}/6
+              </div>
+            )}
+          </div>
+          
+          <Button 
+            variant="neon" 
+            size="lg" 
+            onClick={joinRoom} 
+            disabled={isLoading || !joinCode.trim() || joinCode.length < 4}
+            className="w-full h-14 text-lg font-orbitron"
+          >
+            {isLoading ? (
+              <div className="flex items-center gap-2">
+                <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                <span>Joining...</span>
+              </div>
+            ) : (
+              <>
+                <Wifi className="w-5 h-5 mr-2" />
+                Join Game
+              </>
+            )}
           </Button>
         </div>
-        <Button variant="ghost" onClick={() => setMode('menu')}>Back</Button>
+        
+        <div className="bg-muted/30 rounded-xl p-4 border border-border w-full">
+          <p className="text-xs text-muted-foreground font-rajdhani text-center">
+            💡 Tip: Ask your friend to share their room code from the "Create Online Room" screen
+          </p>
+        </div>
+        
+        <Button variant="ghost" onClick={() => setMode('menu')} className="text-muted-foreground">
+          ← Back to Menu
+        </Button>
       </div>
     );
   }
@@ -735,47 +920,68 @@ const TicTacToeOnline: React.FC = () => {
   // Online Waiting
   if (mode === 'online-waiting') {
     return (
-      <div className="flex flex-col items-center gap-6 animate-slide-in">
+      <div className="flex flex-col items-center gap-4 sm:gap-6 animate-slide-in w-full max-w-md mx-auto px-4">
         {/* Animated waiting indicator */}
         <div className="relative">
-          <div className="w-20 h-20 rounded-full border-4 border-neon-purple/30 animate-pulse" />
-          <div className="absolute inset-0 w-20 h-20 rounded-full border-4 border-transparent border-t-neon-purple animate-spin" />
-          <Users className="absolute inset-0 m-auto w-8 h-8 text-neon-purple" />
+          <div className="w-24 h-24 rounded-full border-4 border-neon-purple/30 animate-pulse" />
+          <div className="absolute inset-0 w-24 h-24 rounded-full border-4 border-transparent border-t-neon-purple animate-spin" />
+          <Users className="absolute inset-0 m-auto w-10 h-10 text-neon-purple" />
         </div>
         
         <div className="text-center space-y-2">
-          <h2 className="font-orbitron text-xl text-foreground">Waiting for Opponent...</h2>
+          <h2 className="font-orbitron text-2xl sm:text-3xl text-foreground">Waiting for Opponent...</h2>
           <p className="text-muted-foreground font-rajdhani text-sm animate-pulse">
-            Share the code below to start playing
+            Share the code below with your friend
           </p>
         </div>
         
-        {/* Room code card */}
-        <div className="relative p-6 bg-card rounded-2xl border-2 border-neon-cyan/50 shadow-lg shadow-neon-cyan/20">
-          <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 bg-background rounded-full border border-border">
-            <span className="text-xs font-rajdhani text-muted-foreground">ROOM CODE</span>
+        {/* Room code card - Enhanced */}
+        <div className="relative w-full p-6 bg-gradient-to-br from-neon-cyan/10 via-neon-purple/10 to-neon-pink/10 rounded-2xl border-2 border-neon-cyan/50 shadow-lg shadow-neon-cyan/20">
+          <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-4 py-1 bg-background rounded-full border-2 border-neon-cyan/50">
+            <span className="text-xs font-rajdhani text-muted-foreground font-semibold">ROOM CODE</span>
           </div>
-          <div className="flex items-center gap-3">
-            <span className="font-orbitron text-3xl tracking-[0.4em] text-neon-cyan">{roomCode}</span>
+          <div className="flex items-center justify-center gap-4 mt-2">
+            <span className="font-orbitron text-4xl sm:text-5xl tracking-[0.3em] text-neon-cyan drop-shadow-lg">
+              {roomCode}
+            </span>
             <Button 
               variant="ghost" 
               size="icon" 
               onClick={copyRoomCode}
-              className="hover:bg-neon-cyan/20"
+              className="h-10 w-10 hover:bg-neon-cyan/20 rounded-full transition-all"
             >
-              {copied ? <Check className="w-5 h-5 text-neon-green" /> : <Copy className="w-5 h-5 text-neon-cyan" />}
+              {copied ? (
+                <Check className="w-6 h-6 text-neon-green" />
+              ) : (
+                <Copy className="w-6 h-6 text-neon-cyan" />
+              )}
             </Button>
           </div>
+          {copied && (
+            <p className="text-xs text-neon-green text-center mt-3 font-rajdhani animate-fade-in">
+              ✓ Code copied to clipboard!
+            </p>
+          )}
         </div>
         
         {/* Game info */}
-        <div className="flex items-center gap-4 text-sm text-muted-foreground">
-          <span className="flex items-center gap-1">
-            <Grid3X3 className="w-4 h-4" /> {gridSize}×{gridSize} Grid
+        <div className="flex items-center justify-center gap-6 text-sm text-muted-foreground bg-card/50 rounded-xl p-3 w-full">
+          <span className="flex items-center gap-2">
+            <Grid3X3 className="w-4 h-4 text-neon-cyan" />
+            <span className="font-rajdhani">{gridSize}×{gridSize} Grid</span>
           </span>
-          <span className="flex items-center gap-1">
-            <Timer className="w-4 h-4" /> {TURN_TIME}s per turn
+          <span className="flex items-center gap-2">
+            <Timer className="w-4 h-4 text-neon-purple" />
+            <span className="font-rajdhani">{TURN_TIME}s per turn</span>
           </span>
+        </div>
+        
+        {/* Player info */}
+        <div className="bg-card/50 rounded-xl p-3 border border-border w-full">
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-muted-foreground font-rajdhani">Your Name:</span>
+            <span className="font-orbitron text-sm text-foreground">{playerName || 'Player X'}</span>
+          </div>
         </div>
         
         {/* Waiting dots animation */}
@@ -792,8 +998,14 @@ const TicTacToeOnline: React.FC = () => {
           ))}
         </div>
         
+        <div className="bg-muted/30 rounded-xl p-4 border border-border w-full">
+          <p className="text-xs text-muted-foreground font-rajdhani text-center">
+            💬 Chat and reactions are available once your friend joins!
+          </p>
+        </div>
+        
         <Button variant="ghost" onClick={leaveGame} className="text-muted-foreground">
-          Cancel
+          Cancel & Go Back
         </Button>
       </div>
     );
@@ -807,14 +1019,22 @@ const TicTacToeOnline: React.FC = () => {
   const timerColor = timeLeft <= 5 ? 'text-destructive' : timeLeft <= 10 ? 'text-neon-orange' : 'text-neon-green';
 
   return (
-    <div className="flex flex-col items-center gap-3 sm:gap-4">
+    <div className="flex flex-col items-center gap-3 sm:gap-4 w-full max-w-2xl mx-auto px-4">
       {/* Connection Status & Timer */}
-      <div className="flex items-center justify-between w-full max-w-xs sm:max-w-sm px-2">
+      <div className="flex items-center justify-between w-full px-2">
         {mode === 'online-playing' && (
-          <div className="flex items-center gap-2 text-xs sm:text-sm">
-            <Wifi className={`w-3 h-3 sm:w-4 sm:h-4 ${isConnected ? 'text-neon-green' : 'text-destructive'}`} />
+          <div className="flex items-center gap-2 text-xs sm:text-sm bg-card/50 rounded-lg px-3 py-1.5 border border-border">
+            <Wifi className={`w-3 h-3 sm:w-4 sm:h-4 ${isConnected ? 'text-neon-green animate-pulse' : 'text-destructive'}`} />
             <span className="font-rajdhani text-muted-foreground">
-              {roomCode} | You: {mySymbol}
+              <span className="font-orbitron text-neon-cyan">{roomCode}</span>
+              <span className="mx-2">•</span>
+              <span>You: <span className="font-orbitron text-foreground">{mySymbol}</span></span>
+              {playerName && (
+                <>
+                  <span className="mx-2">•</span>
+                  <span className="text-foreground">{playerName}</span>
+                </>
+              )}
             </span>
           </div>
         )}
