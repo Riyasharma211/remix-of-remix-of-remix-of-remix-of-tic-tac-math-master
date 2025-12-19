@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Progress } from '@/components/ui/progress';
-import { X, User, Edit2, Trophy, Star, Award, TrendingUp } from 'lucide-react';
+import { X, User, Edit2, Trophy, Star, Award, TrendingUp, Gamepad2 } from 'lucide-react';
 import { useUserProfile } from '@/contexts/UserProfileContext';
 import { useGameStats } from '@/hooks/useGameStats';
 import { haptics } from '@/utils/haptics';

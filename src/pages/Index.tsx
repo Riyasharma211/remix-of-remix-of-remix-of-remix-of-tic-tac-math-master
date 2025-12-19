@@ -28,6 +28,7 @@ import {
   Circle,
   Type,
   Calculator,
+  Wifi,
 } from "lucide-react";
 import TicTacToeOnline from "@/components/games/TicTacToeOnline";
 import MathChallenge from "@/components/games/MathChallenge";
@@ -60,6 +61,8 @@ import UserProfile from "@/components/UserProfile";
 import GameRoomsBrowser from "@/components/GameRoomsBrowser";
 import FriendsList from "@/components/FriendsList";
 import Tournament from "@/components/Tournament";
+import GameHistory from "@/components/GameHistory";
+import PowerUpsShop from "@/components/PowerUpsShop";
 import { AchievementNotification } from "@/components/AchievementNotification";
 import SplashScreen from "@/components/SplashScreen";
 import CursorParticles from "@/components/CursorParticles";
@@ -71,10 +74,15 @@ import { Button } from "@/components/ui/button";
 import MagneticButton from "@/components/MagneticButton";
 import { soundManager } from "@/utils/soundManager";
 import { haptics } from "@/utils/haptics";
+import { isPWAInstalled, isInstallable, installPWA } from "@/utils/pwa";
 import { DifficultyProvider } from "@/contexts/DifficultyContext";
 import { ActiveGameProvider, useActiveGame } from "@/contexts/ActiveGameContext";
 import { GameChannelProvider, useGameChannel } from "@/contexts/GameChannelContext";
+import { ChallengeProvider } from "@/contexts/ChallengeContext";
+import { UserProfileProvider } from "@/contexts/UserProfileContext";
+import { PowerUpsProvider } from "@/contexts/PowerUpsContext";
 import { Achievement } from "@/hooks/useGameStats";
+import { useToast } from "@/hooks/use-toast";
 
 // Achievement notification context
 interface AchievementContextType {
@@ -273,6 +281,7 @@ const games = [
 ];
 
 const IndexContent: React.FC = () => {
+  const { toast } = useToast();
   const [activeGame, setActiveGame] = useState<GameType>("tictactoe");
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [showLeaderboard, setShowLeaderboard] = useState(false);

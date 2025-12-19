@@ -78,6 +78,7 @@ const TicTacToeOnline: React.FC = () => {
   const { toast } = useToast();
   const pendingJoin = usePendingJoin();
   const { setChannelRef, setPlayerName, setRoomId } = useGameChannel();
+  const { updateChallengeProgress } = useChallengeContext();
   const [mode, setMode] = useState<GameMode>('menu');
   const [localRoomId, setLocalRoomId] = useState<string | null>(null);
   const [gridSize, setGridSize] = useState<GridSize>(3);
