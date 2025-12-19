@@ -194,6 +194,13 @@ const MathBattle: React.FC = () => {
       // Broadcast join to host
       const channel = supabase.channel(`mathbattle-${data.id}`);
       await channel.subscribe();
+      
+      // Update global channel ref
+      channelRef.current = channel;
+      setChannelRef(channelRef);
+      setGlobalPlayerName(playerName);
+      setGlobalRoomId(data.id);
+      
       await channel.send({
         type: 'broadcast',
         event: 'game_update',
@@ -288,11 +295,31 @@ const MathBattle: React.FC = () => {
       .subscribe();
 
     channelRef.current = channel;
+    
+    // Update global channel ref for FloatingReactions and FloatingChat
+    setChannelRef(channelRef);
+    setGlobalPlayerName(playerName || `Player ${playerNumber}`);
+    setGlobalRoomId(roomId);
+    
+    // Listen for reactions and chat from global components
+    channel.on('broadcast', { event: 'reaction' }, ({ payload }) => {
+      if (payload?.emoji) {
+        window.dispatchEvent(new CustomEvent('game-reaction', { detail: { emoji: payload.emoji } }));
+      }
+    });
+    
+    channel.on('broadcast', { event: 'chat' }, ({ payload }) => {
+      if (payload?.type === 'chat' && payload?.message && payload?.playerName) {
+        window.dispatchEvent(new CustomEvent('game-chat', { detail: payload }));
+      }
+    });
 
     return () => {
       supabase.removeChannel(channel);
+      setChannelRef(null);
+      setGlobalRoomId(null);
     };
-  }, [roomId, mode, playerNumber, playerNames]);
+  }, [roomId, mode, playerNumber, playerNames, playerName, setChannelRef, setGlobalPlayerName, setGlobalRoomId]);
 
   const handleAnswer = async (answer: number) => {
     if (!problem || hasAnswered || !roomId) return;
