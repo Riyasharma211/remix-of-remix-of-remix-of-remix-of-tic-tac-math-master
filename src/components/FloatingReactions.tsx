@@ -86,17 +86,38 @@ const FloatingReactions: React.FC<FloatingReactionsProps> = ({ channelRef, onRea
   const handleReaction = (emoji: string) => {
     spawnFloatingEmoji(emoji);
     
-    // Broadcast to other players
+    // Get user ID from profile
+    const getUserId = () => {
+      try {
+        const profile = JSON.parse(localStorage.getItem('mindgames-user-profile') || '{}');
+        return profile.id || `user_${Date.now()}`;
+      } catch {
+        return `user_${Date.now()}`;
+      }
+    };
+    
+    const currentUserId = getUserId();
+    
+    // Broadcast to other players with user ID
     if (channelRef?.current) {
       channelRef.current.send({
         type: 'broadcast',
         event: 'reaction',
-        payload: { emoji },
+        payload: { 
+          emoji,
+          userId: currentUserId,
+          playerId: currentUserId,
+        },
       });
     }
 
     // Also dispatch window event for games that listen to it
-    window.dispatchEvent(new CustomEvent('game-reaction', { detail: { emoji } }));
+    window.dispatchEvent(new CustomEvent('game-reaction', { 
+      detail: { 
+        emoji,
+        userId: currentUserId,
+      } 
+    }));
 
     // Call custom handler if provided
     if (onReaction) {
@@ -108,9 +129,24 @@ const FloatingReactions: React.FC<FloatingReactionsProps> = ({ channelRef, onRea
   useEffect(() => {
     if (!channelRef?.current) return;
 
+    const getUserId = () => {
+      try {
+        const profile = JSON.parse(localStorage.getItem('mindgames-user-profile') || '{}');
+        return profile.id || `user_${Date.now()}`;
+      } catch {
+        return `user_${Date.now()}`;
+      }
+    };
+
     const handleReaction = (payload: any) => {
       if (payload?.emoji) {
-        spawnFloatingEmoji(payload.emoji);
+        const currentUserId = getUserId();
+        const senderId = payload.userId || payload.playerId;
+        
+        // Only show reactions from other users (not self)
+        if (senderId && senderId !== currentUserId) {
+          spawnFloatingEmoji(payload.emoji);
+        }
       }
     };
 

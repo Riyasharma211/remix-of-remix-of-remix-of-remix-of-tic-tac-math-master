@@ -228,11 +228,19 @@ const TicTacToeOnline: React.FC = () => {
     setTimeLeft(TURN_TIME);
     
     try {
+      // Get user ID from localStorage (from UserProfile)
+      const userProfile = JSON.parse(localStorage.getItem('mindgames-user-profile') || '{}');
+      const userId = userProfile.id || `user_${Math.random().toString(36).substring(2, 10)}`;
+      const userName = playerName || userProfile.displayName || `Player ${Math.random().toString(36).substring(2, 6)}`;
+      
       const { data, error } = await supabase.from('game_rooms').insert({
         room_code: code,
         game_type: 'tictactoe',
         game_state: { board: Array(selectedSize * selectedSize).fill(null), currentPlayer: 'X', scores: { X: 0, O: 0 }, gridSize: selectedSize },
-        status: 'waiting'
+        status: 'waiting',
+        created_by: userId,
+        host_id: userId,
+        host_name: userName,
       }).select().single();
 
       if (error) throw error;
@@ -274,6 +282,12 @@ const TicTacToeOnline: React.FC = () => {
       const code = joinCode.toUpperCase();
       const gameState = data.game_state as any;
       const size = gameState.gridSize || 3;
+      
+      // Store creator info for auto-friend feature
+      if (data.created_by || data.host_id) {
+        sessionStorage.setItem('pendingJoinCreatorId', data.created_by || data.host_id);
+        sessionStorage.setItem('pendingJoinCreatorName', data.host_name || data.created_by_name || 'Unknown');
+      }
       
       setRoomCode(code);
       setLocalRoomId(data.id);

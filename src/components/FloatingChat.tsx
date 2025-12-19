@@ -8,6 +8,7 @@ import { haptics } from '@/utils/haptics';
 interface ChatMessage {
   id: string;
   playerName: string;
+  playerId?: string;
   message: string;
   timestamp: number;
   isOwn: boolean;
@@ -21,6 +22,15 @@ interface FloatingChatProps {
 }
 
 const FloatingChat: React.FC<FloatingChatProps> = ({ channelRef, playerName = 'You', roomId, compact = false }) => {
+  // Get user ID from profile
+  const getUserId = () => {
+    try {
+      const profile = JSON.parse(localStorage.getItem('mindgames-user-profile') || '{}');
+      return profile.id || `user_${Date.now()}`;
+    } catch {
+      return `user_${Date.now()}`;
+    }
+  };
   const [isOpen, setIsOpen] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -50,16 +60,23 @@ const FloatingChat: React.FC<FloatingChatProps> = ({ channelRef, playerName = 'Y
 
     const handleChatMessage = (payload: any) => {
       if (payload?.type === 'chat' && payload?.message && payload?.playerName) {
-        const newMessage: ChatMessage = {
-          id: `${Date.now()}-${Math.random()}`,
-          playerName: payload.playerName,
-          message: payload.message,
-          timestamp: Date.now(),
-          isOwn: false,
-        };
-        setMessages(prev => [...prev, newMessage]);
-        soundManager.playLocalSound('notification');
-        haptics.light();
+        const currentUserId = getUserId();
+        const senderId = payload.playerId || payload.userId;
+        
+        // Only show messages from other users (not self)
+        if (senderId && senderId !== currentUserId) {
+          const newMessage: ChatMessage = {
+            id: `${Date.now()}-${Math.random()}`,
+            playerName: payload.playerName,
+            playerId: senderId,
+            message: payload.message,
+            timestamp: Date.now(),
+            isOwn: false,
+          };
+          setMessages(prev => [...prev, newMessage]);
+          soundManager.playLocalSound('notification');
+          haptics.light();
+        }
       }
     };
 
@@ -73,9 +90,11 @@ const FloatingChat: React.FC<FloatingChatProps> = ({ channelRef, playerName = 'Y
   const sendMessage = () => {
     if (!inputMessage.trim()) return;
 
+    const currentUserId = getUserId();
     const newMessage: ChatMessage = {
       id: `${Date.now()}-${Math.random()}`,
       playerName: playerName,
+      playerId: currentUserId,
       message: inputMessage.trim(),
       timestamp: Date.now(),
       isOwn: true,
@@ -84,7 +103,7 @@ const FloatingChat: React.FC<FloatingChatProps> = ({ channelRef, playerName = 'Y
     setMessages(prev => [...prev, newMessage]);
     setInputMessage('');
 
-    // Broadcast to other players
+    // Broadcast to other players with user ID
     if (channelRef?.current) {
       channelRef.current.send({
         type: 'broadcast',
@@ -92,6 +111,8 @@ const FloatingChat: React.FC<FloatingChatProps> = ({ channelRef, playerName = 'Y
         payload: {
           type: 'chat',
           playerName,
+          playerId: currentUserId,
+          userId: currentUserId,
           message: newMessage.message,
         },
       });

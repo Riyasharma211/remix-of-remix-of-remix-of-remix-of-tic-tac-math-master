@@ -83,6 +83,8 @@ import { UserProfileProvider } from "@/contexts/UserProfileContext";
 import { PowerUpsProvider } from "@/contexts/PowerUpsContext";
 import { Achievement } from "@/hooks/useGameStats";
 import { useToast } from "@/hooks/use-toast";
+import { useFriends } from "@/hooks/useFriends";
+import { useUserProfile } from "@/contexts/UserProfileContext";
 
 // Achievement notification context
 interface AchievementContextType {
@@ -282,6 +284,8 @@ const games = [
 
 const IndexContent: React.FC = () => {
   const { toast } = useToast();
+  const { addFriend } = useFriends();
+  const { profile } = useUserProfile();
   const [activeGame, setActiveGame] = useState<GameType>("tictactoe");
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
@@ -418,7 +422,43 @@ const IndexContent: React.FC = () => {
     setShowUniversalCodeInput(true);
   };
 
-  const handleJoinGameByCode = useCallback((gameType: string, roomCode: string) => {
+  const handleJoinGameByCode = useCallback(async (gameType: string, roomCode: string) => {
+    // Check for auto-friend feature - if joining via code, add creator as friend
+    const creatorId = sessionStorage.getItem('pendingJoinCreatorId');
+    const creatorName = sessionStorage.getItem('pendingJoinCreatorName');
+    
+    if (creatorId && creatorName && profile.id && creatorId !== profile.id) {
+      // Check if already friends
+      const friends = JSON.parse(localStorage.getItem('mindgames-friends') || '[]');
+      const isAlreadyFriend = friends.some((f: any) => f.id === creatorId);
+      
+      if (!isAlreadyFriend) {
+        // Auto-add as friend
+        addFriend({
+          id: creatorId,
+          username: creatorId.substring(0, 8),
+          displayName: creatorName,
+          avatar: '',
+          isOnline: true,
+          lastSeen: Date.now(),
+          level: 1,
+          totalWins: 0,
+          totalGames: 0,
+        });
+        
+        toast({
+          title: 'New Friend Added!',
+          description: `${creatorName} has been added to your friends list`,
+        });
+        soundManager.playLocalSound('correct');
+        haptics.success();
+      }
+      
+      // Clear session storage
+      sessionStorage.removeItem('pendingJoinCreatorId');
+      sessionStorage.removeItem('pendingJoinCreatorName');
+    }
+    
     // Switch to the game type
     const targetGame = gameType as GameType;
     if (targetGame && games.find(g => g.id === targetGame)) {
@@ -431,7 +471,7 @@ const IndexContent: React.FC = () => {
         haptics.light();
       }
     }
-  }, [isGameActive]);
+  }, [isGameActive, addFriend, profile.id, toast]);
 
   // Handle game switching with confirmation if game is active
   const handleGameSwitch = useCallback(
