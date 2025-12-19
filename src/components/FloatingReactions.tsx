@@ -128,29 +128,33 @@ const FloatingReactions: React.FC<FloatingReactionsProps> = ({ channelRef, onRea
         ))}
       </div>
 
-      {/* Reaction Button */}
-      <div className="fixed bottom-20 right-4 z-50 pointer-events-auto">
+      {/* Reaction Button - Positioned to not overlap with chat */}
+      <div className="fixed bottom-32 lg:bottom-20 right-4 z-50 pointer-events-auto">
         <Popover>
           <PopoverTrigger asChild>
             <Button
               size="icon"
               className="h-12 w-12 rounded-full bg-neon-pink/20 border-2 border-neon-pink text-neon-pink hover:bg-neon-pink/30 shadow-lg animate-float"
             >
-              <Smile className="w-6 h-6" />
+              <Smile className="w-5 h-5 lg:w-6 lg:h-6" />
             </Button>
           </PopoverTrigger>
-          <PopoverContent className="w-auto p-2 bg-card/95 backdrop-blur-md border-2 border-neon-cyan">
+          <PopoverContent 
+            side="left"
+            align="end"
+            className="w-auto p-2 bg-card/95 backdrop-blur-md border-2 border-neon-cyan"
+          >
             <div className="grid grid-cols-4 gap-2">
               {REACTION_EMOJIS.map(({ emoji, icon: Icon, label }) => (
                 <Button
                   key={emoji}
                   variant="ghost"
                   size="icon"
-                  className="h-12 w-12 hover:bg-neon-cyan/20 hover:scale-110 transition-transform"
+                  className="h-10 w-10 lg:h-12 lg:w-12 hover:bg-neon-cyan/20 hover:scale-110 transition-transform active:scale-95"
                   onClick={() => handleReaction(emoji)}
                   title={label}
                 >
-                  <span className="text-2xl">{emoji}</span>
+                  <span className="text-xl lg:text-2xl">{emoji}</span>
                 </Button>
               ))}
             </div>

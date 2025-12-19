@@ -119,7 +119,7 @@ const FloatingChat: React.FC<FloatingChatProps> = ({ channelRef, playerName = 'Y
     <>
       {/* Chat Button */}
       {!isOpen && (
-        <div className="fixed bottom-20 right-4 z-50 pointer-events-auto">
+        <div className="fixed bottom-20 lg:bottom-20 right-4 z-50 pointer-events-auto">
           <Button
             size="icon"
             onClick={() => {
@@ -129,7 +129,7 @@ const FloatingChat: React.FC<FloatingChatProps> = ({ channelRef, playerName = 'Y
             }}
             className="h-12 w-12 rounded-full bg-neon-cyan/20 border-2 border-neon-cyan text-neon-cyan hover:bg-neon-cyan/30 shadow-lg animate-float"
           >
-            <MessageCircle className="w-6 h-6" />
+            <MessageCircle className="w-5 h-5 lg:w-6 lg:h-6" />
             {messages.length > 0 && (
               <span className="absolute -top-1 -right-1 h-5 w-5 rounded-full bg-neon-pink text-white text-xs flex items-center justify-center font-bold">
                 {messages.length > 9 ? '9+' : messages.length}
@@ -142,10 +142,10 @@ const FloatingChat: React.FC<FloatingChatProps> = ({ channelRef, playerName = 'Y
       {/* Chat Window */}
       {isOpen && (
         <div
-          className={`fixed right-4 z-50 pointer-events-auto transition-all duration-300 ${
+          className={`fixed right-2 lg:right-4 z-50 pointer-events-auto transition-all duration-300 ${
             isMinimized
-              ? 'bottom-20 w-64'
-              : 'bottom-20 w-80 h-96'
+              ? 'bottom-20 w-56 lg:w-64'
+              : 'bottom-20 w-72 lg:w-80 h-80 lg:h-96'
           }`}
         >
           <div className="bg-card/95 backdrop-blur-md border-2 border-neon-cyan rounded-xl shadow-2xl flex flex-col h-full">
