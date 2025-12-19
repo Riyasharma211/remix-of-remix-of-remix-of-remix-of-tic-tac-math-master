@@ -2,7 +2,8 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { supabase } from '@/integrations/supabase/client';
-import { Pencil, Eraser, Trash2, Copy, Users, ArrowLeft, Check, Trophy } from 'lucide-react';
+import { Pencil, Eraser, Trash2, Copy, Users, ArrowLeft, Check, Trophy, Undo2, Minus, Plus } from 'lucide-react';
+import { Slider } from '@/components/ui/slider';
 import { toast } from 'sonner';
 import { soundManager } from '@/utils/soundManager';
 import { haptics } from '@/utils/haptics';
@@ -64,6 +65,7 @@ const DrawingGame: React.FC = () => {
   const [brushSize, setBrushSize] = useState(4);
   const [isDrawing, setIsDrawing] = useState(false);
   const [isEraser, setIsEraser] = useState(false);
+  const [canvasSize, setCanvasSize] = useState({ width: 400, height: 300 });
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const currentLineRef = useRef<DrawingPoint[]>([]);
@@ -74,15 +76,40 @@ const DrawingGame: React.FC = () => {
   const generateRoomCode = () => Math.random().toString(36).substring(2, 6).toUpperCase();
   const getRandomWord = () => WORDS[Math.floor(Math.random() * WORDS.length)];
 
-  // Initialize canvas
+  // Initialize canvas and make it responsive
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    ctx.fillStyle = '#FFFFFF';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-  }, [mode]);
+    
+    // Set responsive canvas size
+    const updateCanvasSize = () => {
+      const container = canvas.parentElement;
+      if (container) {
+        const maxWidth = Math.min(container.clientWidth - 32, 600);
+        const aspectRatio = 4 / 3;
+        const width = maxWidth;
+        const height = width / aspectRatio;
+        
+        canvas.width = width;
+        canvas.height = height;
+        setCanvasSize({ width, height });
+        
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        // Redraw existing lines
+        if (gameState.lines.length > 0) {
+          setTimeout(() => redrawCanvas(gameState.lines), 0);
+        }
+      }
+    };
+    
+    updateCanvasSize();
+    window.addEventListener('resize', updateCanvasSize);
+    return () => window.removeEventListener('resize', updateCanvasSize);
+  }, [mode, gameState.lines]);
 
   const createRoom = async () => {
     if (!playerName.trim()) {
@@ -392,6 +419,30 @@ const DrawingGame: React.FC = () => {
     currentLineRef.current = [];
   };
 
+  const undoLastLine = async () => {
+    if (!isDrawer || !roomId || gameState.lines.length === 0) return;
+    
+    const newLines = gameState.lines.slice(0, -1);
+    const newState = { ...gameState, lines: newLines };
+    
+    channelRef.current?.send({
+      type: 'broadcast',
+      event: 'game_update',
+      payload: { type: 'draw_update', lines: newLines }
+    });
+    
+    supabase
+      .from('game_rooms')
+      .update({ game_state: JSON.parse(JSON.stringify(newState)) })
+      .eq('id', roomId)
+      .then();
+
+    setGameState(newState);
+    redrawCanvas(newLines);
+    haptics.light();
+    soundManager.playLocalSound('click');
+  };
+
   const clearCanvas = async () => {
     if (!isDrawer || !roomId) return;
     
@@ -417,6 +468,8 @@ const DrawingGame: React.FC = () => {
       ctx.fillStyle = '#FFFFFF';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
     }
+    haptics.medium();
+    soundManager.playLocalSound('click');
   };
 
   const submitGuess = async () => {
@@ -525,40 +578,60 @@ const DrawingGame: React.FC = () => {
   // Menu
   if (mode === 'menu') {
     return (
-      <div className="text-center space-y-6 animate-slide-in">
+      <div className="text-center space-y-6 animate-slide-in max-w-md mx-auto">
         <div className="flex items-center justify-center gap-3 mb-6">
-          <Pencil className="w-8 h-8 text-neon-pink animate-float" />
-          <h2 className="font-orbitron text-2xl text-foreground">Drawing Game</h2>
+          <div className="relative">
+            <Pencil className="w-10 h-10 text-neon-pink animate-float" />
+            <div className="absolute -top-1 -right-1 w-3 h-3 bg-neon-pink rounded-full animate-pulse" />
+          </div>
+          <h2 className="font-orbitron text-3xl text-foreground">Drawing Game</h2>
         </div>
 
-        <p className="text-muted-foreground font-rajdhani">
-          Draw and guess with friends!
+        <p className="text-muted-foreground font-rajdhani text-lg">
+          Draw and guess with friends! 🎨
         </p>
 
-        <Input
-          value={playerName}
-          onChange={(e) => setPlayerName(e.target.value)}
-          placeholder="Enter your name..."
-          className="max-w-xs mx-auto text-center font-rajdhani"
-          maxLength={15}
-        />
+        <div className="bg-card/50 backdrop-blur-sm border border-border rounded-xl p-6 space-y-4">
+          <div>
+            <label className="text-xs font-orbitron text-muted-foreground uppercase tracking-wider block mb-2">
+              Your Name
+            </label>
+            <Input
+              value={playerName}
+              onChange={(e) => setPlayerName(e.target.value)}
+              placeholder="Enter your name..."
+              className="text-center font-rajdhani text-lg"
+              maxLength={15}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && playerName.trim()) {
+                  setMode('create');
+                  haptics.light();
+                }
+              }}
+            />
+          </div>
 
-        <div className="flex flex-col sm:flex-row gap-4 justify-center">
-          <Button
-            onClick={() => setMode('create')}
-            className="bg-neon-pink/20 border border-neon-pink text-neon-pink hover:bg-neon-pink/30"
-          >
-            <Pencil className="w-4 h-4 mr-2" />
-            Create Room
-          </Button>
-          <Button
-            onClick={() => setMode('join')}
-            variant="outline"
-            className="border-border hover:bg-accent"
-          >
-            <Users className="w-4 h-4 mr-2" />
-            Join Room
-          </Button>
+          <div className="flex flex-col sm:flex-row gap-3 justify-center pt-2">
+            <Button
+              onClick={() => { setMode('create'); haptics.light(); soundManager.playLocalSound('click'); }}
+              disabled={!playerName.trim()}
+              className="bg-neon-pink/20 border border-neon-pink text-neon-pink hover:bg-neon-pink/30 disabled:opacity-50"
+              size="lg"
+            >
+              <Pencil className="w-5 h-5 mr-2" />
+              Create Room
+            </Button>
+            <Button
+              onClick={() => { setMode('join'); haptics.light(); soundManager.playLocalSound('click'); }}
+              disabled={!playerName.trim()}
+              variant="outline"
+              className="border-border hover:bg-accent disabled:opacity-50"
+              size="lg"
+            >
+              <Users className="w-5 h-5 mr-2" />
+              Join Room
+            </Button>
+          </div>
         </div>
       </div>
     );
@@ -613,21 +686,46 @@ const DrawingGame: React.FC = () => {
   // Waiting
   if (mode === 'waiting') {
     return (
-      <div className="text-center space-y-6 animate-slide-in">
-        <Pencil className="w-12 h-12 text-neon-pink animate-pulse mx-auto" />
-        <h3 className="font-orbitron text-xl text-foreground">Waiting for players...</h3>
-        <p className="text-muted-foreground text-sm">You: {playerName}</p>
-        
-        <div className="flex items-center justify-center gap-2 p-4 bg-card rounded-xl border border-border">
-          <span className="text-3xl font-orbitron tracking-widest text-neon-pink">{roomCode}</span>
-          <Button variant="ghost" size="icon" onClick={copyRoomCode}>
-            {copied ? <Check className="w-4 h-4 text-neon-green" /> : <Copy className="w-4 h-4" />}
-          </Button>
+      <div className="text-center space-y-6 animate-slide-in max-w-md mx-auto">
+        <div className="relative">
+          <Pencil className="w-16 h-16 text-neon-pink animate-pulse mx-auto" />
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="w-16 h-16 border-4 border-neon-pink/30 rounded-full animate-ping" />
+          </div>
         </div>
-        <p className="text-xs text-muted-foreground">Share this code with friends</p>
+        <h3 className="font-orbitron text-2xl text-foreground">Waiting for players...</h3>
+        <p className="text-muted-foreground font-rajdhani">You: <span className="text-neon-cyan font-semibold">{playerName}</span></p>
         
-        <Button variant="outline" onClick={leaveGame}>
-          <ArrowLeft className="w-4 h-4 mr-2" /> Leave
+        <div className="bg-card/50 backdrop-blur-sm border border-border rounded-xl p-6 space-y-4">
+          <div>
+            <p className="text-xs font-orbitron text-muted-foreground uppercase tracking-wider mb-2">Room Code</p>
+            <div className="flex items-center justify-center gap-3">
+              <span className="text-4xl font-orbitron tracking-widest text-neon-pink font-bold">{roomCode}</span>
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                onClick={copyRoomCode}
+                className="hover:bg-neon-green/20 hover:text-neon-green"
+              >
+                {copied ? (
+                  <Check className="w-5 h-5 text-neon-green" />
+                ) : (
+                  <Copy className="w-5 h-5" />
+                )}
+              </Button>
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground font-rajdhani">
+            {copied ? '✓ Copied to clipboard!' : 'Share this code with friends'}
+          </p>
+        </div>
+        
+        <Button 
+          variant="outline" 
+          onClick={leaveGame}
+          className="hover:bg-destructive/20 hover:border-destructive hover:text-destructive"
+        >
+          <ArrowLeft className="w-4 h-4 mr-2" /> Leave Room
         </Button>
       </div>
     );
@@ -668,119 +766,232 @@ const DrawingGame: React.FC = () => {
 
   // Playing
   return (
-    <div className="space-y-4 animate-slide-in">
-      <div className="flex items-center justify-between">
-        <Button variant="ghost" size="sm" onClick={leaveGame}>
+    <div className="space-y-4 animate-slide-in max-w-4xl mx-auto">
+      {/* Header */}
+      <div className="flex items-center justify-between flex-wrap gap-2 bg-card/50 backdrop-blur-sm border border-border rounded-xl p-3">
+        <Button variant="ghost" size="sm" onClick={leaveGame} className="hover:bg-destructive/20 hover:text-destructive">
           <ArrowLeft className="w-4 h-4 mr-2" /> Leave
         </Button>
-        <div className="text-center">
-          <span className="font-orbitron text-sm text-muted-foreground">Round {gameState.round}/{gameState.maxRounds}</span>
+        <div className="text-center flex-1 min-w-0">
+          <div className="flex items-center justify-center gap-2 mb-1">
+            <span className="font-orbitron text-xs text-muted-foreground">Round {gameState.round}/{gameState.maxRounds}</span>
+            <span className="text-muted-foreground">•</span>
+            <span className="font-orbitron text-xs text-neon-cyan">{roomCode}</span>
+          </div>
           {isDrawer && (
-            <p className="text-neon-pink font-bold font-orbitron">Draw: {gameState.word}</p>
+            <p className="text-neon-pink font-bold font-orbitron text-sm sm:text-base animate-pulse">
+              Draw: <span className="text-foreground">{gameState.word}</span>
+            </p>
           )}
           {!isDrawer && (
-            <p className="text-muted-foreground font-rajdhani">
-              {getPlayerName(gameState.currentDrawer)} is drawing...
+            <p className="text-muted-foreground font-rajdhani text-sm">
+              <span className="text-neon-pink font-semibold">{getPlayerName(gameState.currentDrawer)}</span> is drawing...
             </p>
           )}
         </div>
-        <span className="font-orbitron text-sm text-neon-cyan">{roomCode}</span>
+        <div className="w-20" /> {/* Spacer for alignment */}
       </div>
 
       {/* Canvas */}
-      <div className="relative">
-        <canvas
-          ref={canvasRef}
-          width={400}
-          height={300}
-          className="w-full bg-white rounded-lg border-2 border-border touch-none"
-          style={{ maxWidth: '400px', margin: '0 auto', display: 'block' }}
-          onMouseDown={startDrawing}
-          onMouseMove={draw}
-          onMouseUp={stopDrawing}
-          onMouseLeave={stopDrawing}
-          onTouchStart={startDrawing}
-          onTouchMove={draw}
-          onTouchEnd={stopDrawing}
-        />
+      <div className="relative w-full flex justify-center">
+        <div className="relative bg-white rounded-xl border-2 border-border shadow-lg overflow-hidden" style={{ maxWidth: '600px', width: '100%' }}>
+          <canvas
+            ref={canvasRef}
+            className="w-full h-auto bg-white touch-none cursor-crosshair"
+            style={{ display: 'block', aspectRatio: '4/3' }}
+            onMouseDown={startDrawing}
+            onMouseMove={draw}
+            onMouseUp={stopDrawing}
+            onMouseLeave={stopDrawing}
+            onTouchStart={startDrawing}
+            onTouchMove={draw}
+            onTouchEnd={stopDrawing}
+          />
+          {!isDrawer && (
+            <div className="absolute inset-0 flex items-center justify-center bg-background/80 backdrop-blur-sm rounded-xl">
+              <div className="text-center p-4">
+                <Pencil className="w-8 h-8 text-neon-pink mx-auto mb-2 animate-pulse" />
+                <p className="font-orbitron text-sm text-muted-foreground">You can't draw right now</p>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Drawing Tools */}
       {isDrawer && (
-        <div className="flex flex-wrap items-center justify-center gap-2">
-          <div className="flex gap-1">
-            {COLORS.map(color => (
-              <button
-                key={color}
-                onClick={() => { setCurrentColor(color); setIsEraser(false); haptics.light(); }}
-                className={`w-7 h-7 rounded-full border-2 transition-transform hover:scale-110 ${
-                  currentColor === color && !isEraser ? 'border-neon-cyan scale-110' : 'border-border'
-                }`}
-                style={{ backgroundColor: color }}
-              />
-            ))}
+        <div className="bg-card/50 backdrop-blur-sm border border-border rounded-xl p-4 space-y-4">
+          {/* Color Picker */}
+          <div className="space-y-2">
+            <label className="text-xs font-orbitron text-muted-foreground uppercase tracking-wider">Colors</label>
+            <div className="flex flex-wrap gap-2">
+              {COLORS.map(color => (
+                <button
+                  key={color}
+                  onClick={() => { setCurrentColor(color); setIsEraser(false); haptics.light(); soundManager.playLocalSound('click'); }}
+                  className={`w-10 h-10 rounded-lg border-2 transition-all hover:scale-110 active:scale-95 ${
+                    currentColor === color && !isEraser 
+                      ? 'border-neon-cyan scale-110 shadow-lg shadow-neon-cyan/50' 
+                      : 'border-border hover:border-neon-cyan/50'
+                  }`}
+                  style={{ backgroundColor: color }}
+                  title={color}
+                />
+              ))}
+            </div>
           </div>
-          <Button
-            size="sm"
-            variant={isEraser ? 'default' : 'outline'}
-            onClick={() => { setIsEraser(!isEraser); haptics.light(); }}
-          >
-            <Eraser className="w-4 h-4" />
-          </Button>
-          <Button size="sm" variant="outline" onClick={clearCanvas}>
-            <Trash2 className="w-4 h-4" />
-          </Button>
+
+          {/* Brush Size */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-orbitron text-muted-foreground uppercase tracking-wider">Brush Size</label>
+              <span className="text-xs font-orbitron text-neon-cyan">{brushSize}px</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <Button
+                size="icon"
+                variant="outline"
+                className="h-8 w-8"
+                onClick={() => { setBrushSize(Math.max(2, brushSize - 2)); haptics.light(); }}
+                disabled={brushSize <= 2}
+              >
+                <Minus className="w-3 h-3" />
+              </Button>
+              <Slider
+                value={[brushSize]}
+                onValueChange={([value]) => { setBrushSize(value); haptics.light(); }}
+                min={2}
+                max={20}
+                step={1}
+                className="flex-1"
+              />
+              <Button
+                size="icon"
+                variant="outline"
+                className="h-8 w-8"
+                onClick={() => { setBrushSize(Math.min(20, brushSize + 2)); haptics.light(); }}
+                disabled={brushSize >= 20}
+              >
+                <Plus className="w-3 h-3" />
+              </Button>
+            </div>
+          </div>
+
+          {/* Tools */}
+          <div className="flex items-center justify-center gap-2 pt-2 border-t border-border">
+            <Button
+              size="sm"
+              variant={isEraser ? 'default' : 'outline'}
+              onClick={() => { setIsEraser(!isEraser); haptics.light(); soundManager.playLocalSound('click'); }}
+              className={isEraser ? 'bg-neon-purple/20 border-neon-purple text-neon-purple' : ''}
+            >
+              <Eraser className="w-4 h-4 mr-2" />
+              Eraser
+            </Button>
+            <Button 
+              size="sm" 
+              variant="outline" 
+              onClick={undoLastLine}
+              disabled={gameState.lines.length === 0}
+              className="hover:bg-neon-blue/20 hover:border-neon-blue hover:text-neon-blue"
+            >
+              <Undo2 className="w-4 h-4 mr-2" />
+              Undo
+            </Button>
+            <Button 
+              size="sm" 
+              variant="outline" 
+              onClick={clearCanvas}
+              className="hover:bg-destructive/20 hover:border-destructive hover:text-destructive"
+            >
+              <Trash2 className="w-4 h-4 mr-2" />
+              Clear
+            </Button>
+          </div>
         </div>
       )}
 
       {/* Guess input */}
       {!isDrawer && (
-        <div className="flex gap-2 max-w-md mx-auto">
-          <Input
-            value={guess}
-            onChange={(e) => setGuess(e.target.value)}
-            placeholder="Type your guess..."
-            onKeyDown={(e) => e.key === 'Enter' && submitGuess()}
-            className="font-rajdhani"
-          />
-          <Button 
-            onClick={submitGuess} 
-            className="bg-neon-green/20 border border-neon-green text-neon-green hover:bg-neon-green/30"
-          >
-            Guess
-          </Button>
+        <div className="bg-card/50 backdrop-blur-sm border border-border rounded-xl p-4">
+          <div className="flex gap-2 max-w-md mx-auto">
+            <Input
+              value={guess}
+              onChange={(e) => setGuess(e.target.value)}
+              placeholder="Type your guess..."
+              onKeyDown={(e) => e.key === 'Enter' && submitGuess()}
+              className="font-rajdhani text-center text-lg"
+              autoFocus
+            />
+            <Button 
+              onClick={submitGuess}
+              disabled={!guess.trim()}
+              className="bg-neon-green/20 border border-neon-green text-neon-green hover:bg-neon-green/30 disabled:opacity-50"
+            >
+              <Check className="w-4 h-4 mr-2" />
+              Guess
+            </Button>
+          </div>
         </div>
       )}
 
       {/* Recent Guesses */}
-      <div className="max-h-20 overflow-y-auto space-y-1 px-2">
-        {gameState.guesses.slice(-5).map((g, i) => (
-          <p key={i} className={`text-sm font-rajdhani ${g.correct ? 'text-neon-green font-bold' : 'text-muted-foreground'}`}>
-            <span className="font-semibold">{g.playerName}:</span> {g.text}
-            {g.correct && ' ✓'}
-          </p>
-        ))}
-      </div>
+      {gameState.guesses.length > 0 && (
+        <div className="bg-card/50 backdrop-blur-sm border border-border rounded-xl p-3 max-h-32 overflow-y-auto">
+          <p className="text-xs font-orbitron text-muted-foreground uppercase tracking-wider mb-2">Recent Guesses</p>
+          <div className="space-y-1.5">
+            {gameState.guesses.slice(-5).reverse().map((g, i) => (
+              <div
+                key={i}
+                className={`p-2 rounded-lg transition-all ${
+                  g.correct
+                    ? 'bg-neon-green/20 border border-neon-green text-neon-green'
+                    : 'bg-muted/30 text-muted-foreground'
+                }`}
+              >
+                <p className="text-sm font-rajdhani">
+                  <span className="font-semibold">{g.playerName}:</span> {g.text}
+                  {g.correct && <Check className="w-3 h-3 inline ml-1" />}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Scores */}
-      <div className="flex flex-wrap justify-center gap-3 text-sm">
-        {gameState.players.map(player => (
-          <div 
-            key={player.id} 
-            className={`px-3 py-1 rounded-full ${
-              player.id === playerId 
-                ? 'bg-neon-cyan/20 border border-neon-cyan' 
-                : player.id === gameState.currentDrawer 
-                ? 'bg-neon-pink/20 border border-neon-pink'
-                : 'bg-card border border-border'
-            }`}
-          >
-            <span className="font-rajdhani">
-              {player.name}{player.id === playerId && ' (You)'}: 
-              <span className="font-orbitron ml-1">{gameState.scores[player.id] || 0}</span>
-            </span>
-          </div>
-        ))}
+      <div className="bg-card/50 backdrop-blur-sm border border-border rounded-xl p-4">
+        <p className="text-xs font-orbitron text-muted-foreground uppercase tracking-wider mb-3 text-center">Scores</p>
+        <div className="flex flex-wrap justify-center gap-3">
+          {gameState.players
+            .map(player => ({ ...player, score: gameState.scores[player.id] || 0 }))
+            .sort((a, b) => b.score - a.score)
+            .map((player, index) => (
+              <div 
+                key={player.id} 
+                className={`px-4 py-2 rounded-lg transition-all ${
+                  player.id === playerId 
+                    ? 'bg-neon-cyan/20 border-2 border-neon-cyan shadow-lg shadow-neon-cyan/20' 
+                    : player.id === gameState.currentDrawer 
+                    ? 'bg-neon-pink/20 border-2 border-neon-pink'
+                    : 'bg-card border border-border'
+                } ${index === 0 && player.score > 0 ? 'ring-2 ring-neon-orange/50' : ''}`}
+              >
+                <div className="flex items-center gap-2">
+                  {index === 0 && player.score > 0 && (
+                    <Trophy className="w-4 h-4 text-neon-orange" />
+                  )}
+                  <span className="font-rajdhani text-sm">
+                    {player.id === playerId && <span className="text-neon-cyan">★ </span>}
+                    {player.name}
+                  </span>
+                  <span className="font-orbitron text-base font-bold text-neon-cyan ml-1">
+                    {player.score}
+                  </span>
+                </div>
+              </div>
+            ))}
+        </div>
       </div>
     </div>
   );

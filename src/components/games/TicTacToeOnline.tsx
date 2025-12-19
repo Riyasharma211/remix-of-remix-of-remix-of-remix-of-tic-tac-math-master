@@ -8,6 +8,7 @@ import { soundManager } from '@/utils/soundManager';
 import { haptics } from '@/utils/haptics';
 import { celebrateWin } from '@/utils/confetti';
 import { useToast } from '@/hooks/use-toast';
+import { usePendingJoin } from '@/hooks/usePendingJoin';
 
 type Player = 'X' | 'O' | null;
 type Board = Player[];
@@ -101,6 +102,7 @@ const TicTacToeOnline: React.FC = () => {
   const generateRoomCode = () => {
     return Math.random().toString(36).substring(2, 8).toUpperCase();
   };
+
 
   const checkWinner = useCallback((board: Board, size: GridSize): { winner: Player; line: number[] | null } => {
     const combinations = getWinningCombinations(size);
@@ -299,6 +301,81 @@ const TicTacToeOnline: React.FC = () => {
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
+
+  // Auto-join if pending join code exists
+  useEffect(() => {
+    if (pendingJoin && pendingJoin.gameType === 'tictactoe' && mode === 'menu' && !isLoading) {
+      setJoinCode(pendingJoin.code);
+      // Trigger join after state update
+      const timer = setTimeout(() => {
+        if (joinRoom) {
+          // Use the existing joinRoom function
+          const event = new Event('auto-join');
+          (window as any).__autoJoinTicTacToe = pendingJoin.code;
+          // Directly call join logic
+          const autoJoin = async () => {
+            if (!pendingJoin.code.trim()) return;
+            if (!checkSupabaseConfig()) return;
+
+            setIsLoading(true);
+            try {
+              const { data, error } = await supabase
+                .from('game_rooms')
+                .select('*')
+                .eq('room_code', pendingJoin.code.toUpperCase())
+                .single();
+
+              if (error || !data) {
+                toast({ variant: 'destructive', title: 'Error', description: 'Room not found' });
+                setIsLoading(false);
+                return;
+              }
+
+              const code = pendingJoin.code.toUpperCase();
+              const gameState = data.game_state as any;
+              const size = gameState.gridSize || 3;
+              
+              setRoomCode(code);
+              setMySymbol('O');
+              setGridSize(size);
+              setBoard(gameState.board || Array(size * size).fill(null));
+              setScores(gameState.scores || { X: 0, O: 0 });
+              setTimeLeft(TURN_TIME);
+              setMode('online-playing');
+              setIsConnected(true);
+              setGameStarted(true);
+              
+              const channel = supabase.channel(`ttt-${code}`);
+              channel.subscribe(async (status) => {
+                if (status === 'SUBSCRIBED') {
+                  await channel.send({
+                    type: 'broadcast',
+                    event: 'game_update',
+                    payload: { player_joined: true }
+                  });
+                }
+              });
+
+              supabase.from('game_rooms')
+                .update({ player_count: 2, status: 'playing' })
+                .eq('room_code', code)
+                .then();
+
+              haptics.success();
+              toast({ title: 'Joined!', description: 'Game starting!' });
+            } catch (error) {
+              console.error('Error joining room:', error);
+              toast({ variant: 'destructive', title: 'Error', description: 'Failed to join room' });
+            } finally {
+              setIsLoading(false);
+            }
+          };
+          autoJoin();
+        }
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [pendingJoin, mode, isLoading]);
 
   // Subscribe to room changes
   useEffect(() => {

@@ -60,6 +60,7 @@ import SplashScreen from "@/components/SplashScreen";
 import CursorParticles from "@/components/CursorParticles";
 import ParallaxOrbs from "@/components/ParallaxOrbs";
 import LeaveGameDialog from "@/components/LeaveGameDialog";
+import UniversalGameCodeInput from "@/components/UniversalGameCodeInput";
 import { Button } from "@/components/ui/button";
 import MagneticButton from "@/components/MagneticButton";
 import { soundManager } from "@/utils/soundManager";
@@ -344,6 +345,26 @@ const IndexContent: React.FC = () => {
     window.open(window.location.href, '_blank');
   };
 
+  const openUniversalCodeInput = () => {
+    haptics.light();
+    setShowUniversalCodeInput(true);
+  };
+
+  const handleJoinGameByCode = useCallback((gameType: string, roomCode: string) => {
+    // Switch to the game type
+    const targetGame = gameType as GameType;
+    if (targetGame && games.find(g => g.id === targetGame)) {
+      if (isGameActive) {
+        setPendingGameSwitch(targetGame);
+        setShowLeaveDialog(true);
+      } else {
+        setActiveGame(targetGame);
+        soundManager.playLocalSound('click');
+        haptics.light();
+      }
+    }
+  }, [isGameActive]);
+
   // Handle game switching with confirmation if game is active
   const handleGameSwitch = useCallback(
     (newGame: GameType) => {
@@ -515,6 +536,9 @@ const IndexContent: React.FC = () => {
               <Button variant="ghost" size="icon" onClick={openLeaderboard} className="h-7 w-7">
                 <Trophy className="w-3.5 h-3.5 text-neon-orange" />
               </Button>
+              <Button variant="ghost" size="icon" onClick={openUniversalCodeInput} className="h-7 w-7" title="Join any game with code">
+                <Gamepad2 className="w-3.5 h-3.5 text-neon-purple" />
+              </Button>
               <Button variant="ghost" size="icon" onClick={openNewTab} className="h-7 w-7" title="Open new tab for testing">
                 <ExternalLink className="w-3.5 h-3.5 text-neon-green" />
               </Button>
@@ -550,6 +574,9 @@ const IndexContent: React.FC = () => {
               ) : (
                 <Maximize className="w-5 h-5 text-neon-purple" />
               )}
+            </MagneticButton>
+            <MagneticButton variant="ghost" size="icon" onClick={openUniversalCodeInput} className="h-10 w-10" title="Join any game with code">
+              <Gamepad2 className="w-5 h-5 text-neon-purple" />
             </MagneticButton>
             <MagneticButton variant="ghost" size="icon" onClick={openNewTab} className="h-10 w-10" title="Open new tab for testing multiplayer">
               <ExternalLink className="w-5 h-5 text-neon-green" />
@@ -649,7 +676,18 @@ const IndexContent: React.FC = () => {
           </footer>
         </div>
 
-        {/* Mobile Bottom Navigation - App Style with Glass Effect */}
+          {/* Mobile: Universal Code Input Button */}
+          <div className="lg:hidden fixed bottom-20 right-4 z-40">
+            <Button
+              onClick={openUniversalCodeInput}
+              size="icon"
+              className="h-12 w-12 rounded-full bg-neon-purple/20 border border-neon-purple text-neon-purple shadow-lg hover:bg-neon-purple/30 animate-float"
+            >
+              <Gamepad2 className="w-6 h-6" />
+            </Button>
+          </div>
+
+          {/* Mobile Bottom Navigation - App Style with Glass Effect */}
         <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 glass-strong border-t border-neon-cyan/10 px-2 py-1.5 safe-area-bottom shadow-[0_-4px_30px_rgba(0,0,0,0.4),0_0_60px_hsl(var(--neon-cyan)/0.1)] animate-slide-up-full">
           <div className="flex gap-1 overflow-x-auto scrollbar-hide pb-1">
             {/* Multiplayer Section */}
@@ -718,6 +756,13 @@ const IndexContent: React.FC = () => {
           gameName={activeGameName || games.find((g) => g.id === activeGame)?.title || "this game"}
           onConfirm={confirmLeaveGame}
           onCancel={cancelLeaveGame}
+        />
+
+        {/* Universal Game Code Input */}
+        <UniversalGameCodeInput
+          isOpen={showUniversalCodeInput}
+          onClose={() => setShowUniversalCodeInput(false)}
+          onJoinGame={handleJoinGameByCode}
         />
       </div>
     </AchievementContext.Provider>
