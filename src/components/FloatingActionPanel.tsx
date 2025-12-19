@@ -1,5 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Button } from '@/components/ui/button';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { MessageCircle, Gamepad2, X, GripVertical } from 'lucide-react';
 import { haptics } from '@/utils/haptics';
 import FloatingReactions from './FloatingReactions';
@@ -13,6 +12,21 @@ interface FloatingActionPanelProps {
   onJoinGame: (gameType: string, roomCode: string) => void;
 }
 
+const FAB_SIZE = 56; // 14 * 4 = 56px (w-14)
+const EDGE_MARGIN = 16;
+const SNAP_THRESHOLD = 0.5; // Snap to nearest edge if within 50% of screen
+
+// Get safe area insets (for notches, home indicators, etc.)
+const getSafeAreaInsets = () => {
+  const style = getComputedStyle(document.documentElement);
+  return {
+    top: parseInt(style.getPropertyValue('--sat') || '0', 10) || 0,
+    right: parseInt(style.getPropertyValue('--sar') || '0', 10) || 0,
+    bottom: parseInt(style.getPropertyValue('--sab') || '0', 10) || 0,
+    left: parseInt(style.getPropertyValue('--sal') || '0', 10) || 0,
+  };
+};
+
 const FloatingActionPanel: React.FC<FloatingActionPanelProps> = ({
   channelRef,
   playerName,
@@ -20,31 +34,69 @@ const FloatingActionPanel: React.FC<FloatingActionPanelProps> = ({
   onJoinGame,
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
-  const [position, setPosition] = useState({ x: 20, y: window.innerHeight - 100 });
+  const [position, setPosition] = useState({ x: EDGE_MARGIN, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
+  const [isSnapping, setIsSnapping] = useState(false);
   const dragRef = useRef<{ startX: number; startY: number; startPosX: number; startPosY: number } | null>(null);
   const buttonRef = useRef<HTMLDivElement>(null);
 
-  // Load saved position
+  // Initialize position with safe area consideration
   useEffect(() => {
+    const insets = getSafeAreaInsets();
+    const defaultY = window.innerHeight - FAB_SIZE - EDGE_MARGIN - Math.max(insets.bottom, 20);
+    
     const saved = localStorage.getItem('fab-position');
     if (saved) {
       try {
         const pos = JSON.parse(saved);
-        setPosition(pos);
+        // Validate saved position is still within bounds
+        const maxX = window.innerWidth - FAB_SIZE - EDGE_MARGIN - insets.right;
+        const maxY = window.innerHeight - FAB_SIZE - EDGE_MARGIN - Math.max(insets.bottom, 20);
+        const minX = EDGE_MARGIN + insets.left;
+        const minY = EDGE_MARGIN + Math.max(insets.top, 20);
+        
+        setPosition({
+          x: Math.max(minX, Math.min(maxX, pos.x)),
+          y: Math.max(minY, Math.min(maxY, pos.y)),
+        });
+        return;
       } catch {}
     }
+    
+    setPosition({ x: EDGE_MARGIN + insets.left, y: defaultY });
   }, []);
 
-  // Save position
+  // Save position after snapping
   useEffect(() => {
-    if (!isDragging) {
+    if (!isDragging && !isSnapping) {
       localStorage.setItem('fab-position', JSON.stringify(position));
     }
-  }, [position, isDragging]);
+  }, [position, isDragging, isSnapping]);
+
+  // Snap to nearest edge
+  const snapToEdge = useCallback((x: number, y: number) => {
+    const insets = getSafeAreaInsets();
+    const screenWidth = window.innerWidth;
+    const screenHeight = window.innerHeight;
+    
+    const minX = EDGE_MARGIN + insets.left;
+    const maxX = screenWidth - FAB_SIZE - EDGE_MARGIN - insets.right;
+    const minY = EDGE_MARGIN + Math.max(insets.top, 20);
+    const maxY = screenHeight - FAB_SIZE - EDGE_MARGIN - Math.max(insets.bottom, 20);
+    
+    // Determine horizontal snap (left or right edge)
+    const centerX = x + FAB_SIZE / 2;
+    const snapX = centerX < screenWidth * SNAP_THRESHOLD ? minX : maxX;
+    
+    // Clamp Y within safe bounds
+    const clampedY = Math.max(minY, Math.min(maxY, y));
+    
+    return { x: snapX, y: clampedY };
+  }, []);
 
   const handleStart = (clientX: number, clientY: number) => {
     setIsDragging(true);
+    setIsSnapping(false);
     dragRef.current = {
       startX: clientX,
       startY: clientY,
@@ -54,19 +106,25 @@ const FloatingActionPanel: React.FC<FloatingActionPanelProps> = ({
     haptics.light();
   };
 
-  const handleMove = (clientX: number, clientY: number) => {
+  const handleMove = useCallback((clientX: number, clientY: number) => {
     if (!isDragging || !dragRef.current) return;
 
+    const insets = getSafeAreaInsets();
     const deltaX = clientX - dragRef.current.startX;
     const deltaY = clientY - dragRef.current.startY;
     
-    const newX = Math.max(10, Math.min(window.innerWidth - 70, dragRef.current.startPosX + deltaX));
-    const newY = Math.max(10, Math.min(window.innerHeight - 70, dragRef.current.startPosY + deltaY));
+    const minX = EDGE_MARGIN + insets.left;
+    const maxX = window.innerWidth - FAB_SIZE - EDGE_MARGIN - insets.right;
+    const minY = EDGE_MARGIN + Math.max(insets.top, 20);
+    const maxY = window.innerHeight - FAB_SIZE - EDGE_MARGIN - Math.max(insets.bottom, 20);
+    
+    const newX = Math.max(minX, Math.min(maxX, dragRef.current.startPosX + deltaX));
+    const newY = Math.max(minY, Math.min(maxY, dragRef.current.startPosY + deltaY));
     
     setPosition({ x: newX, y: newY });
-  };
+  }, [isDragging]);
 
-  const handleEnd = () => {
+  const handleEnd = useCallback(() => {
     if (isDragging && dragRef.current) {
       const deltaX = Math.abs(position.x - dragRef.current.startPosX);
       const deltaY = Math.abs(position.y - dragRef.current.startPosY);
@@ -75,11 +133,20 @@ const FloatingActionPanel: React.FC<FloatingActionPanelProps> = ({
       if (deltaX < 5 && deltaY < 5) {
         setIsExpanded(!isExpanded);
         haptics.medium();
+      } else {
+        // Snap to edge with animation
+        setIsSnapping(true);
+        const snappedPos = snapToEdge(position.x, position.y);
+        setPosition(snappedPos);
+        haptics.light();
+        
+        // Clear snapping state after animation
+        setTimeout(() => setIsSnapping(false), 300);
       }
     }
     setIsDragging(false);
     dragRef.current = null;
-  };
+  }, [isDragging, position, isExpanded, snapToEdge]);
 
   // Mouse events
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -115,7 +182,21 @@ const FloatingActionPanel: React.FC<FloatingActionPanelProps> = ({
       window.removeEventListener('touchmove', handleTouchMove);
       window.removeEventListener('touchend', handleTouchEnd);
     };
-  }, [isDragging, position]);
+  }, [isDragging, handleMove, handleEnd]);
+
+  // Handle window resize
+  useEffect(() => {
+    const handleResize = () => {
+      const snappedPos = snapToEdge(position.x, position.y);
+      setPosition(snappedPos);
+    };
+    
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [position, snapToEdge]);
+
+  // Determine if FAB is on left or right side for panel positioning
+  const isOnLeftSide = position.x < window.innerWidth / 2;
 
   return (
     <>
@@ -128,7 +209,9 @@ const FloatingActionPanel: React.FC<FloatingActionPanelProps> = ({
         style={{
           left: position.x,
           top: position.y,
-          transition: isDragging ? 'none' : 'all 0.2s ease-out',
+          transition: isDragging ? 'none' : 'all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)',
+          // Respect safe areas via env()
+          paddingBottom: 'env(safe-area-inset-bottom, 0px)',
         }}
       >
         {/* Main FAB Button */}
@@ -136,7 +219,7 @@ const FloatingActionPanel: React.FC<FloatingActionPanelProps> = ({
           onMouseDown={handleMouseDown}
           onTouchStart={handleTouchStart}
           className={`w-14 h-14 rounded-full bg-gradient-to-br from-neon-cyan to-neon-purple shadow-lg shadow-neon-cyan/30 flex items-center justify-center cursor-grab active:cursor-grabbing transition-transform ${
-            isDragging ? 'scale-110' : 'hover:scale-105'
+            isDragging ? 'scale-110 shadow-xl shadow-neon-cyan/50' : 'hover:scale-105'
           } ${isExpanded ? 'rotate-45' : ''}`}
         >
           {isExpanded ? (
@@ -146,18 +229,29 @@ const FloatingActionPanel: React.FC<FloatingActionPanelProps> = ({
           )}
         </div>
 
-        {/* Expanded Panel */}
+        {/* Drag indicator when dragging */}
+        {isDragging && (
+          <div className="absolute inset-0 rounded-full border-2 border-dashed border-white/50 animate-pulse pointer-events-none" />
+        )}
+
+        {/* Expanded Panel - positioned based on which side FAB is on */}
         {isExpanded && (
           <div
-            className="absolute bottom-16 left-1/2 -translate-x-1/2 w-72 bg-card/95 backdrop-blur-xl border border-border/50 rounded-2xl shadow-2xl shadow-black/20 animate-scale-in overflow-hidden"
+            className={`absolute w-72 bg-card/95 backdrop-blur-xl border border-border/50 rounded-2xl shadow-2xl shadow-black/20 animate-scale-in overflow-hidden ${
+              isOnLeftSide ? 'left-0' : 'right-0'
+            }`}
+            style={{
+              bottom: FAB_SIZE + 12,
+              maxHeight: `calc(100vh - ${position.y + FAB_SIZE + 40}px - env(safe-area-inset-top, 20px))`,
+            }}
             onClick={(e) => e.stopPropagation()}
           >
             {/* Drag Handle */}
-            <div className="flex items-center justify-center py-2 border-b border-border/30 cursor-move bg-muted/30">
+            <div className="flex items-center justify-center py-2 border-b border-border/30 bg-muted/30">
               <GripVertical className="w-4 h-4 text-muted-foreground" />
             </div>
 
-            <div className="p-4 space-y-4 max-h-[60vh] overflow-y-auto">
+            <div className="p-4 space-y-4 overflow-y-auto" style={{ maxHeight: '50vh' }}>
               {/* Chat Section */}
               <div className="space-y-2">
                 <div className="flex items-center gap-2 text-xs text-muted-foreground font-medium">
